@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-01-22 17:16:41 
+# 2011-01-27 11:33:43 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -28,9 +28,8 @@
 import os
 import logging
 from optparse import OptionParser
-from subprocess import Popen, PIPE, STDOUT
-import itertools
-imap=itertools.imap
+
+from tiler_functions import *
     
 datum_map={ 
     # http://www.hemanavigator.com.au/Products/TopographicalGPS/OziExplorer/tabid/69/Default.aspx
@@ -146,47 +145,6 @@ parm_map=(
                # 9. Sat - not used
                #10. Path - not used
     )
-
-def ld(*parms):
-    logging.debug(' '.join(imap(repr,parms)))
-
-def pf(*parms,**kparms):
-    try:
-        if not options.verbose:
-            return
-    except:
-        return
-    end=kparms['end'] if 'end' in kparms else '\n'
-    sys.stdout.write(' '.join(imap(str,parms))+end)
-    sys.stdout.flush()
-    
-try:
-    import win32pipe
-except:
-    win32pipe=None
-    
-def command(params,child_inp=None):
-    cmd_str=' '.join([('"%s"' % i if ' ' in i else i) for i in params])
-    ld((cmd_str,child_inp))
-    if win32pipe:
-        (stdin,stdout,stderr)=win32pipe.popen3(cmd_str,'t')
-        if child_inp:
-            stdin.write(child_inp)
-        stdin.close()
-        child_out=stdout.read()
-        child_err=stderr.read()
-        if child_err:
-            logging.warning(child_err)
-    else:
-        process=Popen(params,stdin=PIPE, stdout=PIPE, stderr=PIPE, universal_newlines=True)
-        (child_out,child_err)=process.communicate(child_inp)
-        if process.returncode != 0: 
-            raise Exception("*** External program failed: %s\n%s" % (cmd_str,child_err))
-    ld((child_out,child_err))
-    return child_out
-
-def flatten(two_level_list): 
-    return list(itertools.chain(*two_level_list))
 
 def dms2dec(degs,mins,ne):
     return (eval(degs)+eval(mins)/60)*(-1 if ne in ('W','S') else 1 )

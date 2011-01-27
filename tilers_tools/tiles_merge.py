@@ -1,6 +1,7 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
-# 2010-11-08 12:29:18 
+# 2011-01-27 11:45:07 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -31,49 +32,13 @@ import glob
 import shutil
 import logging
 import optparse
-import re
 from PIL import Image
 import pickle
 
-try:
-    import multiprocessing # available in python 2.6 and above
-except:
-    multiprocessing=None
+from tiler_functions import *
 
 class KeyboardInterruptError(Exception): 
     pass
-
-def parallel_map(func,iterable):
-    if not multiprocessing or options.no_threads:
-        res=map(func,iterable)
-    else:
-        # process files in parallel
-        mp_pool = multiprocessing.Pool() # multiprocessing pool
-        res=mp_pool.map(func,iterable)
-        mp_pool.close()
-        mp_pool.join()
-    return res
-
-def l_d(smth, nl=True):
-    logging.debug(str(smth))
-
-def p_f(smth, nl=True):
-    if options.quiet:
-        return
-    s=str(smth)
-    if nl: s+='\n'
-    sys.stdout.write(s)
-    sys.stdout.flush()
-    
-def re_sub_file(fname, substitutions):
-    'stream edit file using reg exp substitution list supplied'
-    out=open(fname+'.new', 'w')
-    for l in open(fname, 'r'):
-        for (pattern,repl) in substitutions:
-            l=re.sub(pattern,repl,string=l)
-        out.write(l)
-    out.close()
-    shutil.move(fname+'.new',fname)
 
 def modify_htmls(src_dir, dest_dir):
     'adjusting googlemaps.html and openlayers.html'
@@ -102,12 +67,12 @@ def modify_htmls(src_dir, dest_dir):
         s=[ i for i in open(os.path.join(dest_dir,googlemaps))
             if 'var mapBounds = new G.LatLngBounds' in i][0]
         d_bounds=list(eval(re.sub('[^-,.0-9]*','',s))) # leave only numbers there
-        l_d((s_bounds,d_bounds))
+        ld((s_bounds,d_bounds))
         if s_bounds[0] < d_bounds[0]: d_bounds[0]=s_bounds[0]
         if s_bounds[1] < d_bounds[1]: d_bounds[1]=s_bounds[1]
         if s_bounds[2] > d_bounds[2]: d_bounds[2]=s_bounds[2]
         if s_bounds[3] > d_bounds[3]: d_bounds[3]=s_bounds[3]
-        l_d(d_bounds)
+        ld(d_bounds)
         # write back modified googlemaps.html
         chart_name=os.path.split(dest_dir)[1]
         subs=[("(var mapBounds = new G.LatLngBounds).*;",
@@ -135,7 +100,7 @@ class MergeSet:
         (self.src,self.dest)=(src_dir,dest_dir)
         if options.no_src_ext:
             self.src=os.path.splitext(src)[0]
-        p_f(self.src+' ',nl=False)
+        pf(self.src+' ',end='')
         try:
             cwd=os.getcwd()
             os.chdir(self.src)
@@ -143,7 +108,7 @@ class MergeSet:
             self.max_zoom=max([int(i) for i in glob.glob('[0-9]*')])
         finally:
             os.chdir(cwd)
-        l_d(self.src_lst)
+        ld(self.src_lst)
         
         # load cached tile transparency data if any
         self.src_transp=dict.fromkeys(self.src_lst,None)
@@ -151,8 +116,8 @@ class MergeSet:
         try:
             self.src_transp.update(pickle.load(open(self.cache_path,'r')))
         except:
-            l_d("cache load failed")
-        l_d(repr(self.src_transp))
+            ld("cache load failed")
+        ld(repr(self.src_transp))
         
         # do the thing
         self.merge_dirs()
@@ -174,8 +139,8 @@ class MergeSet:
                 dest_raster=Image.open(dest_path).convert("RGBA")
                 if transparency(dest_raster) == 1: # lower tile is fully opaque
                     continue
-                p_f('#',False)
-                l_d((tile,out_loc,dest_path,(a_min,a_max)))
+                pf('#',end='')
+                ld((tile,out_loc,dest_path,(a_min,a_max)))
                 if not src_raster: # check if opening was deferred
                     src_raster=Image.open(src_path).convert("RGBA")
                 out_raster=src_raster.crop(out_loc).resize((256,256),Image.BILINEAR)
@@ -196,19 +161,19 @@ class MergeSet:
             src_raster=None
             transp=self.src_transp[tile]
             if transp == None: # transparency value not cached yet
-                #p_f('!',False)
+                #pf('!',end='')
                 src_raster=Image.open(src_path).convert("RGBA")
                 transp=transparency(src_raster)
             if  transp == 0 : # fully transparent
-                #p_f('-',False)
+                #pf('-',end='')
                 #os.remove(src_path)
                 pass
             elif transp == 1 or not os.path.exists(dest_tile): 
                 # fully opaque or no destination tile exists yet
-                #p_f('>',False)
+                #pf('>',end='')
                 shutil.copy(src_path,dest_tile)
             else: # semitransparent, combine with destination (exists!)
-                p_f('+',nl=False)
+                pf('+',end='')
                 if not src_raster: 
                     src_raster=Image.open(src_path).convert("RGBA")
                 dst_raster=Image.composite(src_raster,Image.open(dest_tile),src_raster)
@@ -225,8 +190,8 @@ class MergeSet:
         try:
             pickle.dump(self.src_transp,open(self.cache_path,'w'))
         except:
-            l_d("cache save failed")
-        p_f('')
+            ld("cache save failed")
+        pf('')
 
     def merge_dirs(self):
         res=parallel_map(self,self.src_lst)

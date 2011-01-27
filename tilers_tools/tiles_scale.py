@@ -29,68 +29,32 @@ import os
 import shutil
 import glob
 import logging
-import re
 import optparse
 from PIL import Image
 
-try:
-    import multiprocessing # available in python 2.6 and above
-except:
-    multiprocessing=None
-
-def parallel_map(func,iterable):
-    if not multiprocessing:
-        res=map(func,iterable)
-    else:
-        # process files in parallel
-        mp_pool = multiprocessing.Pool() # multiprocessing pool
-        res=mp_pool.map(func,iterable)
-        # wait for threads to finish
-        mp_pool.close()
-        mp_pool.join()
-    return res
-
-def l_d(smth):
-    logging.debug(str(smth))
-    
-def p_f(smth, nl=True):
-    #logging.debug(str(smth))
-    s=str(smth)
-    if nl: s+='\n'
-    sys.stdout.write(s)
-    sys.stdout.flush()
-    
-def re_sub_file(fname, substitutions):
-    'stream edit file using reg exp substitution list supplied'
-    f=open(fname+'.new', 'w')
-    for l in open(fname):
-        for (pattern,repl) in substitutions:
-            l=re.sub(pattern,repl,string=l)
-        f.write(l)
-    f.close()
-    shutil.move(fname+'.new',fname) # mind Windows
+from tiler_functions import *
 
 class ZoomSet:
     def __init__(self,tiles_root,curr_zoom):
         self.curr_zoom=curr_zoom
         self.zoom=curr_zoom-1
-        p_f('%i'%self.zoom,False)
+        pf('%i'%self.zoom,end='')
         os.chdir(os.path.join(tiles_root,'%i' % curr_zoom))
         self.src_lst=set([tuple(map(eval,os.path.split(os.path.splitext(i)[0])))
                           for i in glob.glob('*/*.png')])
-        l_d(self.src_lst)
+        ld(self.src_lst)
         if len(self.src_lst) == 0:
             raise Exception("No tiles in %s" % os.getcwd())
         os.chdir(tiles_root)
         self.dest_lst=set([(src_x/2,src_y/2) for (src_x,src_y) in self.src_lst])
-        l_d(self.dest_lst)
+        ld(self.dest_lst)
         shutil.rmtree('%i' % self.zoom,ignore_errors=True)
         for i in set([x for (x,y) in self.dest_lst]):
             os.makedirs('%i/%i' % (self.zoom,i))
         self.zoom_out()
             
     def __call__(self,dest_xy):
-        p_f('.',False)
+        pf('.',end='')
         (x,y)=dest_xy
         im = Image.new("RGBA",(256,256),(0,0,0,0))
         tiles_map=[(0,128), (128,128),
@@ -124,7 +88,7 @@ if __name__=='__main__':
 
     start_dir=os.getcwd()
     for tiles_dir in args if len(args)>0 else ['.']:
-        p_f('%s '%tiles_dir,False)    
+        pf('%s '%tiles_dir,end='')    
         os.chdir(tiles_dir)
         tiles_root=os.getcwd()
         min_zoom=options.zoom
@@ -134,7 +98,7 @@ if __name__=='__main__':
             ZoomSet(tiles_root,zoom)
 
         os.chdir(tiles_root)
-        p_f('')
+        pf('')
         # modify googlemaps.html and openlayers.html
         re_sub_file(os.path.join(tiles_root,'googlemaps.html'),
             [('(var mapMinZoom =).*;','\\1 %i;' % min_zoom)])

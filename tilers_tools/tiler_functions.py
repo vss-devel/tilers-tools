@@ -32,6 +32,7 @@ import os.path
 import logging
 from subprocess import *
 import itertools
+import re
 #from optparse import OptionParser
 
 try:
@@ -111,4 +112,16 @@ def dest_path(src,dest_dir,ext='',template='%s'):
         dest='%s/%s' % (dest_dir,dest)
     ld(base,dest)
     return dest
+    
+def re_sub_file(fname, substitutions):
+    'stream edit file using reg exp substitution list supplied'
+    out=open(fname+'.new', 'w')
+    for l in open(fname, 'r'):
+        for (pattern,repl) in substitutions:
+            l=re.sub(pattern,repl,string=l)
+        out.write(l)
+    out.close()
+    shutil.move(fname+'.new',fname)
+
+
 

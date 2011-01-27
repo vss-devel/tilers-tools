@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-01-22 17:17:08 
+# 2011-01-27 11:32:42 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -33,52 +33,15 @@ import math
 import shutil
 import logging
 from optparse import OptionParser
-from PIL import Image
+#from PIL import Image
 import zlib
 import mmap
 import operator
 import struct
-import itertools
 import glob
 
-imap=itertools.imap
+from tiler_functions import *
 
-try:
-    import win32pipe 
-except:
-    win32pipe=None
-
-try:
-    import multiprocessing # available in python 2.6 and above
-except:
-    multiprocessing=None
-
-class KeyboardInterruptError(Exception): 
-    pass
-
-def parallel_map(func,iterable):
-    if not multiprocessing or len(iterable) < 2:
-        res=map(func,iterable)
-    else:
-        # process files in parallel
-        mp_pool = multiprocessing.Pool() # multiprocessing pool
-        res=mp_pool.map(func,iterable)
-        # wait for threads to finish
-        mp_pool.close()
-        mp_pool.join()
-    return res
-
-def ld(*parms):
-    logging.debug(' '.join(imap(repr,parms)))
-
-def pf(*parms,**kparms):
-    end=kparms['end'] if 'end' in kparms else '\n'
-    sys.stdout.write(' '.join(imap(str,parms))+end)
-    sys.stdout.flush()
-
-def flatten(two_level_list): 
-    return list(itertools.chain(*two_level_list))
-    
 class OzfImg(object):
 
 #ozf_header_1:
@@ -287,21 +250,20 @@ class OzfImg(object):
         self.seed=seed
         self.descramble=self.ozfx3_descramble
 
-    def tile(self,x,y):
-        data=self.tile_data(x,y)#,flip=False)
-        img=Image.fromstring('L',self.tile_sz,data,'raw','L',0,1)
-        #img.putpalette(self.palette)
-        return img
+#    def tile(self,x,y):
+#        data=self.tile_data(x,y)#,flip=False)
+#        img=Image.fromstring('L',self.tile_sz,data,'raw','L',0,1)
+#        #img.putpalette(self.palette)
+#        return img
 
-    def image(self):
-        img=Image.new('L',self.size)
-        for x in range(self.t_range[0]):
-            for y in range(self.t_range[1]):
-                tile=self.tile(x,y)
-                img.paste(tile,(x*self.tile_sz[0],y*self.tile_sz[1]))
-        img.putpalette(self.palette)
-        return img
-        
+#    def image(self):
+#        img=Image.new('L',self.size)
+#        for x in range(self.t_range[0]):
+#            for y in range(self.t_range[1]):
+#                tile=self.tile(x,y)
+#                img.paste(tile,(x*self.tile_sz[0],y*self.tile_sz[1]))
+#        img.putpalette(self.palette)
+#        return img
  
 def gdal4tiles(profile,src,dest,resampling,base_resampling,zoom,tile_fmt,tile_size):
     for cls in profile_map:

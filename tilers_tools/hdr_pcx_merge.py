@@ -1,6 +1,7 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
-# 2010-10-10 15:58:39 
+# 2011-01-27 11:38:30 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -33,38 +34,10 @@ import optparse
 import string
 from PIL import Image
 
-try:
-    import multiprocessing # available in python 2.6 and above
-except:
-    multiprocessing=None
+from tiler_functions import *
 
 pcx_tile_w=640
 pcx_tile_h=480
-
-def parallel_map(func,iterable):
-    if not multiprocessing:
-        res=map(func,iterable)
-    else:
-        # process files in parallel
-        mp_pool = multiprocessing.Pool() # multiprocessing pool
-        res=mp_pool.map(func,iterable)
-        # wait for threads to finish
-        mp_pool.close()
-        mp_pool.join()
-    return res
-
-def l_d(smth):
-    logging.debug(str(smth))
-    
-def p_f(smth, nl=True):
-    #logging.debug(str(smth))
-    s=str(smth)
-    if nl: s+='\n'
-    sys.stdout.write(s)
-    sys.stdout.flush()
-
-class KeyboardInterruptError(Exception): 
-    pass
 
 class MergeSet:
     def __init__(self,src_lst,dest_dir):
@@ -73,21 +46,21 @@ class MergeSet:
         self.merge()
 
     def __call__(self,src_dir):
-        p_f('.',False)
+        pf('.',end='')
         uc=string.ascii_uppercase
         tiles=sorted(glob.glob(os.path.join(src_dir,"*.[A-Z][0-9][0-9]")))
         last_name=os.path.split(tiles[-1])[1]
         (base_name,last_ext)=os.path.splitext(last_name)
-        l_d([base_name,last_ext])
+        ld([base_name,last_ext])
         y_max=int(last_ext[2:4])
         x_max=uc.find(last_ext[1])+1
-        #l_d([base_name,y_max,x_max])
+        #ld([base_name,y_max,x_max])
         im = Image.new("RGBA", (x_max*pcx_tile_w, y_max*pcx_tile_h))
         for y in range(1,y_max+1):
             for x in range(1,x_max+1):
                 src=os.path.join(src_dir,'%s.%s%02d' % (base_name,uc[x-1],y))
                 loc=((x-1)*pcx_tile_w,(y-1)*pcx_tile_h)
-                l_d([src,loc])
+                ld([src,loc])
                 if os.path.exists(src):
                     im.paste(Image.open(src),loc)
                 else:
@@ -123,5 +96,4 @@ if __name__=='__main__':
 
     src_dirs=glob.glob(os.path.join(args[0],"[A-Z]??????[0-9]"))
     MergeSet(src_dirs,start_dir)
-    
 

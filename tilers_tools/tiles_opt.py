@@ -30,39 +30,8 @@ import stat
 import shutil
 import logging
 import optparse
-from subprocess import *
-import re
 
-try:
-    import multiprocessing # available in python 2.6 and above
-except:
-    multiprocessing=None
-
-def p_f(smth, nl=True):
-    if options.quiet:
-        return
-    s=str(smth)
-    if nl: s+='\n'
-    sys.stdout.write(s)
-    sys.stdout.flush()
-
-def flatten(listOfLists):
-    out=[]
-    for l in listOfLists:
-        out += list(l)
-    return out
-
-def parallel_map(func,iterable):
-    if not multiprocessing:
-        res=map(func,iterable)
-    else:
-        # process files in parallel
-        mp_pool = multiprocessing.Pool() # multiprocessing pool
-        res=mp_pool.map(func,iterable)
-        # wait for threads to finish
-        mp_pool.close()
-        mp_pool.join()
-    return res
+from tiler_functions import *
 
 def find_byext(path, ext):
     return flatten([os.path.join(path, name) for name in files if name.endswith(ext)] 
@@ -71,7 +40,7 @@ def find_byext(path, ext):
 def command(params,stdin=None):
     process=Popen(params,stdin=PIPE, stdout=PIPE, stderr=PIPE, universal_newlines=True)
     out=process.communicate(stdin)
-    if out[1]: p_f(out[1])
+    if out[1]: pf(out[1])
     if process.returncode != 0: raise Exception("*** External program failed: %s" % params[0])
     return out[0]
 
@@ -79,10 +48,10 @@ class KeyboardInterruptError(Exception): pass
 
 def proc_file(fl):
     try:
-        p_f( '.', False)
+        pf('.',end='')
         command(['nice','pngnq','-fn', options.colors, fl])
     except KeyboardInterrupt: # http://jessenoller.com/2009/01/08/multiprocessingpool-and-keyboardinterrupt/
-        p_f('got KeyboardInterrupt')
+        pf('got KeyboardInterrupt')
         raise KeyboardInterruptError()
 
 if __name__=='__main__':
@@ -106,7 +75,7 @@ if __name__=='__main__':
         src_lst=filter(lambda fl: not stat.S_ISLNK(os.lstat(fl)[stat.ST_MODE]), # skip symlinks
                     find_byext(src_dir, '.png'))
         parallel_map(proc_file,src_lst)
-        p_f('')
+        pf('')
 
         # 'pngnq' creates *-nq8.png files, so rename files back to original names
         map(lambda f: os.rename(f,f[:-len('-nq8.png')]+'.png'), find_byext(src_dir, '-nq8.png'))

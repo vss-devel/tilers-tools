@@ -1,6 +1,7 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
-# 2011-01-26 11:52:01 
+# 2011-01-27 11:44:37 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -32,15 +33,7 @@ import shutil
 import logging
 import optparse
 
-def l_d(smth, nl=True):
-    logging.debug(str(smth))
-
-def p_f(smth, nl=True):
-    #logging.debug(str(smth))
-    s=str(smth)
-    if nl: s+='\n'
-    sys.stdout.write(s)
-    sys.stdout.flush()
+from tiler_functions import *
 
 def path2list(path):
     head,ext=os.path.splitext(path)
@@ -82,7 +75,7 @@ class PixBufTile(Tile):
 
 class TileSet:
     def __init__(self,root,write=False,append=False):
-        l_d(root)
+        ld(root)
         self.root=root
         self.count=0
         self.tick_rate=100
@@ -96,7 +89,7 @@ class TileSet:
             assert os.path.exists(root), "No file or directory found: %s" % root
 
     def __del__(self):
-        l_d(self.count)
+        ld(self.count)
 
 #    def store_tile(self, tile):
 #        raise Exception("Unimplemented!")
@@ -104,13 +97,13 @@ class TileSet:
     def counter(self):
         self.count+=1
         if self.count % self.tick_rate == 0:
-            p_f('.',nl=False)
+            pf('.',end='')
             return True
         else:
             return False
 
     def load_from(self,src_tiles):
-        l_d((src_tiles.root, self.root))
+        ld((src_tiles.root, self.root))
         map(self.store_tile,src_tiles)
 # TileSet
 
@@ -142,7 +135,7 @@ class TileDir(TileSet):
     def store_tile(self, tile):
         # dest_path is w/o extension!
         dest_path=os.path.join(self.root,self.coord2path(*tile.coord()))
-        l_d('%s -> %s' % (tile.path,dest_path))
+        ld('%s -> %s' % (tile.path,dest_path))
         try:
             os.makedirs(os.path.split(dest_path)[0])
         except os.error: pass
@@ -235,7 +228,7 @@ class MapperSQLite(TileSet):
         z,x,y=tile.coord()
         # convert to maemo-mapper coords
         z=self.max_zoom+1-z
-        l_d('%s -> SQLite %d,%d,%d' % (tile.path, z, x, y))
+        ld('%s -> SQLite %d,%d,%d' % (tile.path, z, x, y))
         self.dbc.execute('insert or replace into maps (zoom,tilex,tiley,pixbuf) values (?,?,?,?);',
             (z,x,y,buffer(tile.data())))
         self.counter()
@@ -274,7 +267,7 @@ class MapperGDBM(TileSet): # due to GDBM weirdness on ARM this only works if run
         z,x,y=tile.coord()
         # convert to maemo-mapper coords
         z=self.max_zoom+1-z
-        l_d('%s -> GDBM %d,%d,%d' % (tile.path, z, x, y))
+        ld('%s -> GDBM %d,%d,%d' % (tile.path, z, x, y))
         key=self.pack('>III',z,x,y)
         self.db[key]=tile.data()
         self.counter()
@@ -330,7 +323,7 @@ if __name__=='__main__':
     (options, args) = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if options.debug else 
         (logging.ERROR if options.quiet else logging.INFO))
-    l_d(options)
+    ld(options)
 
     if options.list_formats:
         list_formats()
@@ -346,5 +339,5 @@ if __name__=='__main__':
         dest=None
 
     tiles-convert(options.in_fmt,src,options.out_fmt,dest,options.append)
-    p_f('')
+    pf('')
 

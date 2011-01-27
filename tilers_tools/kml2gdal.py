@@ -1,5 +1,8 @@
 #!/usr/bin/env python
-# 2010-09-08 12:03:29 
+# -*- coding: utf-8 -*-
+
+# 2011-01-27 11:39:40 
+
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
 #
@@ -25,32 +28,10 @@
 import os
 import sys
 import logging
-import itertools
 import re
 from optparse import OptionParser
-from subprocess import Popen, PIPE
 
-def p_f(smth, nl=True):
-#    return
-    #logging.debug(str(smth))
-    s=str(smth)
-    if nl: s+='\n'
-    sys.stdout.write(s)
-    sys.stdout.flush()
-
-def l_d(smth):
-    logging.debug(str(smth))
-
-def command(params,stdin=None):
-    l_d(params)
-    process=Popen(params,stdin=PIPE, stdout=PIPE, stderr=PIPE, universal_newlines=True)
-    out=process.communicate(stdin)
-    if out[1]: l_d(out[1])
-    if process.returncode != 0: raise Exception("*** External program failed: %s" % params[0])
-    return out[0]
-
-def flatten(listOfLists): 
-    return list(itertools.chain.from_iterable(listOfLists))
+from tiler_functions import *
 
 def kml_parm(hdr,name,lst=False):
     l=re.split('</?%s>' % name,hdr)
@@ -67,13 +48,13 @@ def find_image(img_path, map_dir):
     except IndexError: raise Exception("*** Image file not found: %s" % img_path)
 
 def overlay2vrt(ol,map_dir):
-    l_d(ol)
+    ld(ol)
     img_file=kml_parm(ol,'href')
-    l_d(img_file)
+    ld(img_file)
     img_path=find_image(img_file,map_dir)
     base=os.path.splitext(img_path)[0]
     out_vrt= base + '.vrt'        # output VRT file
-#    p_f(out_vrt)
+#    pf(out_vrt)
     if os.path.exists(out_vrt): os.remove(out_vrt)
 
     # http://trac.osgeo.org/proj/wiki/FAQ#ChangingEllipsoidWhycantIconvertfromWGS84toGoogleEarthVirtualGlobeMercator
@@ -82,7 +63,7 @@ def overlay2vrt(ol,map_dir):
 
     info_out=command(['gdalinfo',img_path]).splitlines()
     width, height=eval([i for i in info_out if 'Size is' in i][0].replace('Size is',''))
-    l_d((width, height))
+    ld((width, height))
     points=[(0,height), (width,height), (width,0),(0,0)]
     if 'gx:LatLonQuad' in ol:
         refs=[i.split(',') for i in kml_parm(ol,'coordinates').split()]
@@ -95,10 +76,10 @@ def overlay2vrt(ol,map_dir):
         w=kml_parm(ol,'west')
         refs=[(w,s),(e,s),(e,n),(w,n)]
     latlong=''.join(['%s %s\n' % (ref[0],ref[1]) for ref in refs])
-    l_d(latlong)
+    ld(latlong)
     refs_proj=[ i.split() for i in 
         command(['proj'] + out_srs.split(), latlong).splitlines()]
-    l_d(refs_proj)
+    ld(refs_proj)
     gcps=flatten([('-gcp', str(i[0][0]),str(i[0][1]),i[1][0],i[1][1]) for i in zip(points, refs_proj)])
     transl_cmd=['gdal_translate','-of','VRT',img_path, out_vrt,'-a_srs', out_srs]
     if 'Color Table' in info_out:

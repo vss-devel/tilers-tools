@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# 2010-12-28 15:22:23 
+# 2011-01-27 11:26:03 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -27,9 +27,8 @@
 import os
 import logging
 from optparse import OptionParser
-from subprocess import Popen, PIPE
-import itertools
-imap=itertools.imap
+
+from tiler_functions import *
 
 knp_map={ # projection parameters
     'MERCATOR':
@@ -73,47 +72,6 @@ guessed_datum_map={ # guess the datum by a comment/copyright string pattern
         # http://earth-info.nga.mil/GandG/coordsys/onlinedatum/DatumTable.html
         '+datum=hermannskogel',
     }
-    
-def ld(*parms):
-    logging.debug(' '.join(imap(repr,parms)))
-
-def pf(*parms,**kparms):
-    try:
-        if not options.verbose:
-            return
-    except:
-        return
-    end=kparms['end'] if 'end' in kparms else '\n'
-    sys.stdout.write(' '.join(imap(str,parms))+end)
-    sys.stdout.flush()
-    
-try:
-    import win32pipe
-except:
-    win32pipe=None
-    
-def command(params,child_in=None):
-    cmd_str=' '.join(('"%s"' % i if ' ' in i else i for i in params))
-    ld((cmd_str,child_in))
-    if win32pipe:
-        (stdin,stdout,stderr)=win32pipe.popen3(cmd_str,'t')
-        if child_in:
-            stdin.write(child_in)
-        stdin.close()
-        child_out=stdout.read()
-        child_err=stderr.read()
-        if child_err:
-            logging.warning(child_err)
-    else:
-        process=Popen(params,stdin=PIPE, stdout=PIPE, stderr=PIPE, universal_newlines=True)
-        (child_out,child_err)=process.communicate(child_in)
-        if process.returncode != 0: 
-            raise Exception("*** External program failed: %s\n%s" % (cmd_str,child_err))
-    ld((child_out,child_err))
-    return child_out
-
-def flatten(two_level_list): 
-    return list(itertools.chain(*two_level_list))
 
 def hdr_parms(header, patt): 
     'filter header for params starting with "patt/", if knd is empty then return comment lines'
@@ -299,7 +257,7 @@ def kap2vrt(kap,dest=None,options=None):
         return
     if gmt_data and not options.no_cut_file: # create shapefile with a cut polygon
         f=open(base+'.gmt','w+')
-        f.write(gmt)
+        f.write(gmt_data)
         f.close()
         
     # convert latlong gcps to projected coordinates
@@ -325,7 +283,8 @@ def kap2vrt(kap,dest=None,options=None):
     
     try:
         cdir=os.getcwd()
-        os.chdir(dest_dir)
+        if dest_dir:
+            os.chdir(dest_dir)
         command(transl_cmd + gcps) # gdal_translate
     finally:
         os.chdir(cdir)

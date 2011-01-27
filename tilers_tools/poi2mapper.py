@@ -1,6 +1,7 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
-# 2010-10-28 17:49:52 
+# 2011-01-27 11:42:40 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -32,16 +33,7 @@ import optparse
 import xml.dom.minidom
 import sqlite3
 
-def l_d(smth, nl=True):
-    logging.debug(repr(smth))
-
-def p_f(smth, nl=True):
-#    return
-    #logging.debug(str(smth))
-    s=str(smth)
-    if nl: s+='\n'
-    sys.stdout.write(s)
-    sys.stdout.flush()
+from tiler_functions import *
 
 def re_subs(sub_list,l):
     for (pattern,repl) in sub_list:
@@ -118,7 +110,7 @@ class Poi2Mapper:
             for d in cats_def:
                 try:
                     (type,icon,categ,desc) = d + [None for i in range(len(d),4)]
-                    l_d((type[-1] ,type,icon,categ,desc))
+                    ld((type[-1] ,type,icon,categ,desc))
                     if type[-1] not in ('0','1') or not categ:
                         continue
                     self.categ_add_update(categ,int(type[-1]),icon=icon,desc=desc)
@@ -143,7 +135,7 @@ class Poi2Mapper:
     def handleStyle(self,elm):
         url=None
         style_id=elm.getAttribute('id')
-        l_d(style_id)
+        ld(style_id)
         icon=u'__%s__.jpg' % style_id
         if elm.getElementsByTagName("IconStyle") != []:
             try:
@@ -170,7 +162,7 @@ class Poi2Mapper:
         label=pm.getElementsByTagName("name")[0].firstChild.data
         style_id=pm.getElementsByTagName("styleUrl")[0].firstChild.data[1:]
         style=self.styles[style_id]
-        l_d((label,style_id,style))
+        ld((label,style_id,style))
         if style.startswith('__') and style.endswith('__'):
             logging.warning(' No icon for "%s"' % label)
         desc=None
