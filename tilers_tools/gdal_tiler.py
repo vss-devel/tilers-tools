@@ -83,7 +83,7 @@ class TiledTiff(object):
         idx=tile_x-d_x+(tile_y-d_y)*self.size[0]//tile_sz[0]
         assert idx >= 0 and idx < ntiles, 'tile: %s range: %s' % ((tile_x,tile_y),self.tile_range)
         
-        rgba=[ src[ ofs[idx+i*ntiles] : ofs[idx+i*ntiles] + lns[idx+i*ntiles] ] 
+        rgba=[ src[ofs[idx+i*ntiles] : ofs[idx+i*ntiles] + lns[idx+i*ntiles]] 
                 for i in range(4)]
         if min(rgba[3]) == '\xFF': # fully opaque
             opacity=1
@@ -818,7 +818,8 @@ google_templ='''<!DOCTYPE html>
 <html>
 <head>
 <title>%(title)s</title>
-<meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<!-- <meta name="viewport" content="initial-scale=1.0, user-scalable=no" /> -->
 <style type="text/css">
   html { height: 100%% }
   body { height: 100%%; margin: 0px; padding: 0px }

@@ -82,9 +82,10 @@ datum_map={
     'Finland Hayford':
         #'+towgs84=-90.7,-106.1,-119.2,4.09,0.218,-1.05,1.37 +ellps=intl', # see esri:4123
         '+towgs84=-78.00,-231.00,-97.00 +ellps=intl',
-    'RT 90':
+    'RT 90': # http://www.lantmateriet.se/templates/LMV_Page.aspx?id=4766&lang=EN
         #'+towgs84=414.1,41.3,603.1,-0.855,2.141,-7.023,0 +ellps=bessel', # http://svn.osgeo.org/metacrs/csmap/sandbox/RFC2/Dictionaries/GeodeticTransformation.asc
         #'+towgs84=414.1055246174,41.3265500042,603.0582474221,0.8551163377,-2.1413174055,7.0227298286,0.0 +ellps=bessel',
+        #'+towgs84=419.3836,99.3335,591.3451,-0.850389,-1.817277,7.862238,-0.99496 +ellps=bessel', # http://forums.esri.com/Thread.asp?c=9&f=85&t=38169
         '+towgs84=414.0978567149,41.3381489658,603.0627177516,-0.8550434314,2.1413465185,-7.0227209516,0 +ellps=bessel', # http://sv.wikipedia.org/wiki/RT_90
     #Datum Lisboa (Portugal), 29, -304.046, -60.576, 103.640
     #European 1950 (Portugal), 14, -87.987, -108.639, -121.593
@@ -98,6 +99,10 @@ datum_map={
     # Observatorio 1966
     # S42
     }
+
+def dms2dec(degs=0,mins=0,ne='E',sec=0):
+    return (float(degs)+float(mins)/60+float(sec)/3600)*(-1 if ne in ('W','S') else 1 )
+
 proj_map={
     'Latitude/Longitude':                       '+proj=latlong',
     'Mercator':                                 '+proj=merc',
@@ -106,7 +111,9 @@ proj_map={
     '(BNG) British National Grid':              '+init=epsg:27700', # not tested
     '(IG) Irish Grid':                          '+init=epsg:29902', # not tested
     '(NZG) New Zealand Grid':                   '+init=epsg:27200', # not tested
-    '(SG) Swedish Grid':                        '+init=epsg:3847',  # not tested
+    '(SG) Swedish Grid': # http://www.fig.net/pub/fig2006/papers/ps05_03/ps05_03_04_engberg_lilje_0670.pdf
+        #'+init=epsg:3847', # http://www.lantmateriet.se/templates/LMV_Page.aspx?id=5197&lang=EN
+        '+proj=tmerc +lat_0=15.808277777778 +x_0=1500000 +y_0=0', # http://en.wikipedia.org/wiki/Swedish_grid
     '(SUI) Swiss Grid':                         '+init=epsg:21781', # not tested
     '(I) France Zone I':                        '+init=epsg:27571', # not tested
     '(II) France Zone II':                      '+init=epsg:27572', # not tested
@@ -146,9 +153,6 @@ parm_map=(
                #10. Path - not used
     )
 
-def dms2dec(degs,mins,ne):
-    return (eval(degs)+eval(mins)/60)*(-1 if ne in ('W','S') else 1 )
-
 def hdr_parms(hdr, patt): 
     'filter header for params starting with "patt"'
     return [i for i in hdr if i[0].startswith(patt)]
@@ -169,13 +173,13 @@ def get_srs(hdr):
     parm_lst=hdr_parms(hdr, 'Projection Setup')[0]
     try:
         datum=datum_map[datum_id]
-        srs=proj_map[proj_id]
+        srs=[proj_map[proj_id]]
     except KeyError: 
         raise Exception("*** Unsupported datum (%s) or projection (%s)" % (datum_id,proj_id))
-    if '+proj=' in srs: # overwise assume it already has a full data defined
+    if '+proj=' in srs[0]: # overwise assume it already has a full data defined
         # get projection parameters
         parms=[ i[0]+i[1] for i in zip(parm_map,parm_lst[1:]) if i[1].translate(None,'0.')]
-        if '+proj=utm' in srs:
+        if '+proj=utm' in srs[0]:
             if refs[0][7] == '': # refs are cartesian with a zone defined
                 parms.append('+zone='+refs[0][13])
                 if refs[0][16] != 'N': 
@@ -187,17 +191,18 @@ def get_srs(hdr):
                 if refs[0][8] != 'N': 
                     parms.append('+south')
         if parms:
-            srs += ' '+' '.join(parms)
+            srs.extend(parms)
         # setup a central meridian artificialy to allow charts crossing meridian 180
-        if '+lon_0=' not in srs:
-            leftmost=min(refs,key=lambda r: r[2])
-            rightmost=max(refs,key=lambda r: r[2])
-            ld('leftmost',leftmost,'rightmost',rightmost)
-            if leftmost[4] > rightmost[4]:
-                srs+=' +lon_0=%i' % int(leftmost[9])
-        srs += ' '+datum+' +no_defs'
+        leftmost=min(refs,key=lambda r: r[2])
+        rightmost=max(refs,key=lambda r: r[2])
+        ld('leftmost',leftmost,'rightmost',rightmost)
+        if leftmost[4] > rightmost[4] and '+lon_0=' not in srs[0]:
+            srs.append(' +lon_0=%i' % int(leftmost[9]))
+    if datum_id != 'WGS 84':
+        srs.append(datum)
+    srs.append('+no_defs')
     ld(srs)
-    return srs,refs
+    return ' '.join(srs),refs
 
 def find_image(img_path, map_dir, map_fname):
     imp_path_slashed=img_path.replace('\\','/') # get rid of windows separators
@@ -238,8 +243,10 @@ def cut_poly(hdr,out_dataset,out_srs):
     poly='POLYGON(('+','.join(poly_pix)+'))' # Create cutline
 
     # convert cutline geo coordinates to the chart's srs
-    ld('\n'.join(poly_pix))
-    out=command(['gdaltransform','-s_srs',out_dataset,'-t_srs',out_srs], '\n'.join(poly_pix))
+    latlong = '\n'.join([' '.join((i[2],i[1])) for i in mmpll])
+    out=command(['gdaltransform','-s_srs','+proj=longlat','-t_srs',out_srs], latlong)
+
+#    out=command(['gdaltransform','-s_srs',out_dataset,'-t_srs',out_srs], '\n'.join(poly_pix))
     return poly, gmt_templ % (out_srs,out)
 
 def dest_path(src,dest_dir,ext='',template='%s'):
@@ -279,7 +286,7 @@ def map2vrt(map_file,dest=None,options=None):
         refs_proj=[map(repr,(dms2dec(*i[9:12]), dms2dec(*i[6:9]))) for i in refs]
         if not out_srs.startswith('+proj=latlong'): # reproject coordinates
             latlong = '\n'.join([i[0]+' '+i[1] for i in refs_proj])
-            refs_out=command(['gdaltransform','-tps','-s_srs','+proj=longlat','-t_srs',out_srs], latlong)
+            refs_out=command(['gdaltransform','-s_srs','+proj=longlat','-t_srs',out_srs], latlong)
             refs_proj=[ i.split() for i in refs_out.splitlines()]
     if len(refs) == 2:
         logging.warning(' Only 2 reference points: assuming the chart is north alligned')
@@ -305,7 +312,7 @@ def map2vrt(map_file,dest=None,options=None):
         return
     if gmt_data and not options.no_cut_file: # create shapefile with a cut polygon
         f=open(base+'.gmt','w+')
-        f.write(gmt)
+        f.write(gmt_data)
         f.close()
 
 def proc_src(src):
