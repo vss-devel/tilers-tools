@@ -29,99 +29,18 @@ from __future__ import print_function
 import sys
 import os
 import os.path
-import math
-import shutil
 import logging
+import shutil
 from optparse import OptionParser
-from subprocess import *
+import math
 from PIL import Image
 import pickle
 import mmap
 import operator
 import struct
-import itertools
-imap=itertools.imap
 
-try:
-    import win32pipe 
-except:
-    win32pipe=None
+from tiler_functions import *
 
-try:
-    import multiprocessing # available in python 2.6 and above
-except:
-    multiprocessing=None
-
-class KeyboardInterruptError(Exception): 
-    pass
-
-def parallel_map(func,iterable):
-    if not multiprocessing or len(iterable) < 2:
-        return map(func,iterable)
-    else:
-        # process files in parallel
-        mp_pool = multiprocessing.Pool() # multiprocessing pool
-        res=mp_pool.map(func,iterable)
-        # wait for threads to finish
-        mp_pool.close()
-        mp_pool.join()
-    return res
-
-def ld(*parms):
-    logging.debug(' '.join(imap(repr,parms)))
-
-def pf(*parms,**kparms):
-    try:
-        if not options.verbose:
-            return
-    except:
-        return
-    end=kparms['end'] if 'end' in kparms else '\n'
-    sys.stdout.write(' '.join(imap(str,parms))+end)
-    sys.stdout.flush()
-
-def flatten(two_level_list): 
-    return list(itertools.chain(*two_level_list))
-
-def command(params,child_in=None):
-    cmd_str=' '.join(('"%s"' % i if ' ' in i else i for i in params))
-    ld((cmd_str,child_in))
-    if win32pipe:
-        (stdin,stdout,stderr)=win32pipe.popen3(cmd_str,'t')
-        if child_in:
-            stdin.write(child_in)
-        stdin.close()
-        child_out=stdout.read()
-        child_err=stderr.read()
-        if child_err:
-            logging.warning(child_err)
-    else:
-        process=Popen(params,stdin=PIPE, stdout=PIPE, stderr=PIPE, universal_newlines=True)
-        (child_out,child_err)=process.communicate(child_in)
-        if process.returncode != 0: 
-            raise Exception("*** External program failed: %s\n%s" % (cmd_str,child_err))
-    ld((child_out,child_err))
-    return child_out
-
-def dest_path(src,dest_dir,ext='',template='%s'):
-    src_dir,src_file=os.path.split(src)
-    base,sext=os.path.splitext(src_file)
-    dest=(template % base)+ext
-    if not dest_dir:
-        dest_dir=src_dir
-    if dest_dir:
-        dest='%s/%s' % (dest_dir,dest)
-    ld(base,dest)
-    return dest
-
-def info_parm(info,pattern):
-    info_line=[i for i in info if pattern in i][0]
-    if '(' in info_line:
-        out=info_line[info_line.find('(')+1:info_line.find(')')]
-    else:
-        out=info_line[info_line.find(pattern)+len(pattern):]
-    return out.strip()
-    
 #############################
 #
 # class TiledTiff
@@ -453,6 +372,14 @@ class Pyramid(object):
             'zoom size',map(lambda zt,ts:ts*zt*2**zoom,self.zoom0_tiles,self.tile_sz))
         return t_ul,t_lr
 
+    def info(self,info_lst,pattern):
+        info_line=[i for i in info_lst if pattern in i][0]
+        if '(' in info_line:
+            out=info_line[info_line.find('(')+1:info_line.find(')')]
+        else:
+            out=info_line[info_line.find(pattern)+len(pattern):]
+        return out.strip()
+        
     def counter(self):
         self.count+=1
         if self.count % self.tick_rate == 0:
@@ -486,7 +413,7 @@ class Pyramid(object):
         # get new origin and corners at the modified SRS
         self.warp(self.src_path,temp_vrt,t_srs=shifted_srs,of='VRT')
         info=command(['gdalinfo',temp_vrt]).splitlines()
-        self.corners=dict((i,eval(info_parm(info,i))) 
+        self.corners=dict((i,eval(self.info(info,i))) 
                     for i in ('Upper Left','Lower Left','Upper Right','Lower Right'))
         shift_x=self.transform([(0,0)],s_srs=shifted_srs,t_srs=self.srs)[0][0]
         ld('new_srs',shifted_srs,'shift_x',shift_x,'coord_offset',self.coord_offset)
@@ -576,8 +503,8 @@ class Pyramid(object):
             shifted_srs=self.shift_srs()
             self.warp(self.src_path,temp_vrt,t_srs=shifted_srs,of='VRT')
             info=command(['gdalinfo',temp_vrt]).splitlines()
-            corners=dict((i,eval(info_parm(info,i))) for i in ('Upper Left','Lower Left','Upper Right','Lower Right'))
-            r=eval(info_parm(info,'Pixel Size =')) # 'natural' resolution
+            corners=dict((i,eval(self.info(info,i))) for i in ('Upper Left','Lower Left','Upper Right','Lower Right'))
+            r=eval(self.info(info,'Pixel Size =')) # 'natural' resolution
             res=(r[0],-r[1])
 
             max_zoom=max(self.res2zoom_xy(res))
@@ -603,10 +530,10 @@ class Pyramid(object):
         # check for source raster type
         src_alpha=False
         src_info=command(['gdalinfo',self.src]).splitlines()
-        size=eval(info_parm(src_info,'Size is '))
+        size=eval(self.info(src_info,'Size is '))
                 
         try: # this is rather durty
-            info_parm(src_info,'Color Table') # exception otherwise
+            self.info(src_info,'Color Table') # exception otherwise
             # check for transparency
             if any([i.split(',')[-1].strip()!='255' for i in src_info if ':0,0,0,' in i]):
                 src_alpha=True
@@ -616,7 +543,7 @@ class Pyramid(object):
             self.src_path=os.path.abspath(src_vrt)
         except: 
             try:
-                info_parm(src_info,'Band 4') # exception otherwise
+                self.info(src_info,'Band 4') # exception otherwise
                 src_alpha=True
             except:
                 pass

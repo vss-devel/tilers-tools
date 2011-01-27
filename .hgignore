@@ -1,0 +1,9 @@
+# use glob syntax.
+syntax: glob
+
+*.pyc
+*~
+*-
+*-[0-9]
+*-[0-9][0-9]
+
