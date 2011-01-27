@@ -149,9 +149,11 @@ def srs_refs(bsb_header, options):
             proj+=assemble_parms(knp_parm,knp_info)
     # setup a central meridian artificialy to allow charts crossing meridian 180
     if '+lon_0=' not in proj:
-        leftmost_ref=min(refs,key=lambda r: r[1])
-        ld(leftmost_ref)
-        proj+=' +lon_0=%i' % int(leftmost_ref[4])
+        leftmost=min(refs,key=lambda r: r[1])
+        rightmost=max(refs,key=lambda r: r[1])
+        ld('leftmost',leftmost,'rightmost',rightmost)
+        if leftmost[4] > rightmost[4]:
+            proj+=' +lon_0=%i' % int(leftmost[4])
     
     # evaluate chart's datum
     if options.bsb_datum:

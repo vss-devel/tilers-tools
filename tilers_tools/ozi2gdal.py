@@ -176,7 +176,7 @@ def get_srs(hdr):
         # get projection parameters
         parms=[ i[0]+i[1] for i in zip(parm_map,parm_lst[1:]) if i[1].translate(None,'0.')]
         if '+proj=utm' in srs:
-            if refs[0][13] != '': # refs are cartesian with a zone defined
+            if refs[0][7] == '': # refs are cartesian with a zone defined
                 parms.append('+zone='+refs[0][13])
                 if refs[0][16] != 'N': 
                     parms.append('+south')
@@ -190,9 +190,11 @@ def get_srs(hdr):
             srs += ' '+' '.join(parms)
         # setup a central meridian artificialy to allow charts crossing meridian 180
         if '+lon_0=' not in srs:
-            leftmost_deg=min(refs,key=lambda r: r[9])
-            ld(leftmost_deg)
-            srs+=' +lon_0=%s' % leftmost_deg[9]
+            leftmost=min(refs,key=lambda r: r[2])
+            rightmost=max(refs,key=lambda r: r[2])
+            ld('leftmost',leftmost,'rightmost',rightmost)
+            if leftmost[4] > rightmost[4]:
+                srs+=' +lon_0=%i' % int(leftmost[9])
         srs += ' '+datum+' +no_defs'
     ld(srs)
     return srs,refs
