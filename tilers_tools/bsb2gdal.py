@@ -119,13 +119,12 @@ def srs_refs(bsb_header, options):
     # evaluate chart's projection
     knp_info=hdr_parm2dict(bsb_header, 'KNP')
     ld(knp_info)
-    bsb_proj=knp_info['PR']
-    bsb_datum=knp_info['GD']
+    bsb_proj=knp_info['PR'] if not options.bsb_proj else options.bsb_proj
+    bsb_datum=knp_info['GD'] if not options.bsb_datum else options.bsb_datum
     logging.info('\t%s, %s' % (bsb_datum,bsb_proj))
-    if options.bsb_proj:
-        bsb_proj=options.bsb_proj
-    proj=options.proj
-    if not proj:
+    if options.proj:
+        proj=options.proj
+    else:
         try:            
             knp_parm=knp_map[bsb_proj.upper()]
         except KeyError: raise Exception('*** Unsupported projection %s' % bsb_proj)
@@ -155,35 +154,35 @@ def srs_refs(bsb_header, options):
         proj+=' +lon_0=%i' % int(leftmost[4])
     
     # evaluate chart's datum
-    if options.bsb_datum:
-        bsb_datum=options.bsb_datum
-    datum=options.datum
-    try: # get DTM northing, easting
-        dtm_parm=hdr_parms(bsb_header, 'DTM')[0] if not options.dtm else options.dtm
-        dtm=eval(dtm_parm)
-        ld(dtm)
-    except:
-        dtm=None
-    if options.use_dtm or options.dtm:
-        # Use DTM northing/easting correctiongs towards WGS84
-        datum='+datum=WGS84'
-        # alter refs as per dtm values
-        refs=[ref[0:3]+(ref[3]+dtm[0]/3600,ref[4]+dtm[1]/3600) for ref in refs]
-    if not datum:
-        try:
-            datum=datum_map[bsb_datum.upper()]
-        except KeyError: 
-            # try to guess the datum by comment and copyright string(s)
-            crr=' '.join(hdr_parms(bsb_header, '!')+hdr_parms(bsb_header, 'CRR'))
+    if options.datum:
+        datum=options.datum
+    else:
+        try: # get DTM northing, easting
+            dtm_parm=hdr_parms(bsb_header, 'DTM')[0] if options.dtm is None else options.dtm
+            dtm=[float(s)/3600 for s in ','.split(dtm_parm)]
+            ld(dtm)
+        except:
+            dtm=[0.0,0.0]
+        if options.use_dtm or options.dtm:
+            # Use DTM northing/easting correctiongs towards WGS84
+            datum='+datum=WGS84'
+            # alter refs as per DTM values
+            refs=[ref[0:3]+(ref[3]+dtm[0],ref[4]+dtm[1]) for ref in refs]
+        else:
             try:
-                datum=[guessed_datum_map[crr_patt] 
-                    for crr_patt in guessed_datum_map if crr_patt in crr][0]
-            except:
-                if dtm == (0,0): 
-                    datum='+datum=WGS84'
-                else: # datum still not found
-                    raise Exception('*** Unsupported or unknown datum %s. Try with "--use-dtm"' % bsb_datum)
-            logging.warning('*** Unknown datum "%s", guessed as "%s"' % (bsb_datum,datum))
+                datum=datum_map[bsb_datum.upper()]
+            except KeyError: 
+                # try to guess the datum by comment and copyright string(s)
+                crr=' '.join(hdr_parms(bsb_header, '!')+hdr_parms(bsb_header, 'CRR'))
+                try:
+                    datum=[guessed_datum_map[crr_patt] 
+                        for crr_patt in guessed_datum_map if crr_patt in crr][0]
+                except KeyError:
+                    if dtm == [0.0,0.0]: 
+                        datum='+datum=WGS84'
+                    else: # datum still not found
+                        raise Exception('*** Unsupported or unknown datum %s. Try with "--use-dtm"' % bsb_datum)
+                logging.warning('*** Unknown datum "%s", guessed as "%s"' % (bsb_datum,datum))
     srs=proj+' '+datum+' +nodefs'
     ld(srs)
     return (srs,refs)
@@ -302,26 +301,26 @@ if __name__=='__main__':
     parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
     parser.add_option("-t", "--dest-dir", default=None,
         help='destination directory (default: current)')
+    parser.add_option("-l", "--long-names", action="store_true", 
+        help='give an output file a long name')
     parser.add_option("--get-cutline", action="store_true", 
         help='print cutline polygon from KAP file then exit')
     parser.add_option("--no-cut-file", action="store_true", 
         help='do not create a file with a cutline polygon from KAP file')
     parser.add_option("-u", "--use-dtm", action="store_true", 
         help='use BSB datum shifts record to convert to WGS84')
-    parser.add_option("--dtm", dest="dtm",default=None,
-        help='specify BSB datum shifts to convert SRS to WGS84')
+    parser.add_option("--dtm", dest="dtm",default=None,metavar="SHIFT_LAT,SHIFT_LON",
+        help='override DTM: BSB northing, easting (in seconds)')
     parser.add_option("--srs", default=None,
         help='override full chart with PROJ.4 definition of the spatial reference system')
     parser.add_option("--datum", default=None,
         help="override chart's datum (PROJ.4 definition)")
-    parser.add_option("--bsb-datum", default=None,
-        help="override chart's datum (BSB definition)")
     parser.add_option("--proj", default=None,
         help="override chart's projection (BSB definition)")
+    parser.add_option("--bsb-datum", default=None,
+        help="override chart's datum (BSB definition)")
     parser.add_option("--bsb-proj", default=None,
         help="override chart's projection (BSB definition)")
-    parser.add_option("-l", "--long-names", action="store_true", 
-        help='give an output file a long name')
     parser.add_option("--last-column-bug", action="store_true", 
         help='some BSB files are missing value for last column, here is a workaround')
     parser.add_option("--broken-raster", action="store_true", 

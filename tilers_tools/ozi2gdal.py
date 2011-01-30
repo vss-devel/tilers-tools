@@ -165,44 +165,55 @@ def hdr_read(map_file):
     ld(header)
     return header
 
-def get_srs(hdr):
+def srs_refs(hdr):
     'returns srs for the map projection and srs for the REF points'
     refs=[i for i in hdr_parms(hdr, 'Point') if i[2] != ''] # Get a list of geo refs
-    datum_id=hdr[4][0]
-    proj_id=hdr_parms(hdr, 'Map Projection')[0][1]
-    parm_lst=hdr_parms(hdr, 'Projection Setup')[0]
-    try:
-        datum=datum_map[datum_id]
-        srs=[proj_map[proj_id]]
-    except KeyError: 
-        raise Exception("*** Unsupported datum (%s) or projection (%s)" % (datum_id,proj_id))
-    if '+proj=' in srs[0]: # overwise assume it already has a full data defined
-        # get projection parameters
-        parms=[ i[0]+i[1] for i in zip(parm_map,parm_lst[1:]) if i[1].translate(None,'0.')]
-        if '+proj=utm' in srs[0]:
-            if refs[0][7] == '': # refs are cartesian with a zone defined
-                parms.append('+zone='+refs[0][13])
-                if refs[0][16] != 'N': 
-                    parms.append('+south')
-            else: # refs are lat/long, then find zone, hemisphere
-                # doesn't seem to have central meridian for UTM
-                zone=(dms2dec(*refs[0][9:12]) + 3 % 360) // 6 + 30
-                parms.append('+zone=%d' % zone)
-                if refs[0][8] != 'N': 
-                    parms.append('+south')
-        if parms:
-            srs.extend(parms)
-        # setup a central meridian artificialy to allow charts crossing meridian 180
-        leftmost=min(refs,key=lambda r: r[2])
-        rightmost=max(refs,key=lambda r: r[2])
-        ld('leftmost',leftmost,'rightmost',rightmost)
-        if leftmost[4] > rightmost[4] and '+lon_0=' not in srs[0]:
-            srs.append(' +lon_0=%i' % int(leftmost[9]))
-    if datum_id != 'WGS 84':
-        srs.append(datum)
-    srs.append('+no_defs')
+    if options.srs:
+        return(options.srs,refs)
+    if options.proj:
+        proj=options.proj
+    else:
+        proj_id=hdr_parms(hdr, 'Map Projection')[0][1]
+        parm_lst=hdr_parms(hdr, 'Projection Setup')[0]
+        try:
+            proj=[proj_map[proj_id]]
+        except KeyError: 
+            raise Exception("*** Unsupported projection (%s)" % proj_id)
+        if '+proj=' in proj[0] and not options.proj: # overwise assume it already has a full data defined
+            # get projection parameters
+            parms=[ i[0]+i[1] for i in zip(parm_map,parm_lst[1:]) if i[1].translate(None,'0.')]
+            if '+proj=utm' in proj[0]:
+                if refs[0][7] == '': # refs are cartesian with a zone defined
+                    parms.append('+zone='+refs[0][13])
+                    if refs[0][16] != 'N': 
+                        parms.append('+south')
+                else: # refs are lat/long, then find zone, hemisphere
+                    # doesn't seem to have central meridian for UTM
+                    zone=(dms2dec(*refs[0][9:12]) + 3 % 360) // 6 + 30
+                    parms.append('+zone=%d' % zone)
+                    if refs[0][8] != 'N': 
+                        parms.append('+south')
+            if parms:
+                proj.extend(parms)
+            # setup a central meridian artificialy to allow charts crossing meridian 180
+            leftmost=min(refs,key=lambda r: r[2])
+            rightmost=max(refs,key=lambda r: r[2])
+            ld('leftmost',leftmost,'rightmost',rightmost)
+            if leftmost[4] > rightmost[4] and '+lon_0=' not in proj[0]:
+                proj.append(' +lon_0=%i' % int(leftmost[9]))
+    if options.datum: 
+        datum=options.datum
+    else:
+        datum_id=hdr[4][0]
+        try:
+            datum=datum_map[datum_id] 
+        except KeyError: 
+            raise Exception("*** Unsupported datum (%s)" % datum_id)
+    if 'WGS84' in datum:
+        datum=''
+    srs=' '.join(proj)+' '+datum+' +nodefs'
     ld(srs)
-    return ' '.join(srs),refs
+    return srs,refs
 
 def find_image(img_path, map_dir, map_fname):
     imp_path_slashed=img_path.replace('\\','/') # get rid of windows separators
@@ -279,7 +290,7 @@ def map2vrt(map_file,dest=None,options=None):
     img_path=os.path.relpath(img_file,dest_dir)
     out_dataset= os.path.basename(base+'.vrt') # output VRT file    
 
-    out_srs,refs=get_srs(hdr)
+    out_srs,refs=srs_refs(hdr)
     if refs[0][14] != '': # refs are cartesian
         refs_proj=[i[14:16]for i in refs]
     else: # refs are lat/long
@@ -336,6 +347,12 @@ if __name__=='__main__':
         help='do not create a file with a cutline polygon from KAP file')
     parser.add_option("--get-cutline", action="store_true", 
         help='print cutline polygon from KAP file then exit')
+    parser.add_option("--srs", default=None,
+        help='override full chart with PROJ.4 definition of the spatial reference system')
+    parser.add_option("--datum", default=None,
+        help="override chart's datum (PROJ.4 definition)")
+    parser.add_option("--proj", default=None,
+        help="override chart's projection (BSB definition)")
 
     (options, args) = parser.parse_args()
     if not args:
