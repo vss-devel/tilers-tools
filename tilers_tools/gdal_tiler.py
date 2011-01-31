@@ -996,7 +996,7 @@ def main(argv):
     parser.add_option("--tile-format", default='png',metavar="FMT",
         help='tile image format (default: PNG)')
     parser.add_option("-p", "--to-palette", action="store_true", 
-        help='convert tiles to paletted format (8 bit/pixel)')
+        help='convert tiles to b format (8 bit/pixel)')
     parser.add_option("--tile-size", default='256,256',metavar="SIZE_X,SIZE_Y",
         help='tile size (default: 256,256)')
     parser.add_option("-t", "--dest-dir", dest="dest_dir", default=None,
