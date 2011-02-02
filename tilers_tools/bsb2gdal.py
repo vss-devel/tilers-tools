@@ -121,8 +121,9 @@ def srs_refs(bsb_header, options):
     # Get a list of geo refs in tuples
     refs=map(eval,hdr_parms(bsb_header, 'REF'))
     ld(refs)
+    dtm=[0.0,0.0]
     if options.srs:
-        return(options.srs,refs)
+        return options.srs,refs,dtm
     # evaluate chart's projection
     knp_info=hdr_parm2dict(bsb_header, 'KNP')
     ld(knp_info)
@@ -171,7 +172,6 @@ def srs_refs(bsb_header, options):
             dtm=[float(s)/3600 for s in dtm_parm.split(',')]
         except IndexError: # DTM not found
             ld('DTM not found')
-            dtm=[0.0,0.0]
         if options.dtm or options.dtm_shift:
             # Use DTM northing/easting correctiongs towards WGS84
             datum='+datum=WGS84'
@@ -194,7 +194,7 @@ def srs_refs(bsb_header, options):
                 logging.warning('*** Unknown datum "%s", guessed as "%s"' % (bsb_datum,datum))
     srs=proj+' '+datum+' +nodefs'
     ld(srs)
-    return (srs,refs)
+    return srs,refs,dtm
 
 gmt_templ='''# @VGMT1.0 @GPOLYGON
 # @Jp"%s"
@@ -203,15 +203,19 @@ gmt_templ='''# @VGMT1.0 @GPOLYGON
 # @P
 %s'''
 
-def cut_poly(kap,hdr,out_srs):
+def cut_poly(kap,hdr,out_srs,dtm):
     # Gather border polygon coordinates early
     plys=map(eval,hdr_parms(hdr, 'PLY'))
     if not plys:
         return '',''
     # Create cutline
+    if options.dtm or options.dtm_shift:
+        # alter points as per DTM values
+        plys=[(i[0],i[1]+dtm[0],i[2]+dtm[1]) for i in plys]
     poly_latlong=''.join(['%f %f\n' % (i[2],i[1]) for i in plys])
     # convert cutline geo coordinates to pixel xy using GDAL's navive srs for this KAP
-    poly_pixels=command(['gdaltransform','-tps','-i','-t_srs','+proj=longlat', kap], poly_latlong).splitlines()
+    poly_pixels=command(['gdaltransform','-tps','-i','-t_srs','+proj=longlat', kap],
+                poly_latlong).splitlines()
     poly='POLYGON((%s))' % ','.join(poly_pixels )
 
     # convert cutline geo coordinates to the chart's srs
@@ -257,10 +261,10 @@ def kap2vrt(kap,dest=None,options=None):
     out_dataset= os.path.basename(base+'.vrt') # output VRT file
 
     # estimate SRS
-    (out_srs,refs)=srs_refs(hdr, options)
+    out_srs,refs,dtm=srs_refs(hdr, options)
 
     # get cut polygon
-    poly,gmt_data=cut_poly(kap,hdr,out_srs)
+    poly,gmt_data=cut_poly(kap,hdr,out_srs,dtm)
     if options.get_cutline: # print cutline then return
         print poly
         return
