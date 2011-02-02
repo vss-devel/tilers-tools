@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 # 2011-01-27 11:26:03 
 
@@ -62,20 +63,23 @@ datum_map={
     'ROMA 1940':            '+towgs84=-104.1,-49.1,-9.9,0.971,-2.917,0.714,-11.68 +ellps=intl',
     'HERMANSKOGEL DATUM':   '+datum=hermannskogel',
     'OSGB36':               '+towgs84=446.448,-125.157,542.060,0.1502,0.2470,0.8421,-20.4894 +ellps=airy',
+    u'SYSTEM KÜSTE': '+datum=WGS84',#'+datum=potsdam',
     # 'LOCAL DATUM'
     # 'LOCAL DATUM UNKNOWN'
     }
 guessed_datum_map={ # guess the datum by a comment/copyright string pattern
     'Croatia':
         # http://spatial-analyst.net/wiki/index.php?title=MGI_/_Balkans_coordinate_systems
-        # '+ellps=bessel +towgs84=550.499,164.116,475.142,5.80967,2.07902,-11.62386,0.99999445824',
+        '+ellps=bessel +towgs84=550.499,164.116,475.142,5.80967,2.07902,-11.62386,0.99999445824',
         # http://earth-info.nga.mil/GandG/coordsys/onlinedatum/DatumTable.html
-        '+datum=hermannskogel',
+        #'+datum=hermannskogel',
+        #'+ellps=bessel +towgs84=682,-203,480',
     }
 
 def hdr_parms(header, patt): 
     'filter header for params starting with "patt/", if knd is empty then return comment lines'
-    if patt != '!': patt += '/'
+    if patt != '!': 
+        patt += '/'
     return [i[len(patt):] for i in header if i.startswith(patt)]
 
 def hdr_parm2dict(header, knd):
@@ -91,9 +95,11 @@ def hdr_parm2dict(header, knd):
 def hdr_read(kap_name): 
     'read KAP header'
     header=[]
-    for l in open(kap_name, 'rU'):
+    f=open(kap_name, 'rU')
+    for l in f:
         if '\x1A' in l:
             break
+        l=l.decode('iso-8859-1','ignore')
         if l.startswith((' ','\t')):
             header[-1] += ','+l.strip()
         else:
@@ -101,10 +107,11 @@ def hdr_read(kap_name):
     if not (header and header[0].startswith('!') and hdr_parms(header,'BSB') and hdr_parms(header,'KNP')): 
         raise Exception("*** invalid file: %s" % kap_name)
     ld(header)
+    f.close()
     return header
 
 def assemble_parms(parm_map,parm_info):    
-    check_parm=lambda s: (s not in ['NOT_APPLICABLE','UNKNOWN']) and s.translate(None,'0.')
+    check_parm=lambda s: (s not in ['NOT_APPLICABLE','UNKNOWN']) and s.replace('0','').replace('.','')
     res=' '.join([parm_map[i]+parm_info[i] for i in parm_map
                     if  i in parm_info and check_parm(parm_info[i])])
     return ' '+res if res else ''
@@ -144,7 +151,8 @@ def srs_refs(bsb_header, options):
                 ld(knq_info)
                 knq_parm=knq_map[bsb_proj.upper()]
                 proj+=assemble_parms(knq_parm,knq_info)
-            except: pass
+            except IndexError:  # No KNQ
+                pass
             proj+=assemble_parms(knp_parm,knp_info)
     # setup a central meridian artificialy to allow charts crossing meridian 180
     leftmost=min(refs,key=lambda r: r[1])
@@ -158,12 +166,13 @@ def srs_refs(bsb_header, options):
         datum=options.datum
     else:
         try: # get DTM northing, easting
-            dtm_parm=hdr_parms(bsb_header, 'DTM')[0] if options.dtm is None else options.dtm
-            dtm=[float(s)/3600 for s in ','.split(dtm_parm)]
-            ld(dtm)
-        except:
+            dtm_parm=hdr_parms(bsb_header, 'DTM')[0] if options.dtm_shift is None else options.dtm_shift
+            ld('DTM',dtm_parm)
+            dtm=[float(s)/3600 for s in dtm_parm.split(',')]
+        except IndexError: # DTM not found
+            ld('DTM not found')
             dtm=[0.0,0.0]
-        if options.use_dtm or options.dtm:
+        if options.dtm or options.dtm_shift:
             # Use DTM northing/easting correctiongs towards WGS84
             datum='+datum=WGS84'
             # alter refs as per DTM values
@@ -177,7 +186,7 @@ def srs_refs(bsb_header, options):
                 try:
                     datum=[guessed_datum_map[crr_patt] 
                         for crr_patt in guessed_datum_map if crr_patt in crr][0]
-                except KeyError:
+                except IndexError:
                     if dtm == [0.0,0.0]: 
                         datum='+datum=WGS84'
                     else: # datum still not found
@@ -280,6 +289,8 @@ def kap2vrt(kap,dest=None,options=None):
         transl_cmd+=[rgb_png,out_dataset]
     else: 
         transl_cmd+=[kap_path,out_dataset]
+        if options.expand:
+            transl_cmd=transl_cmd+['-expand',options.expand]
     
     try:
         cdir=os.getcwd()
@@ -305,12 +316,14 @@ if __name__=='__main__':
         help='give an output file a long name')
     parser.add_option("--get-cutline", action="store_true", 
         help='print cutline polygon from KAP file then exit')
+    parser.add_option("--expand", choices=('gray','rgb','rgba'),
+        help='expose a dataset with 1 band with a color table as a dataset with 3 (RGB) or 4 (RGBA) bands')
     parser.add_option("--no-cut-file", action="store_true", 
         help='do not create a file with a cutline polygon from KAP file')
-    parser.add_option("-u", "--use-dtm", action="store_true", 
+    parser.add_option("--dtm", action="store_true", 
         help='use BSB datum shifts record to convert to WGS84')
-    parser.add_option("--dtm", dest="dtm",default=None,metavar="SHIFT_LAT,SHIFT_LON",
-        help='override DTM: BSB northing, easting (in seconds)')
+    parser.add_option("--dtm-shift", dest="dtm_shift",default=None,metavar="SHIFT_LAT,SHIFT_LON",
+        help='override DTM: BSB northing, easting (in seconds!)')
     parser.add_option("--srs", default=None,
         help='override full chart with PROJ.4 definition of the spatial reference system')
     parser.add_option("--datum", default=None,
@@ -336,9 +349,6 @@ if __name__=='__main__':
 
     ld(os.name)
     ld(options)
-
-    if options.use_dtm:
-        options.datum='+datum=WGS84'
 
     map(proc_src,args)
 

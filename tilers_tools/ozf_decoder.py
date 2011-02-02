@@ -45,39 +45,39 @@ from tiler_functions import *
 class OzfImg(object):
 
 #ozf_header_1:
-#  short magic;          // set it to 0x7780 for ozfx3 and 0x7778 for ozf2
-#  long locked;          // if set to 1, than ozi refuses to export the image (doesn't seem to work for ozfx3 files though); just set to 0
-#  short tile_width;     // set always to 64
-#  short version;        // set always to 1
-#  long old_header_size; // set always to 0x436; this has something to do with files having magic 0x7779 
-#                        // (haven't seen any of those, they are probably rare, but ozi has code to open them)
+#  short magic;         // set it to 0x7780 for ozfx3 and 0x7778 for ozf2
+#  long locked;         // if set to 1, than ozi refuses to export the image (doesn't seem to work for ozfx3 files though); just set to 0
+#  short tile_width;    // set always to 64
+#  short version;       // set always to 1
+#  long old_header_size;// set always to 0x436; this has something to do with files having magic 0x7779 
+#                       // (haven't seen any of those, they are probably rare, but ozi has code to open them)
     hdr1_fmt='<HIHHI'
     hdr1_size=struct.calcsize(hdr1_fmt)
     hdr1_fields=('magic','locked','tile_width','version','old_header_size')
 
 #ozf_header_2:
-#	int header_size;		// always 40
-#	int image_width;		// width of image in pixels
-#	int image_height;		// height of image in pixels
-#	short depth;				// set to 1
-#	short bpp;					// set to 8
-#	int reserved1;			// set to 0
-#	int memory_size;		// height * width; probably not used and contains junk if it exceeds 0xFFFFFFFF (which is perfectly ok)
-#	int reserved2;			// set to 0
-#	int reserved3;			// set to 0
-#	int unk2;						// set to 0x100
-#	int unk2;						// set to 0x100
+#	int header_size;	// always 40
+#	int image_width;	// width of image in pixels
+#	int image_height;	// height of image in pixels
+#	short depth;		// set to 1
+#	short bpp;			// set to 8
+#	int reserved1;		// set to 0
+#	int memory_size;	// height * width; probably not used and contains junk if it exceeds 0xFFFFFFFF (which is perfectly ok)
+#	int reserved2;		// set to 0
+#	int reserved3;		// set to 0
+#	int unk2;			// set to 0x100
+#	int unk2;			// set to 0x100
 
     hdr2_fmt='<iIIhhiiiiii'
     hdr2_size=struct.calcsize(hdr2_fmt)
     hdr2_fields=('header_size','image_width','image_height','depth','bpp',
         'reserved1','memory_size','reserved2','reserved3','unk2','unk3')
 
-#zoom level hdr:
-#    uint width;
-#    uint height;
-#    ushort tiles_x;
-#    ushort tiles_y;
+#zoom_level_hdr:
+#   uint width;
+#   uint height;
+#   ushort tiles_x;
+#   ushort tiles_y;
 
     def __init__(self,img_fname,ignore_decompression_errors=False):
         self.ignore_decompression_errors=ignore_decompression_errors
@@ -158,7 +158,7 @@ class OzfImg(object):
         # pointers to zoom level tilesets 
         self.seek(self.mmap.size()-long_size)
         zoom_lst_ofs=oziread(long_fmt)[0]
-        zoom_cnt=(self.mmap.size()-zoom_lst_ofs)/long_size-1
+        zoom_cnt=(self.mmap.size()-zoom_lst_ofs)//long_size-1
         ld('zoom_lst_ofs',hex(zoom_lst_ofs),zoom_cnt)
         self.seek(zoom_lst_ofs)
         zoom0_ofs=oziread(long_fmt)[0]
@@ -265,39 +265,30 @@ class OzfImg(object):
 #        img.putpalette(self.palette)
 #        return img
  
-def gdal4tiles(profile,src,dest,resampling,base_resampling,zoom,tile_fmt,tile_size):
-    for cls in profile_map:
-        if cls.profile == profile:
-            break
-    else:
-        raise Exception("Invalid profile: %s" % profile)
-    cls(src,dest,resampling,base_resampling,zoom,tile_fmt,tile_size).walk_pyramid()
-#gdal4tiles
-
 class TiffImg(object):
     tag_map={
-        'ImageWidth': (256, 'LONG'),        # SHORT or LONG
-        'ImageLength': (257, 'LONG'),       # SHORT or LONG
-        'BitsPerSample': (258, 'SHORT'),    # 4 or 8
-        'Compression': (259, 'SHORT'),      # 1 or 32773
-        'PhotometricInterpretation': (262, 'SHORT'), # 3
-        'StripOffsets': (273, 'LONG'),
-        'SamplesPerPixel': (277, 'SHORT'),
-        'RowsPerStrip': (278, 'LONG'),      # SHORT or LONG
-        'StripByteCounts': (279, 'LONG'),   # SHORT or LONG
-        'XResolution': (282, 'RATIONAL'),
-        'YResolution': (283, 'RATIONAL'),
-        'PlanarConfiguration': (284, 'SHORT'),
-        'ResolutionUnit': (296, 'SHORT'),   # 1 or 2 or 3
-        'ColorMap': (320, 'SHORT'),
-        'TileWidth': (322, 'LONG'),         # SHORT or LONG
-        'TileLength': (323, 'LONG'),        # SHORT or LONG
-        'TileOffsets': (324, 'LONG'),
-        'TileByteCounts': (325, 'LONG'),    # SHORT or LONG
-        'SampleFormat': (339, 'SHORT'),
+        'ImageWidth':                   (256, 'LONG'),      # SHORT or LONG
+        'ImageLength':                  (257, 'LONG'),      # SHORT or LONG
+        'BitsPerSample':                (258, 'SHORT'),     # 4 or 8
+        'Compression':                  (259, 'SHORT'),     # 1 or 32773
+        'PhotometricInterpretation':    (262, 'SHORT'),     # 3
+        'StripOffsets':                 (273, 'LONG'),
+        'SamplesPerPixel':              (277, 'SHORT'),
+        'RowsPerStrip':                 (278, 'LONG'),      # SHORT or LONG
+        'StripByteCounts':              (279, 'LONG'),      # SHORT or LONG
+        'XResolution':                  (282, 'RATIONAL'),
+        'YResolution':                  (283, 'RATIONAL'),  
+        'PlanarConfiguration':          (284, 'SHORT'),
+        'ResolutionUnit':               (296, 'SHORT'),     # 1 or 2 or 3
+        'ColorMap':                     (320, 'SHORT'),
+        'TileWidth':                    (322, 'LONG'),      # SHORT or LONG
+        'TileLength':                   (323, 'LONG'),      # SHORT or LONG
+        'TileOffsets':                  (324, 'LONG'),
+        'TileByteCounts':               (325, 'LONG'),      # SHORT or LONG
+        'SampleFormat':                 (339, 'SHORT'),
         }
 
-    data_map={
+    type_map={
         'BYTE':     (1, 'B'),   # 8-bit unsigned integer.
         'ASCII':    (2, 's'),   # 8-bit byte that contains a 7-bit ASCII code; the last byte must be NUL (binary zero).
         'SHORT':    (3, 'H'),   # 16-bit (2-byte) unsigned integer.
@@ -312,13 +303,58 @@ class TiffImg(object):
     ptr_fmt=struct.Struct('<I')
     tag_fmt='<HHI4s'
 
+    def add_tag(self,name,val):
+        tag_id,type_name=self.tag_map[name]
+        type_id,type_fmt=self.type_map[type_name]
+        if type_name == 'ASCII':
+            val+='\x00'
+        try:
+            n_items=len(val)
+        except TypeError:
+            n_items=1
+            val=(val,)
+        fmt='<%d%s' %(n_items,type_fmt)
+        data_size=struct.calcsize(fmt)
+        if data_size <= self.ptr_size: # pack data into tag
+            ofs_val=(struct.pack(fmt,*val)+self.null_ptr)[0:self.ptr_size]
+            ofs=0
+        else: # store data separately
+            ofs=self.f.tell()
+            self.f.write(struct.pack(fmt,*val)+(self.null_byte if data_size % 2 else ''))
+            ofs_val=self.ptr_fmt.pack(ofs)
+        ld(name,fmt,hex(ofs),n_items,val[:20])
+        self.ifd.append((tag_id,type_id,n_items,ofs_val))
+
+    def write_ifd(self):
+        ofs=self.f.tell()
+        self.f.seek(self.prev_ifd)
+        self.f.write(self.ptr_fmt.pack(ofs))
+        self.f.seek(ofs)
+        self.ifd.sort(None,lambda i: i[0])
+        self.f.write(struct.pack('<H',len(self.ifd)))
+        for t in self.ifd:
+            #ld(self.tag_fmt,t)
+            self.f.write(struct.pack(self.tag_fmt,*t))
+        self.prev_ifd=self.f.tell()
+        self.f.write(self.null_ptr)
+
+    count=0
+    tick_rate=5000    
+    
+    def counter(self):
+        self.count+=1
+        if self.count % self.tick_rate == 0:
+            pf('.',end='')
+            return True
+        else:
+            return False
+            
+class TiledTiff(TiffImg):
+
     def __init__(self,fname,size,t_size,palette,compression):
-        self.count=0
-        self.tick_rate=5000    
-        self.fname=fname
         self.size=size
         self.t_size=t_size
-        self.t_range=[(pix-1)/tsz+1 for pix,tsz in zip(size,t_size)]
+        self.t_range=[(pix-1)//tsz+1 for pix,tsz in zip(size,t_size)]
         
         self.fname=fname
         self.f=open(fname,'w+b')
@@ -354,28 +390,6 @@ class TiffImg(object):
         self.f.close()
         ld("%s done" % self.fname)
 
-    def add_tag(self,name,val):
-        tag_id,type_name=self.tag_map[name]
-        type_id,type_fmt=self.data_map[type_name]
-        if type_name == 'ASCII':
-            val+='\x00'
-        try:
-            n_items=len(val)
-        except TypeError:
-            n_items=1
-            val=(val,)
-        fmt='<%d%s' %(n_items,type_fmt)
-        data_size=struct.calcsize(fmt)
-        if data_size <= self.ptr_size: # pack data into tag
-            ofs_val=(struct.pack(fmt,*val)+self.null_ptr)[0:self.ptr_size]
-            ofs=0
-        else: # store data separately
-            ofs=self.f.tell()
-            self.f.write(struct.pack(fmt,*val)+(self.null_byte if data_size % 2 else ''))
-            ofs_val=self.ptr_fmt.pack(ofs)
-        ld(name,fmt,hex(ofs),n_items,val[:20])
-        self.ifd.append((tag_id,type_id,n_items,ofs_val))
-
     def add_tile(self,tile,flip=False):
         self.counter()
         if self.compression:
@@ -394,27 +408,6 @@ class TiffImg(object):
             for x in range(self.t_range[0]):
                 self.add_tile(get_tile(x,y))
         
-    def write_ifd(self):
-        ofs=self.f.tell()
-        self.f.seek(self.prev_ifd)
-        self.f.write(self.ptr_fmt.pack(ofs))
-        self.f.seek(ofs)
-        self.ifd.sort(None,lambda i: i[0])
-        self.f.write(struct.pack('<H',len(self.ifd)))
-        for t in self.ifd:
-            #ld(self.tag_fmt,t)
-            self.f.write(struct.pack(self.tag_fmt,*t))
-        self.prev_ifd=self.f.tell()
-        self.f.write(self.null_ptr)
-
-    def counter(self):
-        self.count+=1
-        if self.count % self.tick_rate == 0:
-            pf('.',end='')
-            return True
-        else:
-            return False
-            
 def make_new_map(src,dest,map_dir):
     base,ext=os.path.splitext(src)
     img_dir,img_file=os.path.split(src)
@@ -449,7 +442,7 @@ def make_new_map(src,dest,map_dir):
 def ozf2tiff(src,dest,compression=6,ignore_decompression_errors=False):
     ozf=OzfImg(src,ignore_decompression_errors)
 
-    tiff=TiffImg(dest,ozf.size,ozf.tile_sz,ozf.palette,compression)
+    tiff=TiledTiff(dest,ozf.size,ozf.tile_sz,ozf.palette,compression)
     tiff.store_tiles(ozf.tile_data)
     tiff.close()
     return ozf.close()

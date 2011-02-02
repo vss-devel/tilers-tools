@@ -83,10 +83,10 @@ datum_map={
         #'+towgs84=-90.7,-106.1,-119.2,4.09,0.218,-1.05,1.37 +ellps=intl', # see esri:4123
         '+towgs84=-78.00,-231.00,-97.00 +ellps=intl',
     'RT 90': # http://www.lantmateriet.se/templates/LMV_Page.aspx?id=4766&lang=EN
-        #'+towgs84=414.1,41.3,603.1,-0.855,2.141,-7.023,0 +ellps=bessel', # http://svn.osgeo.org/metacrs/csmap/sandbox/RFC2/Dictionaries/GeodeticTransformation.asc
+        '+towgs84=414.1,41.3,603.1,-0.855,2.141,-7.023,0 +ellps=bessel', # http://svn.osgeo.org/metacrs/csmap/sandbox/RFC2/Dictionaries/GeodeticTransformation.asc
         #'+towgs84=414.1055246174,41.3265500042,603.0582474221,0.8551163377,-2.1413174055,7.0227298286,0.0 +ellps=bessel',
         #'+towgs84=419.3836,99.3335,591.3451,-0.850389,-1.817277,7.862238,-0.99496 +ellps=bessel', # http://forums.esri.com/Thread.asp?c=9&f=85&t=38169
-        '+towgs84=414.0978567149,41.3381489658,603.0627177516,-0.8550434314,2.1413465185,-7.0227209516,0 +ellps=bessel', # http://sv.wikipedia.org/wiki/RT_90
+        #'+towgs84=414.0978567149,41.3381489658,603.0627177516,-0.8550434314,2.1413465185,-7.0227209516,0 +ellps=bessel', # http://sv.wikipedia.org/wiki/RT_90
     #Datum Lisboa (Portugal), 29, -304.046, -60.576, 103.640
     #European 1950 (Portugal), 14, -87.987, -108.639, -121.593
 
@@ -113,7 +113,7 @@ proj_map={
     '(NZG) New Zealand Grid':                   '+init=epsg:27200', # not tested
     '(SG) Swedish Grid': # http://www.fig.net/pub/fig2006/papers/ps05_03/ps05_03_04_engberg_lilje_0670.pdf
         #'+init=epsg:3847', # http://www.lantmateriet.se/templates/LMV_Page.aspx?id=5197&lang=EN
-        '+proj=tmerc +lat_0=15.808277777778 +x_0=1500000 +y_0=0', # http://en.wikipedia.org/wiki/Swedish_grid
+        '+proj=tmerc +lon_0=15.808277777778 +x_0=1500000 +y_0=0', # http://en.wikipedia.org/wiki/Swedish_grid
     '(SUI) Swiss Grid':                         '+init=epsg:21781', # not tested
     '(I) France Zone I':                        '+init=epsg:27571', # not tested
     '(II) France Zone II':                      '+init=epsg:27572', # not tested

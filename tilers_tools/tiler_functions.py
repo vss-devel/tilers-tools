@@ -62,11 +62,6 @@ def ld_nothing(*parms):
     return
 
 def pf(*parms,**kparms):
-    try:
-        if not options.verbose:
-            return
-    except:
-        return
     end=kparms['end'] if 'end' in kparms else '\n'
     sys.stdout.write(' '.join(itertools.imap(str,parms))+end)
     sys.stdout.flush()
@@ -84,7 +79,7 @@ except:
 
 def command(params,child_in=None):
     cmd_str=' '.join(('"%s"' % i if ' ' in i else i for i in params))
-    ld((cmd_str,child_in))
+    ld('>',cmd_str,child_in)
     if win32pipe:
         (stdin,stdout,stderr)=win32pipe.popen3(cmd_str,'t')
         if child_in:
@@ -99,7 +94,7 @@ def command(params,child_in=None):
         (child_out,child_err)=process.communicate(child_in)
         if process.returncode != 0: 
             raise Exception("*** External program failed: %s\n%s" % (cmd_str,child_err))
-    ld((child_out,child_err))
+    ld('<',child_out,child_err)
     return child_out
 
 def dest_path(src,dest_dir,ext='',template='%s'):

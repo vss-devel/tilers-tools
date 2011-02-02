@@ -110,33 +110,32 @@ class TiledTiff(object):
         return self.tag_map[name] in tag_dict
 
     tag_map={
-        'ImageWidth': 256,
-        'ImageLength': 257,
-        'BitsPerSample': 258,
-        'Compression': 259,
-        'Photometric': 262,
-        'StripOffsets': 273,
-        'SamplesPerPixel': 277,
-        'RowsPerStrip': 278,
-        'StripByteCounts': 279,
-        'XResolution': 282,
-        'XResolution': 283,
-        'PlanarConfiguration': 284,
-        'ResolutionUnit': 296,
-        'ColorMap': 320,
-        'TileWidth': 322,
-        'TileLength': 323,
-        'TileOffsets': 324,
-        'TileByteCounts': 325,
-        'ExtraSamples': 338,
-        'SampleFormat': 339,
+        'ImageWidth':                   (256, 'LONG'),      # SHORT or LONG
+        'ImageLength':                  (257, 'LONG'),      # SHORT or LONG
+        'BitsPerSample':                (258, 'SHORT'),     # 4 or 8
+        'Compression':                  (259, 'SHORT'),     # 1 or 32773
+        'PhotometricInterpretation':    (262, 'SHORT'),     # 3
+        'StripOffsets':                 (273, 'LONG'),
+        'SamplesPerPixel':              (277, 'SHORT'),
+        'RowsPerStrip':                 (278, 'LONG'),      # SHORT or LONG
+        'StripByteCounts':              (279, 'LONG'),      # SHORT or LONG
+        'XResolution':                  (282, 'RATIONAL'),
+        'YResolution':                  (283, 'RATIONAL'),  
+        'PlanarConfiguration':          (284, 'SHORT'),
+        'ResolutionUnit':               (296, 'SHORT'),     # 1 or 2 or 3
+        'ColorMap':                     (320, 'SHORT'),
+        'TileWidth':                    (322, 'LONG'),      # SHORT or LONG
+        'TileLength':                   (323, 'LONG'),      # SHORT or LONG
+        'TileOffsets':                  (324, 'LONG'),
+        'TileByteCounts':               (325, 'LONG'),      # SHORT or LONG
+        'SampleFormat':                 (339, 'SHORT'),
         }
     tag_types={
         1: (1,'B'), # BYTE
         2: (1,'c'), # ASCII
         3: (2,'H'), # SHORT
-        4: (4,'L'), # LONG
-        5: (8,'L'), # RATIONAL
+        4: (4,'I'), # LONG
+        5: (8,'II'), # RATIONAL
         # ...
         16:(8,"Q"), # TIFF_LONG8
         17:(8,"q"), # TIFF_SLONG8
@@ -144,7 +143,7 @@ class TiledTiff(object):
         }
 
     def tag_data(self,name):
-        tag_id=self.tag_map[name]
+        tag_id=self.tag_map[name][0]
         try:
             tag,datatype,data_cnt,data_ofs=self.IFD0[tag_id]
         except IndexError:
@@ -247,10 +246,7 @@ def base_resampling_lst(): return base_resampling_map
 class Pyramid(object):
     def __init__(self,src,dest,zoom_parm,tile_fmt,tile_size,tiles_prefix,resampling,base_resampling):
         self.tiles_prefix=tiles_prefix
-        self.prime_meridian=0
-        self.count=0
-        self.tick_rate=50
-        self.init_srs()
+        self.init_tiles()
         self.src=src
         self.src_path=self.src        
         self.tile_ext='.'+tile_fmt.lower()
@@ -351,7 +347,7 @@ class Pyramid(object):
         command(['gdalwarp',src,dest]+parm)#,'-tps'
 
     def coords2latlong(self, coords): # redefined in PlateCarree
-        return self.transform(coords,s_srs=self.srs,t_srs='+proj=latlong')
+        return self.transform(coords,s_srs=self.srs,t_srs=self.latlong)
 
     def boxes2latlong(self,box_lst):
         out=self.coords2latlong(flatten(box_lst))
@@ -380,6 +376,9 @@ class Pyramid(object):
             out=info_line[info_line.find(pattern)+len(pattern):]
         return out.strip()
         
+    tick_rate=50
+    count=0
+
     def counter(self):
         self.count+=1
         if self.count % self.tick_rate == 0:
@@ -410,7 +409,7 @@ class Pyramid(object):
         ld("extend the raster")
         shifted_srs=self.shift_srs(zoom)
 
-        # get new origin and corners at the modified SRS
+        # get origin and corners at the target SRS
         self.warp(self.src_path,temp_vrt,t_srs=shifted_srs,of='VRT')
         info=command(['gdalinfo',temp_vrt]).splitlines()
         self.corners=dict((i,eval(self.info(info,i))) 
@@ -423,11 +422,23 @@ class Pyramid(object):
         self.shift_x=shift_x
         self.srs=shifted_srs
 
+        # adjust raster extends to tile boundaries
+        tile_ul,tile_lr=self.corner_tiles(zoom)
+        ld('tile_ul',tile_ul,'tile_lr',tile_lr)
+        c_ul=self.tile2coord_box(tile_ul)[0]
+        c_lr=self.tile2coord_box(tile_lr)[1]
+
+        ld('Upper Left ',self.corners['Upper Left'],c_ul)
+        ld('Lower Right',self.corners['Lower Right'],c_lr)
+        ld('coord_offset',self.coord_offset,'c_ul+c_off',map(operator.add,c_ul,self.coord_offset))
+        ld(self.transform([self.corners['Upper Left'],c_ul,self.corners['Lower Right'],c_lr],
+            s_srs=self.srs,t_srs=self.latlong))
+
         res=self.zoom2res(zoom)
         temp_tif=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % zoom) # img of the base zoom
 
-        warp_parms=['-multi', #'-co','BIGTIFF=YES',
-            '-wm','256',
+        warp_parms=['-multi', '--debug','on',
+            '-wm','256','--config','GDAL_CACHEMAX','100',
             '-r',self.base_resampling, 
             '-co','INTERLEAVE=BAND',
 			'-co','TILED=YES',
@@ -451,18 +462,6 @@ class Pyramid(object):
             if options.blend_dist:
                 warp_parms+=['-wo','CUTLINE_BLEND_DIST=%s' % options.blend_dist]
 
-        # adjust raster extends to tile boundaries
-        tile_ul,tile_lr=self.corner_tiles(zoom)
-        ld(tile_ul,tile_lr)
-        c_ul=self.tile2coord_box(tile_ul)[0]
-        c_lr=self.tile2coord_box(tile_lr)[1]
-
-        ld('Upper Left ',self.corners['Upper Left'],c_ul)
-        ld('Lower Right',self.corners['Lower Right'],c_lr)
-        ld('coord_offset',self.coord_offset,'c_ul+c_off',map(operator.add,c_ul,self.coord_offset))
-        ld(self.transform([self.corners['Upper Left'],c_ul,self.corners['Lower Right'],c_lr],
-            s_srs=self.srs,t_srs='+proj=latlong'))
-
         # create Gtiff
         pf('...',end='')
         self.warp(self.src_path, temp_tif, *warp_parms,
@@ -481,16 +480,17 @@ class Pyramid(object):
 
     def shift_srs(self,zoom=None):
         'change prime meridian to allow charts crossing 180 meridian'
-        src_ul,src_lr=self.transform([(0,0),self.src_size],src=self.src_path,t_srs='+proj=latlong')
-        left_lon,right_lon=[int(math.floor(latlon[0])) for latlon in (src_ul,src_lr)]
-        left_x=self.transform([(left_lon,0)],s_srs='+proj=latlong',t_srs=self.srs)[0]
+        src_ul,src_lr=self.transform([(0,0),self.src_size],src=self.src_path,t_srs=self.latlong)
+        if src_ul[0] < src_lr[0]:
+            return self.srs
+        left_lon=int(math.floor(src_ul[0]))
+        left_x=self.transform([(left_lon,0)],s_srs=self.latlong,t_srs=self.srs)[0]
         if zoom is not None: # adjust to a tile boundary
             left_x=self.tile2coord_box(self.coord2tile(zoom,left_x))[0]
         new_pm=int(math.floor(
-                self.transform([left_x],s_srs=self.srs,t_srs='+proj=latlong')[0][0]
-                ))-180
-        ld('src_ul',src_ul,'src_lr',src_lr,'left_lon',left_lon,'right_lon',right_lon,
-            'left_x',left_x,'new_pm',new_pm)
+                self.transform([left_x],s_srs=self.srs,t_srs=self.latlong)[0][0]
+                ))#-180
+        ld('src_ul',src_ul,'src_lr',src_lr,'left_x',left_x,'new_pm',new_pm)
         return '%s +lon_0=%d' % (self.srs,new_pm)
 
     def calc_zoom(self,zoom_parm,temp_vrt):
@@ -530,7 +530,7 @@ class Pyramid(object):
         # check for source raster type
         src_alpha=False
         src_info=command(['gdalinfo',self.src]).splitlines()
-        size=eval(self.info(src_info,'Size is '))
+        size=map(int,self.info(src_info,'Size is ').split(','))
                 
         try: # this is rather durty
             self.info(src_info,'Color Table') # exception otherwise
@@ -563,7 +563,7 @@ class Pyramid(object):
             zoom_tiles=flatten([[(zoom,x,y) for x in range(tile_ul[1],tile_lr[1]+1)] 
                                            for y in range(tile_ul[2],tile_lr[2]+1)])
             tiles.extend(zoom_tiles)
-        ld((tile_ul,tile_lr,zoom_tiles))
+        ld('min_zoom',zoom,'tile_ul',tile_ul,'tile_lr',tile_lr,'zoom_tiles',zoom_tiles)
         self.all_tiles=set(tiles)
         top_tiles=filter(None,map(self.proc_tile,zoom_tiles))
         # write top kml
@@ -619,14 +619,18 @@ class Pyramid(object):
             os.makedirs(os.path.dirname(full_path))
         except: pass
         if options.to_palette and self.tile_ext == '.png':
-            img=img.convert('P', palette=Image.ADAPTIVE, colors=255)
+            try:
+                img=img.convert('P', palette=Image.ADAPTIVE, colors=255)
+            except ValueError:
+                #ld('img.mode',img.mode)
+                pass
         img.save(full_path)
         self.counter()
 
-    def make_kml(self,tile,children=[]): #
+    def make_kml(self,tile,children=[]): # 'virtual'
         pass
 
-    def make_googlemaps(self):
+    def make_googlemaps(self): # 'virtual'
         pass        
 
 # Pyramid        
@@ -636,15 +640,16 @@ class PlateCarree(Pyramid):
     format='earth'
     defaul_ext='.earth'
 
-    def init_srs(self):
-        # http://earth.google.com/support/bin/static.py?page=guide.cs&guide=22373&topic=23750
-        # "Google Earth uses Simple Cylindrical projection for its imagery base. This is a simple map 
-        # projection where the meridians and parallels are equidistant, straight lines, with the two sets 
-        # crossing at right angles. This projection is also known as Lat/Lon WGS84"
+    # http://earth.google.com/support/bin/static.py?page=guide.cs&guide=22373&topic=23750
+    # "Google Earth uses Simple Cylindrical projection for its imagery base. This is a simple map 
+    # projection where the meridians and parallels are equidistant, straight lines, with the two sets 
+    # crossing at right angles. This projection is also known as Lat/Lon WGS84"    
 
-        self.srs='+proj=eqc' # Equirectangular (aka plate carrée, aka Simple Cylindrical)
-        
-        semi_circ,semi_meridian=self.transform([(180,90)],s_srs='+proj=latlong',t_srs=self.srs)[0]
+    srs='+proj=eqc +datum=WGS84' # Equirectangular (aka plate carrée, aka Simple Cylindrical)
+    latlong='+proj=latlong +datum=WGS84'
+
+    def init_tiles(self):
+        semi_circ,semi_meridian=self.transform([(180,90)],s_srs=self.latlong,t_srs=self.srs)[0]
         self.zoom0_tiles=[2,1] # tiles at zoom 0
         self.zoom0_tile_dim=[semi_circ,semi_meridian*2] # dimentions of a tile at zoom 0
         self.coord_offset=[semi_circ,semi_meridian]
@@ -772,17 +777,18 @@ class Gmaps(Pyramid):
     'Google Maps (Global Mercator), native tile numbering'
     format='gmaps'
     defaul_ext='.gmaps'
-    
-    def init_srs(self):
-        #srs='epsg:900913'
-        self.srs='+proj=merc +a=6378137 +b=6378137' # google srs 
 
+    #srs='epsg:900913' # Google Maps Global Mercator
+    srs='epsg:3857' # Google Maps Global Mercator
+    latlong='+proj=latlong +datum=WGS84'
+    
+    def init_tiles(self):
         # Half Equator length in meters
-        semi_circ,foo=self.transform([(180,0)],s_srs='+proj=latlong',t_srs=self.srs)[0]
+        semi_circ,foo=self.transform([(180,0)],s_srs=self.latlong,t_srs=self.srs)[0]
         self.zoom0_tiles=[1,1] # tiles at zoom 0
         self.zoom0_tile_dim=[semi_circ*2,semi_circ*2]  # dimentions of a tile at zoom 0
         self.coord_offset=[semi_circ,semi_circ]
-        ld(self.transform([[semi_circ,semi_circ]],t_srs='+proj=latlong',s_srs=self.srs)[0])
+        ld(self.transform([[semi_circ,semi_circ]],t_srs=self.latlong,s_srs=self.srs)[0])
 
     def make_googlemaps(self):
         ul,lr=self.boxes2latlong([(self.corners['Upper Left'],self.corners['Lower Right'])])[0]
@@ -996,7 +1002,7 @@ def main(argv):
     parser.add_option("--tile-format", default='png',metavar="FMT",
         help='tile image format (default: PNG)')
     parser.add_option("-p", "--to-palette", action="store_true", 
-        help='convert tiles to b format (8 bit/pixel)')
+        help='convert tiles to paletted format (8 bit/pixel)')
     parser.add_option("--tile-size", default='256,256',metavar="SIZE_X,SIZE_Y",
         help='tile size (default: 256,256)')
     parser.add_option("-t", "--dest-dir", dest="dest_dir", default=None,
