@@ -779,7 +779,8 @@ class Gmaps(Pyramid):
     defaul_ext='.gmaps'
 
     #srs='epsg:900913' # Google Maps Global Mercator
-    srs='epsg:3857' # Google Maps Global Mercator
+    #srs='epsg:3857' # Google Maps Global Mercator
+    srs='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext' # Google Maps Global Mercator
     latlong='+proj=latlong +datum=WGS84'
     
     def init_tiles(self):
