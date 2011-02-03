@@ -137,6 +137,7 @@ proj_map={
     '(VG94) VICGRID94 Victoria Australia':      '+init=epsg:3111',  # not tested
     'Gnomonic':                                 '+proj=gnom',
     }
+
 parm_map=( 
     '+lat_0=', # 1. Latitude Origin
     '+lon_0=', # 2. Longitude Origin
@@ -192,7 +193,61 @@ def get_plys(header,dtm):
         ply_ll=[(i[0]+dtm[0],i[1]+dtm[1]) for i in ply_ll]
     ply_pix=[(int(i[2]),int(i[3])) for i in hdr_parms(header,'ply_pix')]     # Moving Map border pixels
     return ply_ll,ply_pix
-        
+
+def get_srs(header, refs, options):
+    if options.srs:
+        return(options.srs,refs)
+    if options.proj:
+        proj=options.proj
+    else:
+        proj_id=hdr_parms(hdr, 'Map Projection')[0][1]
+        parm_lst=hdr_parms(hdr, 'Projection Setup')[0]
+        try:
+            proj=[proj_map[proj_id]]
+        except KeyError: 
+            raise Exception("*** Unsupported projection (%s)" % proj_id)
+        if '+proj=' in proj[0]: # overwise assume it already has a full data defined
+            # get projection parameters
+            parms=[ i[0]+i[1] for i in zip(parm_map,parm_lst[1:]) if i[1].translate(None,'0.')]
+            if '+proj=utm' in proj[0]:
+                if not refs[0][1]: # refs are cartesian with a zone defined
+                    hemisphere,utm_zone=refs[0][3]
+                    parms.append('+zone=%i' % utm_zone)
+                    if hemisphere != 'N': 
+                        parms.append('+south')
+                else: # refs are lat/long, then find zone, hemisphere
+                    # doesn't seem to have central meridian for UTM
+                    lon,lat=refs[0][1]
+                    zone=(lon + 3 % 360) // 6 + 30
+                    parms.append('+zone=%d' % zone)
+                    if lat < 0: 
+                        parms.append('+south')
+            else:
+                # setup a central meridian artificialy to allow charts crossing meridian 180
+                leftmost=min(refs,key=lambda r: r[0][0])
+                rightmost=max(refs,key=lambda r: r[0][0])
+                ld('leftmost',leftmost,'rightmost',rightmost)
+                if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in proj[0]:
+                    proj.append(' +lon_0=%i' % int(leftmost[9]))
+            if parms:
+                proj.extend(parms)
+    datum_id=hdr[4][0]
+    logging.info('\t%s, %s' % (datum_id,proj_id))
+    if options.datum: 
+        datum=options.datum
+    elif datum_id.startswith('Auto Shift'):
+        ld(hdr[4])
+        datum='WGS84'
+    else:
+        datum_id=hdr[4][0]
+        try:
+            datum=datum_map[datum_id] 
+        except KeyError: 
+            raise Exception("*** Unsupported datum (%s)" % datum_id)
+    srs=' '.join(proj)+' '+datum+' +nodefs'
+    ld(srs)
+    return srs
+
 def srs_refs(hdr):
     'returns srs for the map projection and srs for the REF points'
     refs=[i for i in hdr_parms(hdr, 'Point') if i[2] != ''] # Get a list of geo refs
@@ -272,26 +327,6 @@ gmt_templ='''# @VGMT1.0 @GPOLYGON
 # @P
 %s'''
 
-#def cut_poly(hdr,out_dataset,out_srs,dtm,raster_size):
-#    ply_ll,ply_pix=get_plys(hdr,dtm)
-
-#    width,height=raster_size
-#    inside=[i for i in ply_pix # check if the polygon is inside the image border
-#        if (i[0] > 0 or i[0] < width) or (i[1] > 0 or i[1] < height)]
-#    if not inside:
-#        return '',''
-#    # create polygon
-#    pix=['%d %d' % i for i in ply_pix]
-
-#    poly='POLYGON((%s))' % ','.join(pix) # Create cutline
-
-#    # convert cutline geo coordinates to the chart's srs
-#    ll = '\n'.join(['%r %r' % i for i in ply_ll])
-#    poly_xy=command(['gdaltransform','-s_srs','+proj=longlat','-t_srs',out_srs], ll)
-
-##    out=command(['gdaltransform','-s_srs',out_dataset,'-t_srs',out_srs], '\n'.join(poly_pix))
-#    return poly, gmt_templ % (out_srs,poly_xy)
-
 def cut_poly(hdr,kap,out_srs,dtm,raster_size):
     ply_ll,ply_pix=get_plys(hdr,dtm)
     if not ply_ll:
@@ -349,6 +384,11 @@ def map2vrt(map_file,dest=None,options=None):
     logging.info(' %s : %s -> %s' % (map_file,img_file,out_dataset))
 
     raster_size=map(int,hdr_parms(hdr, 'IWH')[0][2:])
+    
+#    dtm=get_dtm(hdr)                    # DTM shifts
+#    refs=get_refs(hdr,dtm)              # reference points
+#    out_srs=srs_refs(hdr,refs,options)  # estimate SRS
+
     out_srs,refs,dtm=srs_refs(hdr)
     if refs[0][14] != '': # refs are cartesian
         refs_proj=[i[14:16]for i in refs]

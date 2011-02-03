@@ -32,30 +32,6 @@ import locale
 from optparse import OptionParser
 from tiler_functions import *
 
-proj_knp={ # projection parameters
-    'MERCATOR':
-        {'PROJ': '+proj=merc',  'PP': '+lat_ts='},
-    'TRANSVERSE MERCATOR':
-        {'PROJ': '+proj=tmerc', 'PP': '+lon_0=', 'P1': '+lat_0=', 'P2': '+k=', 'P3': '+y_0=', 'P4': '+x_0='},
-    'UNIVERSAL TRANSVERSE MERCATOR':
-        {'PROJ': '+proj=utm', 'PP': '+lon_0='},
-    'GNOMONIC':
-        {'PROJ': '+proj=gnom',  'PP': '+lon_0=', 'P1': '+lat_0='},
-    'LAMBERT CONFORMAL CONIC':
-        {'PROJ': '+proj=lcc', 'PP': '+lon_0='},
-    'POLYCONIC':
-        {'PROJ': '+proj=poly',  'PP': '+lon_0='},
-    'SWEDISH GRID':
-        {'PROJ': '+proj=tmerc +lon_0=15.808277777778 +x_0=1500000 +y_0=0'},
-    }
-proj_knq={ # extra projection parameters for BSB v. 3.xx
-    'TRANSVERSE MERCATOR':
-        {'P1': '+lon_0=', 'P2': '+k=', 'P3': '+lat_0='}, # P3 - guess
-    'LAMBERT CONFORMAL CONIC':
-        {'P1': '+lon_0=', 'P2': '+lat_1=', 'P3': '+lat_2='},
-    'POLYCONIC':
-        {'P1': '+lon_0=', 'P2': '+lat_0='}, # P2 - guess
-    }
 datum_map={    
     'WGS84':                '+datum=WGS84',
     'NAD83':                '+datum=NAD83',
@@ -75,6 +51,7 @@ datum_map={
     # 'LOCAL DATUM'
     # 'LOCAL DATUM UNKNOWN'
     }
+
 datum_guess={ # guess the datum by a comment/copyright string pattern
     'Croatia':
         # http://spatial-analyst.net/wiki/index.php?title=MGI_/_Balkans_coordinate_systems
@@ -82,6 +59,32 @@ datum_guess={ # guess the datum by a comment/copyright string pattern
         # http://earth-info.nga.mil/GandG/coordsys/onlinedatum/DatumTable.html
         #'+datum=hermannskogel',
         #'+ellps=bessel +towgs84=682,-203,480',
+    }
+
+proj_knp={ # projection parameters
+    'MERCATOR':
+        {'PROJ': '+proj=merc',  'PP': '+lat_ts='},
+    'TRANSVERSE MERCATOR':
+        {'PROJ': '+proj=tmerc', 'PP': '+lon_0=', 'P1': '+lat_0=', 'P2': '+k=', 'P3': '+y_0=', 'P4': '+x_0='},
+    'UNIVERSAL TRANSVERSE MERCATOR':
+        {'PROJ': '+proj=utm', 'PP': '+lon_0='},
+    'GNOMONIC':
+        {'PROJ': '+proj=gnom',  'PP': '+lon_0=', 'P1': '+lat_0='},
+    'LAMBERT CONFORMAL CONIC':
+        {'PROJ': '+proj=lcc', 'PP': '+lon_0='},
+    'POLYCONIC':
+        {'PROJ': '+proj=poly',  'PP': '+lon_0='},
+    'SWEDISH GRID':
+        {'PROJ': '+proj=tmerc +lon_0=15.808277777778 +x_0=1500000 +y_0=0'},
+    }
+
+proj_knq={ # extra projection parameters for BSB v. 3.xx
+    'TRANSVERSE MERCATOR':
+        {'P1': '+lon_0=', 'P2': '+k=', 'P3': '+lat_0='}, # P3 - guess
+    'LAMBERT CONFORMAL CONIC':
+        {'P1': '+lon_0=', 'P2': '+lat_1=', 'P3': '+lat_2='},
+    'POLYCONIC':
+        {'P1': '+lon_0=', 'P2': '+lat_0='}, # P2 - guess
     }
 
 def hdr_parms(header, patt): 
@@ -163,11 +166,10 @@ def srs_refs(header, refs, options):
     if options.srs:
         return options.srs
     # evaluate chart's projection
-    knp_info=hdr_parm2dict(header, 'KNP')
-    ld(knp_info)
     proj=options.proj
     if not proj:
-        ld(dir(options))
+        knp_info=hdr_parm2dict(header, 'KNP')
+        ld(knp_info)
         proj_id=if_set(options.proj_id,knp_info['PR'])
         try:            
             knp_parm=proj_knp[proj_id.upper()]
