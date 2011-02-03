@@ -77,6 +77,9 @@ try:
 except:
     win32pipe=None
 
+def if_set(x,default):
+    return x if x is not None else default
+
 def command(params,child_in=None):
     cmd_str=' '.join(('"%s"' % i if ' ' in i else i for i in params))
     ld('>',cmd_str,child_in)
@@ -117,6 +120,4 @@ def re_sub_file(fname, substitutions):
         out.write(l)
     out.close()
     shutil.move(fname+'.new',fname)
-
-
 

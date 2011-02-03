@@ -98,7 +98,7 @@ datum_map={
     # S42
     }
 
-def dms2dec(degs=0,mins=0,ne='E',sec=0):
+def dms2dec(degs='0',mins='0',ne='E',sec='0'):
     return (float(degs)+float(mins)/60+float(sec)/3600)*(-1 if ne in ('W','S') else 1 )
 
 proj_map={
@@ -162,6 +162,37 @@ def hdr_read(map_file):
     ld(header)
     return header
 
+def get_dtm(header):
+    'get DTM northing, easting'
+    dtm=map(lambda x:float(x)/3600,hdr[4][2:4])
+    return dtm
+
+def get_refs(header,dtm):
+    'get a list of geo refs in tuples'
+    points=[i for i in hdr_parms(header, 'Point') if i[2] != ''] # Get a list of geo refs
+    if points[0][14] != '': # refs are cartesian
+        refs=[(
+            (int(i[2]),int(i[3])),                  # pixel
+            (),                                     # lat/long
+            (float(i[14]),float(i[15])),            # cartesian coords
+            (i[16],int(i[13]))                      # hemisphere, utm zone
+            ) for i in points]
+    else:
+        refs=[(
+            (int(i[2]),int(i[3])),                  # pixel
+            (dms2dec(*i[9:12]), dms2dec(*i[6:9])),  # lat/long
+            ) for i in points]
+    return refs
+
+def get_plys(header,dtm):
+    'boundary polygon'
+    ply_ll=[(float(i[2]),float(i[3])) for i in hdr_parms(header,'ply_ll')] # Moving Map border lat,lon
+    if dtm != [0,0]:
+        # alter points as per DTM values
+        ply_ll=[(i[0]+dtm[0],i[1]+dtm[1]) for i in ply_ll]
+    ply_pix=[(int(i[2]),int(i[3])) for i in hdr_parms(header,'ply_pix')]     # Moving Map border pixels
+    return ply_ll,ply_pix
+        
 def srs_refs(hdr):
     'returns srs for the map projection and srs for the REF points'
     refs=[i for i in hdr_parms(hdr, 'Point') if i[2] != ''] # Get a list of geo refs
@@ -241,30 +272,49 @@ gmt_templ='''# @VGMT1.0 @GPOLYGON
 # @P
 %s'''
 
-def cut_poly(hdr,out_dataset,out_srs,dtm):
-#    size=[i for i in gdalinfo.splitlines() if 'Size is' in i][0][len('Size is'):].split(',')
-#    (width, height)=[i.strip() for i in size]
-    width,height=map(int,hdr_parms(hdr, 'IWH')[0][2:])
-    ld((width, height))
-    mmpxy=[map(int,i[2:]) for i in hdr_parms(hdr, 'MMPXY')]   # Moving Map border pixels
-    mmpll=[map(float,i[2:]) for i in hdr_parms(hdr, 'MMPLL')] # Moving Map border lat,lon
-    inside=[i for i in mmpxy # check if MMP polygon is inside the image border
-        if not ((i[0] == 0 or i[0] == width) and (i[1] == 0 or i[1] == height))]
+#def cut_poly(hdr,out_dataset,out_srs,dtm,raster_size):
+#    ply_ll,ply_pix=get_plys(hdr,dtm)
+
+#    width,height=raster_size
+#    inside=[i for i in ply_pix # check if the polygon is inside the image border
+#        if (i[0] > 0 or i[0] < width) or (i[1] > 0 or i[1] < height)]
+#    if not inside:
+#        return '',''
+#    # create polygon
+#    pix=['%d %d' % i for i in ply_pix]
+
+#    poly='POLYGON((%s))' % ','.join(pix) # Create cutline
+
+#    # convert cutline geo coordinates to the chart's srs
+#    ll = '\n'.join(['%r %r' % i for i in ply_ll])
+#    poly_xy=command(['gdaltransform','-s_srs','+proj=longlat','-t_srs',out_srs], ll)
+
+##    out=command(['gdaltransform','-s_srs',out_dataset,'-t_srs',out_srs], '\n'.join(poly_pix))
+#    return poly, gmt_templ % (out_srs,poly_xy)
+
+def cut_poly(hdr,kap,out_srs,dtm,raster_size):
+    ply_ll,ply_pix=get_plys(hdr,dtm)
+    if not ply_ll:
+        return '',''
+    # Create cutline
+    ll=''.join(['%r %r\n' % i for i in ply_ll])
+    if not ply_pix: # convert cutline geo coordinates to pixel xy using GDAL's navive srs for this KAP
+        pix=command(['gdaltransform','-tps','-i','-t_srs','+proj=longlat', kap],ll).splitlines()
+        ply_pix=[(int(i[0]),int(i[1])) for i in pix]
+    else:
+        pix=['%d %d' % i for i in ply_pix]
+
+    width,height=raster_size
+    inside=[i for i in ply_pix # check if the polygon is inside the image border
+        if (i[0] > 0 or i[0] < width) or (i[1] > 0 or i[1] < height)]
+
     if not inside:
         return '',''
-    # create polygon
-    poly_pix=['%d %d' % tuple(i) for i in mmpxy]
-    poly='POLYGON(('+','.join(poly_pix)+'))' # Create cutline
+    poly='POLYGON((%s))' % ','.join(pix) # Create cutline
 
     # convert cutline geo coordinates to the chart's srs
-    if dtm != [0,0]:
-        # alter points as per DTM values
-        mmpll=[(i[0]+dtm[0],i[1]+dtm[1]) for i in mmpll]
-    inp = '\n'.join(['%r %r' % tuple(i) for i in mmpll])
-    poly_xy=command(['gdaltransform','-s_srs','+proj=longlat','-t_srs',out_srs], inp)
-
-#    out=command(['gdaltransform','-s_srs',out_dataset,'-t_srs',out_srs], '\n'.join(poly_pix))
-    return poly, gmt_templ % (out_srs,poly_xy)
+    poly_xy=command(['gdaltransform','-tps','-s_srs','+proj=longlat','-t_srs',out_srs],ll)
+    return poly,gmt_templ % (out_srs,poly_xy)
 
 def dest_path(src,dest_dir,ext='',template='%s'):
     src_dir,src_file=os.path.split(src)
@@ -298,6 +348,7 @@ def map2vrt(map_file,dest=None,options=None):
     out_dataset= os.path.basename(base+'.vrt') # output VRT file    
     logging.info(' %s : %s -> %s' % (map_file,img_file,out_dataset))
 
+    raster_size=map(int,hdr_parms(hdr, 'IWH')[0][2:])
     out_srs,refs,dtm=srs_refs(hdr)
     if refs[0][14] != '': # refs are cartesian
         refs_proj=[i[14:16]for i in refs]
@@ -328,7 +379,7 @@ def map2vrt(map_file,dest=None,options=None):
         if dest_dir:
             os.chdir(dest_dir)
         command(transl_cmd + gcps)
-        poly,gmt_data=cut_poly(hdr,out_dataset,out_srs,dtm)
+        poly,gmt_data=cut_poly(hdr,out_dataset,out_srs,dtm,raster_size)
     finally:
         os.chdir(cdir)
 
