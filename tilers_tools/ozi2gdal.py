@@ -27,6 +27,7 @@
 
 import os
 import logging
+import locale
 from optparse import OptionParser
 
 from tiler_functions import *
@@ -83,10 +84,7 @@ datum_map={
         #'+towgs84=-90.7,-106.1,-119.2,4.09,0.218,-1.05,1.37 +ellps=intl', # see esri:4123
         '+towgs84=-78.00,-231.00,-97.00 +ellps=intl',
     'RT 90': # http://www.lantmateriet.se/templates/LMV_Page.aspx?id=4766&lang=EN
-        '+towgs84=414.1,41.3,603.1,-0.855,2.141,-7.023,0 +ellps=bessel', # http://svn.osgeo.org/metacrs/csmap/sandbox/RFC2/Dictionaries/GeodeticTransformation.asc
-        #'+towgs84=414.1055246174,41.3265500042,603.0582474221,0.8551163377,-2.1413174055,7.0227298286,0.0 +ellps=bessel',
-        #'+towgs84=419.3836,99.3335,591.3451,-0.850389,-1.817277,7.862238,-0.99496 +ellps=bessel', # http://forums.esri.com/Thread.asp?c=9&f=85&t=38169
-        #'+towgs84=414.0978567149,41.3381489658,603.0627177516,-0.8550434314,2.1413465185,-7.0227209516,0 +ellps=bessel', # http://sv.wikipedia.org/wiki/RT_90
+        '+towgs84=414.0978567149,41.3381489658,603.0627177516,-0.8550434314,2.1413465185,-7.0227209516,0 +ellps=bessel', # http://sv.wikipedia.org/wiki/RT_90
     #Datum Lisboa (Portugal), 29, -304.046, -60.576, 103.640
     #European 1950 (Portugal), 14, -87.987, -108.639, -121.593
 
@@ -112,7 +110,6 @@ proj_map={
     '(IG) Irish Grid':                          '+init=epsg:29902', # not tested
     '(NZG) New Zealand Grid':                   '+init=epsg:27200', # not tested
     '(SG) Swedish Grid': # http://www.fig.net/pub/fig2006/papers/ps05_03/ps05_03_04_engberg_lilje_0670.pdf
-        #'+init=epsg:3847', # http://www.lantmateriet.se/templates/LMV_Page.aspx?id=5197&lang=EN
         '+proj=tmerc +lon_0=15.808277777778 +x_0=1500000 +y_0=0', # http://en.wikipedia.org/wiki/Swedish_grid
     '(SUI) Swiss Grid':                         '+init=epsg:21781', # not tested
     '(I) France Zone I':                        '+init=epsg:27571', # not tested
@@ -179,7 +176,7 @@ def srs_refs(hdr):
             proj=[proj_map[proj_id]]
         except KeyError: 
             raise Exception("*** Unsupported projection (%s)" % proj_id)
-        if '+proj=' in proj[0] and not options.proj: # overwise assume it already has a full data defined
+        if '+proj=' in proj[0]: # overwise assume it already has a full data defined
             # get projection parameters
             parms=[ i[0]+i[1] for i in zip(parm_map,parm_lst[1:]) if i[1].translate(None,'0.')]
             if '+proj=utm' in proj[0]:
@@ -201,32 +198,38 @@ def srs_refs(hdr):
             ld('leftmost',leftmost,'rightmost',rightmost)
             if leftmost[4] > rightmost[4] and '+lon_0=' not in proj[0]:
                 proj.append(' +lon_0=%i' % int(leftmost[9]))
+    datum_id=hdr[4][0]
+    dtm=[0,0]
+    logging.info('\t%s, %s' % (datum_id,proj_id))
     if options.datum: 
         datum=options.datum
+    elif datum_id.startswith('Auto Shift'):
+        ld(hdr[4])
+        dtm=map(lambda x:float(x)/3600,hdr[4][2:4])
+        datum='WGS84'
     else:
         datum_id=hdr[4][0]
         try:
             datum=datum_map[datum_id] 
         except KeyError: 
             raise Exception("*** Unsupported datum (%s)" % datum_id)
-    if 'WGS84' in datum:
-        datum=''
     srs=' '.join(proj)+' '+datum+' +nodefs'
     ld(srs)
-    return srs,refs
+    return srs,refs,dtm
 
 def find_image(img_path, map_dir, map_fname):
     imp_path_slashed=img_path.replace('\\','/') # get rid of windows separators
     imp_path_lst=os.path.split(imp_path_slashed)
     img_fname=imp_path_lst[-1]
-    try_enc=('utf_8','iso-8859-1','iso-8859-2','cp1251')
+    try_enc=(locale.getpreferredencoding(),'utf_8','iso-8859-1','iso-8859-2','cp1251')
     match_patt=[img_fname.decode(i,'ignore').lower() for i in try_enc]
     img_hyb=os.path.splitext(map_fname)[0]+os.path.splitext(img_fname)[1]
-    match_patt.append(img_hyb.decode('utf_8','ignore').lower())
-    dir_lst=os.listdir(map_dir if map_dir else '.')
+    match_patt.append(img_hyb.lower())
+    dir_lst=[i.decode(try_enc[0],'ignore') for i in os.listdir(map_dir if map_dir else '.')]
     ld((match_patt,dir_lst))
-    match=[i for i in dir_lst if i.decode('utf_8','ignore').lower() in match_patt]
+    match=[i for i in dir_lst if i.lower() in match_patt]
     try:
+        ld(map_dir, match)
         return os.path.join(map_dir, match[0])
     except IndexError: 
         raise Exception("*** Image file not found: %s" % img_path)
@@ -238,27 +241,30 @@ gmt_templ='''# @VGMT1.0 @GPOLYGON
 # @P
 %s'''
 
-def cut_poly(hdr,out_dataset,out_srs):
+def cut_poly(hdr,out_dataset,out_srs,dtm):
 #    size=[i for i in gdalinfo.splitlines() if 'Size is' in i][0][len('Size is'):].split(',')
 #    (width, height)=[i.strip() for i in size]
-    width,height=hdr_parms(hdr, 'IWH')[0][2:]
+    width,height=map(int,hdr_parms(hdr, 'IWH')[0][2:])
     ld((width, height))
-    mmpxy=hdr_parms(hdr, 'MMPXY') # Moving Map border pixels
-    mmpll=hdr_parms(hdr, 'MMPLL') # Moving Map border lat,lon
+    mmpxy=[map(int,i[2:]) for i in hdr_parms(hdr, 'MMPXY')]   # Moving Map border pixels
+    mmpll=[map(float,i[2:]) for i in hdr_parms(hdr, 'MMPLL')] # Moving Map border lat,lon
     inside=[i for i in mmpxy # check if MMP polygon is inside the image border
-        if not ((i[2] == '0' or i[2] == width) and (i[3] == '0' or i[3] == height))]
+        if not ((i[0] == 0 or i[0] == width) and (i[1] == 0 or i[1] == height))]
     if not inside:
         return '',''
     # create polygon
-    poly_pix=['%s %s' % (i[2],i[3]) for i in mmpxy]
+    poly_pix=['%d %d' % tuple(i) for i in mmpxy]
     poly='POLYGON(('+','.join(poly_pix)+'))' # Create cutline
 
     # convert cutline geo coordinates to the chart's srs
-    latlong = '\n'.join([' '.join((i[2],i[1])) for i in mmpll])
-    out=command(['gdaltransform','-s_srs','+proj=longlat','-t_srs',out_srs], latlong)
+    if dtm != [0,0]:
+        # alter points as per DTM values
+        mmpll=[(i[0]+dtm[0],i[1]+dtm[1]) for i in mmpll]
+    inp = '\n'.join(['%r %r' % tuple(i) for i in mmpll])
+    poly_xy=command(['gdaltransform','-s_srs','+proj=longlat','-t_srs',out_srs], inp)
 
 #    out=command(['gdaltransform','-s_srs',out_dataset,'-t_srs',out_srs], '\n'.join(poly_pix))
-    return poly, gmt_templ % (out_srs,out)
+    return poly, gmt_templ % (out_srs,poly_xy)
 
 def dest_path(src,dest_dir,ext='',template='%s'):
     src_dir,src_file=os.path.split(src)
@@ -278,9 +284,10 @@ class Opt(object):
         return self.dict.setdefault(name,None)
         
 def map2vrt(map_file,dest=None,options=None):
+    map_file=map_file.decode(locale.getpreferredencoding(),'ignore')
     hdr=hdr_read(map_file)      # Read map header
     img_file=find_image(hdr[2][0],*os.path.split(map_file))
-    ld(img_file)
+
 
     if dest:
         base=os.path.split(dest)[0]
@@ -289,15 +296,22 @@ def map2vrt(map_file,dest=None,options=None):
     dest_dir=os.path.split(base)[0]
     img_path=os.path.relpath(img_file,dest_dir)
     out_dataset= os.path.basename(base+'.vrt') # output VRT file    
+    logging.info(' %s : %s -> %s' % (map_file,img_file,out_dataset))
 
-    out_srs,refs=srs_refs(hdr)
+    out_srs,refs,dtm=srs_refs(hdr)
     if refs[0][14] != '': # refs are cartesian
         refs_proj=[i[14:16]for i in refs]
     else: # refs are lat/long
-        refs_proj=[map(repr,(dms2dec(*i[9:12]), dms2dec(*i[6:9]))) for i in refs]
-        if not out_srs.startswith('+proj=latlong'): # reproject coordinates
-            latlong = '\n'.join([i[0]+' '+i[1] for i in refs_proj])
-            refs_out=command(['gdaltransform','-s_srs','+proj=longlat','-t_srs',out_srs], latlong)
+        lonlat=[(dms2dec(*i[9:12]), dms2dec(*i[6:9])) for i in refs]
+        if dtm != [0,0]:
+            ld(lonlat, 'dtm',dtm)
+            lonlat=[(i[0]+dtm[0],i[1]+dtm[1]) for i in lonlat]
+            ld(lonlat)
+        if out_srs.startswith('+proj=latlong'):
+            refs_proj=lonlat
+        else: # reproject coordinates
+            inp = '\n'.join(['%r %r' % i for i in lonlat])
+            refs_out=command(['gdaltransform','-s_srs','+proj=longlat','-t_srs',out_srs], inp)
             refs_proj=[ i.split() for i in refs_out.splitlines()]
     if len(refs) == 2:
         logging.warning(' Only 2 reference points: assuming the chart is north alligned')
@@ -314,7 +328,7 @@ def map2vrt(map_file,dest=None,options=None):
         if dest_dir:
             os.chdir(dest_dir)
         command(transl_cmd + gcps)
-        poly,gmt_data=cut_poly(hdr,out_dataset,out_srs)
+        poly,gmt_data=cut_poly(hdr,out_dataset,out_srs,dtm)
     finally:
         os.chdir(cdir)
 
