@@ -137,30 +137,36 @@ def get_dtm(header):
         try:
             dtm_parm=hdr_parms2list(header,'DTM')[0]
             ld('DTM',dtm_parm)
-            dtm=[float(s)/3600 for s in reversed(dtm_parm)]
         except IndexError: # DTM not found
             ld('DTM not found')
-            dtm=[0,0]
-    return dtm
+            dtm_parm=[0,0]
+    dtm=[float(s)/3600 for s in reversed(dtm_parm)]
+    return dtm if dtm != [0,0] else None
 
-def get_refs(header,dtm):
-    'get a list of geo refs in tuples'
-    refs=[((int(i[1]),int(i[2])),(float(i[4]),float(i[3]))) for i in hdr_parms2list(header,'REF')]
-    ld('refs',refs)
-    if options.dtm or options.dtm_shift:
+def shift_refs(refs,dtm):
+    if not dtm:
+        return refs
+    else:
         # alter refs as per DTM values
-        refs=[(pix,(ll[0]+dtm[0],ll[1]+dtm[1])) for pix,ll in refs]
+        split=zip(*refs) # split refs
+        split[1]=[(lonlat[0]+dtm[0],lonlat[1]+dtm[1]) for lonlat in split[1]]
+        return zip(*split) # repack refs
+
+def get_refs(header):
+    'get a list of geo refs in tuples'
+    refs=[(
+        (int(i[1]),int(i[2])),                  # pixel
+        (float(i[4]),float(i[3]))               # lat/long
+        ) for i in hdr_parms2list(header,'REF')]
+    ld('refs',refs)
     return refs
 
-def get_plys(header,dtm):
+def get_plys(header):
     'boundary polygon'
-    plys=[(float(i[2]),float(i[1])) for i in hdr_parms2list(header, 'PLY')]
-    if options.dtm or options.dtm_shift:
-        # alter points as per DTM values
-        plys=[(i[0]+dtm[0],i[1]+dtm[1]) for i in plys]
-    return plys,None
-
-def srs_refs(header, refs, options):
+    plys_ll=[(float(i[2]),float(i[1])) for i in hdr_parms2list(header, 'PLY')]
+    return [((),i) for i in plys_ll]
+    
+def get_srs(header, refs, options):
     'returns srs for the BSB chart projection and srs for the REF points'
     # Get a list of geo refs in tuples
     if options.srs:
@@ -199,33 +205,40 @@ def srs_refs(header, refs, options):
         proj+=' +lon_0=%i' % int(leftmost[1][0])
     
     # evaluate chart's datum
+    dtm=get_dtm(header) # get northing, easting to WGS84 if any
     datum=options.datum
     if datum:
         pass
-    elif options.dtm or options.dtm_shift:
+        dtm=None
+    elif options.force_dtm or options.dtm_shift:
         datum='+datum=WGS84'
     elif not '+proj=' in proj: 
-        datum='' # assume it already has a full data defined
+        datum='' # assume datum is defined already
+        dtm=None
     else:
         datum_id=if_set(options.datum_id,knp_info['GD'])
         logging.info('\t%s, %s' % (datum_id,proj_id))
         try:
             datum=datum_map[datum_id.upper()]
+            dtm=None
         except KeyError: 
             # try to guess the datum by comment and copyright string(s)
             crr=' '.join(hdr_parms(header, '!')+hdr_parms(header, 'CRR'))
             try:
                 datum=[datum_guess[crr_patt] 
                     for crr_patt in datum_guess if crr_patt in crr][0]
+                dtm=None
             except IndexError:
-                if dtm == [0.0,0.0]: 
+                if dtm: # datum still not found
+                    logging.warning(' Unknown datum %s, trying WGS 84 with DTM shifts' % datum_id)
                     datum='+datum=WGS84'
-                else: # datum still not found
-                    raise Exception('*** Unsupported or unknown datum %s. Try with "--use-dtm"' % datum_id)
-            logging.warning('*** Unknown datum "%s", guessed as "%s"' % (datum_id,datum))
+                else: # assume DTM is 0,0
+                    logging.warning(' Unknown datum %s, trying WGS 84' % datum_id)
+                    datum='+datum=WGS84'
+            logging.warning(' Unknown datum "%s", guessed as "%s"' % (datum_id,datum))
     srs=proj+' '+datum+' +nodefs'
     ld(srs)
-    return srs
+    return srs,dtm
 
 gmt_templ='''# @VGMT1.0 @GPOLYGON
 # @Jp"%s"
@@ -234,28 +247,30 @@ gmt_templ='''# @VGMT1.0 @GPOLYGON
 # @P
 %s'''
 
-def cut_poly(hdr,kap,out_srs,dtm,raster_size):
-    ply_ll,ply_pix=get_plys(hdr,dtm)
-    if not ply_ll:
-        return '',''
-    # Create cutline
-    ll=''.join(['%r %r\n' % i for i in ply_ll])
-    if not ply_pix: # convert cutline geo coordinates to pixel xy using GDAL's navive srs for this KAP
-        pix=command(['gdaltransform','-tps','-i','-t_srs','+proj=longlat', kap],ll).splitlines()
-        ply_pix=[(int(i[0]),int(i[1])) for i in pix]
-    else:
-        pix=['%d %d' % i for i in ply_pix]
-
+def cut_poly(hdr,dataset,out_srs,dtm,raster_size):
     width,height=raster_size
-    inside=[i for i in ply_pix # check if the polygon is inside the image border
-        if (i[0] > 0 or i[0] < width) or (i[1] > 0 or i[1] < height)]
+    plys=shift_refs(get_plys(hdr),dtm)
+    if not plys:
+        return '',''
 
+    # Create cutline
+    lonlat=''.join(['%r %r\n' % i[1] for i in plys])
+    if not plys[0][0]: # convert cutline geo coordinates to pixel xy using GDAL's navive srs for this KAP
+        pix_lines=command(['gdaltransform','-tps','-i','-t_srs','+proj=longlat',dataset],
+                            lonlat).splitlines()
+        pix_lst=[(int(i[0]),int(i[1])) for i in pix_lines]
+    else:
+        pix_lst=[i[0] for i in plys]
+        pix_lines=['%d %d' % i for i in pix_lst]
+    poly='POLYGON((%s))' % ','.join(pix_lines) # Create cutline
+
+    inside=[i for i in pix_lst # check if the polygon is inside the image border
+        if (i[0] > 0 or i[0] < width) or (i[1] > 0 or i[1] < height)]
     if not inside:
         return '',''
-    poly='POLYGON((%s))' % ','.join(pix) # Create cutline
 
     # convert cutline geo coordinates to the chart's srs
-    poly_xy=command(['gdaltransform','-tps','-s_srs','+proj=longlat','-t_srs',out_srs],ll)
+    poly_xy=command(['gdaltransform','-tps','-s_srs','+proj=longlat','-t_srs',out_srs],lonlat)
     return poly,gmt_templ % (out_srs,poly_xy)
 
 def dest_path(src,dest_dir,ext='',template='%s'):
@@ -298,9 +313,9 @@ def kap2vrt(kap,dest=None,options=None):
     out_dataset= os.path.basename(base+'.vrt') # output VRT file
     logging.info(' %s : %s -> %s' % (kap,bsb_name,out_dataset))
 
-    dtm=get_dtm(hdr)                    # DTM shifts
-    refs=get_refs(hdr,dtm)              # reference points
-    out_srs=srs_refs(hdr,refs,options)  # estimate SRS
+    refs=get_refs(hdr)                     # reference points
+    out_srs,dtm=get_srs(hdr,refs,options)  # estimate SRS
+    refs=shift_refs(refs,dtm)
 
     # get cut polygon
     poly,gmt_data=cut_poly(hdr,kap,out_srs,dtm,raster_size)
@@ -363,8 +378,8 @@ if __name__=='__main__':
         help='expose a dataset with 1 band with a color table as a dataset with 3 (RGB) or 4 (RGBA) bands')
     parser.add_option("--no-cut-file", action="store_true", 
         help='do not create a file with a cutline polygon from KAP file')
-    parser.add_option("--dtm", action="store_true", 
-        help='use BSB datum shifts record to convert to WGS84')
+    parser.add_option("--force-dtm", action="store_true", 
+        help='force using BSB datum shift to WGS84 instead of native BSB datum')
     parser.add_option("--dtm-shift",dest="dtm_shift",default=None,metavar="SHIFT_LAT,SHIFT_LON",
         help='override DTM: BSB northing, easting (in seconds!)')
     parser.add_option("--srs", default=None,
