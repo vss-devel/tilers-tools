@@ -645,7 +645,7 @@ class PlateCarree(Pyramid):
     # projection where the meridians and parallels are equidistant, straight lines, with the two sets 
     # crossing at right angles. This projection is also known as Lat/Lon WGS84"    
 
-    srs='+proj=eqc +datum=WGS84' # Equirectangular (aka plate carrée, aka Simple Cylindrical)
+    srs='+proj=eqc +datum=WGS84 +ellps=WGS84' # Equirectangular (aka plate carrée, aka Simple Cylindrical)
     latlong='+proj=latlong +datum=WGS84'
 
     def init_tiles(self):
