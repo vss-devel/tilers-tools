@@ -64,14 +64,15 @@ class MapTranslator(object):
         self.map_file=src_file.decode(locale.getpreferredencoding(),'ignore')
 
         self.header=self.get_header()       # Read map header
-        self.img_file,self.raster_size=self.get_raster()
+        self.img_file=self.get_raster()
+
+        self.name=self.get_name()
+        logging.info(' %s : %s (%s)' % (self.map_file,self.name,self.img_file))
 
         self.refs=self.get_refs()           # fetch reference points
         self.srs,self.dtm=self.get_srs()    # estimate SRS
-        self.name=self.get_name()
 
-    def cut_poly(self):
-        width,height=self.raster_size
+    def cut_poly(self,out_dataset):
         plys=self.shift_lonlat(self.get_plys(),self.dtm)   # as per dtm value
         if not plys:
             return '',''
@@ -79,7 +80,7 @@ class MapTranslator(object):
         # Create cutline
         lonlat=''.join(['%r %r\n' % i[1] for i in plys])
         if not plys[0][0]: # convert cutline coordinates to pixel xy using GDAL's navive srs for this raster
-            pix_lines=command(['gdaltransform','-tps','-i','-t_srs','+proj=longlat',self.img_file],
+            pix_lines=command(['gdaltransform','-tps','-i','-t_srs','+proj=longlat',out_dataset],
                                 lonlat).splitlines()
             pix_lst=[(int(i[0]),int(i[1])) for i in pix_lines]
         else:
@@ -87,10 +88,13 @@ class MapTranslator(object):
             pix_lines=['%d %d' % i for i in pix_lst]
         poly='POLYGON((%s))' % ','.join(pix_lines) # Create cutline
 
-        inside=[i for i in pix_lst # check if the polygon is inside the image border
-            if (i[0] > 0 or i[0] < width) or (i[1] > 0 or i[1] < height)]
-        if not inside:
-            return '',''
+        size=self.get_size()
+        if size:
+            width,height=size
+            inside=[i for i in pix_lst # check if the polygon is inside the image border
+                if (i[0] > 0 or i[0] < width) or (i[1] > 0 or i[1] < height)]
+            if not inside:
+                return '',''
 
         # convert cutline geo coordinates to the chart's srs
         poly_xy=command(['gdaltransform','-tps','-s_srs','+proj=longlat','-t_srs',self.srs],lonlat)
@@ -114,7 +118,6 @@ class MapTranslator(object):
         dest_dir=os.path.split(base)[0]
         img_path=os.path.relpath(self.img_file,dest_dir)
         out_dataset= os.path.basename(base+'.vrt') # output VRT file    
-        logging.info(' %s : %s -> %s' % (self.map_file,self.img_file,out_dataset))
 
         refs=self.shift_lonlat(self.refs,self.dtm)   # as per dtm value
         if not refs[0][1]: # refs are cartesian with a zone defined
@@ -141,7 +144,7 @@ class MapTranslator(object):
             if dest_dir:
                 os.chdir(dest_dir)
             command(transl_cmd + gcps)
-            poly,gmt_data=self.cut_poly()
+            poly,gmt_data=self.cut_poly(out_dataset)
         finally:
             os.chdir(cdir)
 

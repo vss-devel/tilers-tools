@@ -161,13 +161,13 @@ class OziMap(MapTranslator):
         ld(hdr)
         return hdr
 
-    def header_parms(self, patt): 
+    def hdr_parms(self, patt): 
         'filter header for params starting with "patt"'
         return [i for i in self.header if i[0].startswith(patt)]
         
     def get_refs(self):
         'get a list of geo refs in tuples'
-        points=[i for i in self.header_parms('Point') if i[2] != ''] # Get a list of geo refs
+        points=[i for i in self.hdr_parms('Point') if i[2] != ''] # Get a list of geo refs
         if points[0][14] != '': # refs are cartesian
             refs=[(
                 (int(i[2]),int(i[3])),                  # pixel
@@ -197,8 +197,8 @@ class OziMap(MapTranslator):
         if options.proj:
             proj=options.proj
         else:
-            proj_id=self.header_parms('Map Projection')[0][1]
-            parm_lst=self.header_parms('Projection Setup')[0]
+            proj_id=self.hdr_parms('Map Projection')[0][1]
+            parm_lst=self.hdr_parms('Projection Setup')[0]
             try:
                 proj=[proj_map[proj_id]]
             except KeyError: 
@@ -227,7 +227,7 @@ class OziMap(MapTranslator):
                         rightmost=max(refs,key=lambda r: r[0][0])
                         ld('leftmost',leftmost,'rightmost',rightmost)
                         if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in proj[0]:
-                            proj.append(' +lon_0=%i' % int(leftmost[9]))
+                            proj.append(' +lon_0=%i' % int(leftmost[1][0]))
                 if parms:
                     proj.extend(parms)
         datum_id=self.header[4][0]
@@ -247,18 +247,20 @@ class OziMap(MapTranslator):
         ld(srs)
         return srs,dtm
 
+    try_encodings=(locale.getpreferredencoding(),'utf_8','cp1251','cp1252','cp1250')
+
     def get_raster(self):
         img_path=self.header[2][0]
-        map_dir,map_fname=os.path.split(self.map_file)
         img_path_slashed=img_path.replace('\\','/') # get rid of windows separators
         img_path_lst=os.path.split(img_path_slashed)
         img_fname=img_path_lst[-1]
+        map_dir,map_fname=os.path.split(self.map_file)
         dir_lst=[i.decode(locale.getpreferredencoding(),'ignore') 
                     for i in os.listdir(map_dir if map_dir else '.')]
         # try a few encodings
-        for enc in (locale.getpreferredencoding(),'utf_8','cp1251','iso-8859-1','iso-8859-2'):
-            patt=img_fname.decode(enc,'ignore').lower()
-            match=[i for i in dir_lst if i.lower() == patt]
+        for enc in self.try_encodings:
+            name_patt=img_fname.decode(enc,'ignore').lower()
+            match=[i for i in dir_lst if i.lower() == name_patt]
             if match:
                 fn=match[0]
                 ld(map_dir, fn)
@@ -266,13 +268,15 @@ class OziMap(MapTranslator):
                 break
         else:
             raise Exception("*** Image file not found: %s" % img_path)
-        raster_size=map(int,self.header_parms( 'IWH')[0][2:])
-        return img_file,raster_size
+        return img_file
+
+    def get_size(self):
+        return map(int,self.hdr_parms( 'IWH')[0][2:])
 
     def get_name(self):
         ozi_name=self.header[1][0]
         # try a few encodings
-        for enc in (locale.getpreferredencoding(),'utf_8','cp1251','iso-8859-1','iso-8859-2'):
+        for enc in self.try_encodings:
             try:
                 if enc == 'cp1251' and any([ # ascii chars ?
                         ((c >= '\x41') and (c <= '\x5A')) or 
@@ -288,8 +292,8 @@ class OziMap(MapTranslator):
         
     def get_plys(self):
         'boundary polygon'
-        ply_ll=[(float(i[2]),float(i[3])) for i in self.header_parms('MMPLL')] # Moving Map border lat,lon
-        ply_pix=[(int(i[2]),int(i[3])) for i in self.header_parms('MMPXY')]    # Moving Map border pixels
+        ply_ll=[(float(i[2]),float(i[3])) for i in self.hdr_parms('MMPLL')] # Moving Map border lat,lon
+        ply_pix=[(int(i[2]),int(i[3])) for i in self.hdr_parms('MMPXY')]    # Moving Map border pixels
         plys=zip(ply_pix,ply_ll)
         ld('plys',plys)
         return plys

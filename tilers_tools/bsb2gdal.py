@@ -89,7 +89,7 @@ proj_knq={ # extra projection parameters for BSB v. 3.xx
         {'P1': '+lon_0=', 'P2': '+lat_0='}, # P2 - guess
     }
 
-class BsbMap(MapTranslator):
+class BsbKapMap(MapTranslator):
 
     def get_header(self): 
         'read map header'
@@ -98,14 +98,14 @@ class BsbMap(MapTranslator):
             for l in f:
                 if '\x1A' in l:
                     break
-                l=l.decode('iso-8859-1','ignore')
+                l=l.decode('cp1252','ignore')
                 if l.startswith((' ','\t')):
                     header[-1] += ','+l.strip()
                 else:
                     header.append(l.strip())
-        if not (header and any((s.startswith('BSB/') or s.startswith('KNP/') for s in header))): 
-            raise Exception(" Invalid file: %s" % self.map_file)
         ld(header)
+        if not (header and any(((s.startswith('BSB/') or s.startswith('KNP/')) for s in header))): 
+            raise Exception(" Invalid file: %s" % self.map_file)
         return header
 
     def hdr_parms(self, patt): 
@@ -210,7 +210,7 @@ class BsbMap(MapTranslator):
             pass
         elif options.force_dtm or options.dtm_shift:
             datum='+datum=WGS84'
-            dtm=get_dtm(header) # get northing, easting to WGS84 if any
+            dtm=self.get_dtm() # get northing, easting to WGS84 if any
         elif not '+proj=' in proj: 
             datum='' # assume datum is defined already
         else:
@@ -222,30 +222,32 @@ class BsbMap(MapTranslator):
                 try:
                     datum=[datum_guess[crr_patt] 
                         for crr_patt in datum_guess if crr_patt in crr][0]
+                    logging.warning(' Unknown datum "%s", guessed as "%s"' % (datum_id,datum))
                 except IndexError:
                     # datum still not found
-                    dtm=get_dtm(header) # get northing, easting to WGS84 if any
+                    dtm=self.get_dtm() # get northing, easting to WGS84 if any
                     if dtm: 
                         logging.warning(' Unknown datum %s, trying WGS 84 with DTM shifts' % datum_id)
                         datum='+datum=WGS84'
                     else: # assume DTM is 0,0
                         logging.warning(' Unknown datum %s, trying WGS 84' % datum_id)
                         datum='+datum=WGS84'
-                logging.warning(' Unknown datum "%s", guessed as "%s"' % (datum_id,datum))
         srs=proj+' '+datum+' +nodefs'
         ld(srs)
         return srs,dtm
 
     def get_raster(self):
+        return self.map_file
+
+    def get_size(self):
         bsb_info=self.hdr_parm2dict('BSB') # general BSB parameters
-        raster_size=map(int,bsb_info['RA'].split(','))
-        return self.map_file,raster_size
+        return map(int,bsb_info['RA'].split(','))
 
     def get_name(self):
         bsb_info=self.hdr_parm2dict('BSB') # general BSB parameters
         bsb_name=bsb_info['NA']
         return bsb_name
-# BsbMap
+# BsbKapMap
 
 class Opt(object):
     def __init__(self,**dictionary):
@@ -254,7 +256,7 @@ class Opt(object):
         return self.dict.setdefault(name,None)
 
 def proc_src(src):
-    BsbMap(src,options=options).convert()
+    BsbKapMap(src,options=options).convert()
 
 if __name__=='__main__':
     usage = "usage: %prog <options>... KAP_file..."
