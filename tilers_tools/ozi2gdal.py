@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-01-27 11:33:43 
+# 2011-02-07 11:42:16
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -31,7 +31,8 @@ import locale
 from optparse import OptionParser
 
 from tiler_functions import *
-    
+from translate2gdal import *
+
 datum_map={ 
     # http://www.hemanavigator.com.au/Products/TopographicalGPS/OziExplorer/tabid/69/Default.aspx
     'WGS 84':
@@ -98,9 +99,6 @@ datum_map={
     # S42
     }
 
-def dms2dec(degs='0',mins='0',ne='E',sec='0'):
-    return (float(degs)+float(mins)/60+float(sec)/3600)*(-1 if ne in ('W','S') else 1 )
-
 proj_map={
     'Latitude/Longitude':                       '+proj=latlong',
     'Mercator':                                 '+proj=merc',
@@ -152,138 +150,22 @@ parm_map=(
                #10. Path - not used
     )
 
-def dest_path(src,dest_dir,ext='',template='%s'):
-    src_dir,src_file=os.path.split(src)
-    base,sext=os.path.splitext(src_file)
-    dest=(template % base)+ext
-    if not dest_dir:
-        dest_dir=src_dir
-    if dest_dir:
-        dest='%s/%s' % (dest_dir,dest)
-    ld(base,dest)
-    return dest
+class OziMap(MapTranslator):
 
-class Opt(object):
-    def __init__(self,**dictionary):
-        self.dict=dictionary
-    def __getattr__(self, name):
-        return self.dict.setdefault(name,None)
-
-class Map(object):
-    def __init__(self,src_file,options=None):
-        self.options=options
-        self.map_file=src_file.decode(locale.getpreferredencoding(),'ignore')
-
-        self.header_read()      # Read map header
-        self.set_raster()
-
-        self.set_refs()     # fetch reference points
-        self.set_srs()      # estimate SRS
-
-    gmt_templ='''# @VGMT1.0 @GPOLYGON
-# @Jp"%s"
-# FEATURE_DATA
->
-# @P
-%s'''
-    def cut_poly(self):
-        width,height=self.raster_size
-        plys=self.shift_lonlat(self.get_plys(),self.dtm)   # as per dtm value
-        if not plys:
-            return '',''
-
-        # Create cutline
-        lonlat=''.join(['%r %r\n' % i[1] for i in plys])
-        if not plys[0][0]: # convert cutline coordinates to pixel xy using GDAL's navive srs for this raster
-            pix_lines=command(['gdaltransform','-tps','-i','-t_srs','+proj=longlat',dataset],
-                                lonlat).splitlines()
-            pix_lst=[(int(i[0]),int(i[1])) for i in pix_lines]
-        else:
-            pix_lst=[i[0] for i in plys]
-            pix_lines=['%d %d' % i for i in pix_lst]
-        poly='POLYGON((%s))' % ','.join(pix_lines) # Create cutline
-
-        inside=[i for i in pix_lst # check if the polygon is inside the image border
-            if (i[0] > 0 or i[0] < width) or (i[1] > 0 or i[1] < height)]
-        if not inside:
-            return '',''
-
-        # convert cutline geo coordinates to the chart's srs
-        poly_xy=command(['gdaltransform','-tps','-s_srs','+proj=longlat','-t_srs',self.srs],lonlat)
-        return poly,self.gmt_templ % (self.srs,poly_xy)
-
-    def shift_lonlat(self,refs,dtm):
-        if not dtm:
-            return refs
-        else:
-            # alter refs as per DTM values
-            split=zip(*refs) # split refs
-            split[1]=[(lonlat[0]+dtm[0],lonlat[1]+dtm[1]) for lonlat in split[1]]
-            return zip(*split) # repack refs
-
-    def convert(self,dest=None):
-        if dest:
-            base=os.path.split(dest)[0]
-        else:
-            base=dest_path(self.map_file,options.dest_dir)
-
-        dest_dir=os.path.split(base)[0]
-        img_path=os.path.relpath(self.img_file,dest_dir)
-        out_dataset= os.path.basename(base+'.vrt') # output VRT file    
-        logging.info(' %s : %s -> %s' % (self.map_file,self.img_file,out_dataset))
-
-        refs=self.shift_lonlat(self.refs,self.dtm)   # as per dtm value
-        if not refs[0][1]: # refs are cartesian with a zone defined
-            refs_proj=[(i[0],i[2]) for i in refs]
-        else: # refs are lat/long
-            if self.srs.startswith('+proj=latlong'):
-                refs_proj=refs
-            else: # reproject coordinates
-                ll = '\n'.join(['%r %r' % i[1] for i in refs])
-                refs_out=command(['gdaltransform','-s_srs','+proj=longlat','-t_srs',self.srs], ll)
-                coord_proj=[map(float,i.split()[:2]) for i in refs_out.splitlines()]
-                refs_proj=[(ref[0],coord) for ref,coord in zip(refs,coord_proj)]
-        if len(refs) == 2:
-            logging.warning(' Only 2 reference points: assuming the chart is north alligned')
-            refs_proj.append(((refs_proj[0][0][0],refs_proj[1][0][1]),
-                                (refs_proj[0][1][0],refs_proj[1][1][1])))
-        ld('refs_proj',refs_proj)
-        gcps=flatten([['-gcp']+map(repr, pix)+map(repr, coord) for pix,coord in refs_proj])
-        transl_cmd=['gdal_translate','-of','VRT',img_path,out_dataset,'-a_srs', self.srs]
-        if options.expand:
-            transl_cmd=transl_cmd+['-expand',options.expand]
-        try:
-            cdir=os.getcwd()
-            if dest_dir:
-                os.chdir(dest_dir)
-            command(transl_cmd + gcps)
-            poly,gmt_data=self.cut_poly()
-        finally:
-            os.chdir(cdir)
-
-        if options.get_cutline: # print cutline then return
-            print poly
-            return
-        if gmt_data and not options.no_cut_file: # create shapefile with a cut polygon
-            with open(base+'.gmt','w+') as f:
-                f.write(gmt_data)
-
-class OziMap(Map):
-
-    def header_read(self): 
+    def get_header(self): 
         'read map header'
         with open(self.map_file, 'rU') as f:
             hdr=[[i.strip() for i in l.split(',')] for l in f]
         if not (hdr and hdr[0][0].startswith('OziExplorer Map Data File')): 
-            raise Exception("*** invalid file: %s" % self.map_file)
-        self.header=hdr
-        ld(self.header)
+            raise Exception(" Invalid file: %s" % self.map_file)
+        ld(hdr)
+        return hdr
 
     def header_parms(self, patt): 
         'filter header for params starting with "patt"'
         return [i for i in self.header if i[0].startswith(patt)]
         
-    def set_refs(self):
+    def get_refs(self):
         'get a list of geo refs in tuples'
         points=[i for i in self.header_parms('Point') if i[2] != ''] # Get a list of geo refs
         if points[0][14] != '': # refs are cartesian
@@ -292,26 +174,26 @@ class OziMap(Map):
                 (),                                     # lat/long
                 (float(i[14]),float(i[15])),            # cartesian coords
                 i[16],                                  # hemisphere
-                int(i[13]),                             # utm zone
+                i[13],                                  # utm zone
                 ) for i in points]
         else:
             refs=[(
                 (int(i[2]),int(i[3])),                  # pixel
                 (dms2dec(*i[9:12]), dms2dec(*i[6:9])),  # lat/long
                 ) for i in points]
-        self.refs=refs
+        return refs
 
-    def set_dtm(self):
+    def get_dtm(self):
         'get DTM northing, easting'
         dtm=[float(s)/3600 for s in self.header[4][2:4]]
-        self.dtm=dtm if dtm != [0,0] else None
+        return dtm if dtm != [0,0] else None
 
-    def set_srs(self):
+    def get_srs(self):
         options=self.options
         refs=self.refs
-        self.dtm=None
+        dtm=None
         if options.srs:
-            return(options.srs,refs)
+            return(self.options.srs,refs)
         if options.proj:
             proj=options.proj
         else:
@@ -327,7 +209,7 @@ class OziMap(Map):
                 if '+proj=utm' in proj[0]:
                     if not refs[0][1]: # refs are cartesian with a zone defined
                         hemisphere=refs[0][3]
-                        utm_zone=refs[0][4]
+                        utm_zone=int(refs[0][4])
                         parms.append('+zone=%i' % utm_zone)
                         if hemisphere != 'N': 
                             parms.append('+south')
@@ -339,52 +221,71 @@ class OziMap(Map):
                         if lat < 0: 
                             parms.append('+south')
                 else:
-                    # setup a central meridian artificialy to allow charts crossing meridian 180
-                    leftmost=min(refs,key=lambda r: r[0][0])
-                    rightmost=max(refs,key=lambda r: r[0][0])
-                    ld('leftmost',leftmost,'rightmost',rightmost)
-                    if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in proj[0]:
-                        proj.append(' +lon_0=%i' % int(leftmost[9]))
+                    if refs[0][1]: # refs are lat/long
+                        # setup a central meridian artificialy to allow charts crossing meridian 180
+                        leftmost=min(refs,key=lambda r: r[0][0])
+                        rightmost=max(refs,key=lambda r: r[0][0])
+                        ld('leftmost',leftmost,'rightmost',rightmost)
+                        if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in proj[0]:
+                            proj.append(' +lon_0=%i' % int(leftmost[9]))
                 if parms:
                     proj.extend(parms)
         datum_id=self.header[4][0]
-        logging.info('\t%s, %s' % (datum_id,proj_id))
+        logging.info(' %s, %s' % (datum_id,proj_id))
         if options.datum: 
             datum=options.datum
         elif datum_id.startswith('Auto Shift'):
             ld(header[4])
-            self.set_dtm(header) # get northing, easting to WGS84 if any
+            dtm=self.get_dtm(header) # get northing, easting to WGS84 if any
             datum='WGS84'
         else:
-            datum_id=self.header[4][0]
             try:
                 datum=datum_map[datum_id] 
             except KeyError: 
                 raise Exception("*** Unsupported datum (%s)" % datum_id)
         srs=' '.join(proj)+' '+datum+' +nodefs'
         ld(srs)
-        self.srs=srs
+        return srs,dtm
 
-    def set_raster(self):
-        self.raster_size=map(int,self.header_parms( 'IWH')[0][2:])
+    def get_raster(self):
         img_path=self.header[2][0]
         map_dir,map_fname=os.path.split(self.map_file)
         img_path_slashed=img_path.replace('\\','/') # get rid of windows separators
         img_path_lst=os.path.split(img_path_slashed)
         img_fname=img_path_lst[-1]
-        try_enc=(locale.getpreferredencoding(),'utf_8','iso-8859-1','iso-8859-2','cp1251')
-        match_patt=[img_fname.decode(i,'ignore').lower() for i in try_enc]
-        img_hyb=os.path.splitext(map_fname)[0]+os.path.splitext(img_fname)[1]
-        match_patt.append(img_hyb.lower())
-        dir_lst=[i.decode(try_enc[0],'ignore') for i in os.listdir(map_dir if map_dir else '.')]
-        ld((match_patt,dir_lst))
-        match=[i for i in dir_lst if i.lower() in match_patt]
-        try:
-            ld(map_dir, match)
-            self.img_file=os.path.join(map_dir, match[0])
-        except IndexError: 
+        dir_lst=[i.decode(locale.getpreferredencoding(),'ignore') 
+                    for i in os.listdir(map_dir if map_dir else '.')]
+        # try a few encodings
+        for enc in (locale.getpreferredencoding(),'utf_8','cp1251','iso-8859-1','iso-8859-2'):
+            patt=img_fname.decode(enc,'ignore').lower()
+            match=[i for i in dir_lst if i.lower() == patt]
+            if match:
+                fn=match[0]
+                ld(map_dir, fn)
+                img_file=os.path.join(map_dir, fn)
+                break
+        else:
             raise Exception("*** Image file not found: %s" % img_path)
+        raster_size=map(int,self.header_parms( 'IWH')[0][2:])
+        return img_file,raster_size
 
+    def get_name(self):
+        ozi_name=self.header[1][0]
+        # try a few encodings
+        for enc in (locale.getpreferredencoding(),'utf_8','cp1251','iso-8859-1','iso-8859-2'):
+            try:
+                if enc == 'cp1251' and any([ # ascii chars ?
+                        ((c >= '\x41') and (c <= '\x5A')) or 
+                        ((c >= '\x61') and (c <= '\x7A')) 
+                            for c in ozi_name]):
+                    continue # cp1251 name shouldn't have any ascii
+                ozi_name=ozi_name.decode(enc)
+                break
+            except:
+                pass
+        ld('ozi_name',ozi_name)
+        return ozi_name
+        
     def get_plys(self):
         'boundary polygon'
         ply_ll=[(float(i[2]),float(i[3])) for i in self.header_parms('MMPLL')] # Moving Map border lat,lon
@@ -392,6 +293,7 @@ class OziMap(Map):
         plys=zip(ply_pix,ply_ll)
         ld('plys',plys)
         return plys
+# OziMap
 
 def proc_src(src):
     OziMap(src,options=options).convert()
