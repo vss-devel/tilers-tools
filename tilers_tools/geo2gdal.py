@@ -40,17 +40,10 @@ datum_map={
     'WGS84':                '+datum=WGS84',
     'NAD83':                '+datum=NAD83',
     'ED50':                 '+towgs84=-84.0000,-97.0000,-117.0000 +ellps=intl',
-    'POTSDAM':              '+datum=potsdam',
-    'EUROPEAN 1950':        '+towgs84=-84.0000,-97.0000,-117.0000 +ellps=intl',
-    'EUROPEAN 1950 (NORWAY FINLAND)':
-        '+towgs84=-85,-95,-120 +ellps=intl', #http://earth-info.nga.mil/GandG/coordsys/onlinedatum/CountryEuropeTable.html
-    'ROMA DATUM 1940':      '+towgs84=-104.1,-49.1,-9.9,0.971,-2.917,0.714,-11.68 +ellps=intl',
-    'ROMA 1940':            '+towgs84=-104.1,-49.1,-9.9,0.971,-2.917,0.714,-11.68 +ellps=intl',
-    'HERMANSKOGEL DATUM':   '+datum=hermannskogel',
-    'OSGB36':               '+towgs84=446.448,-125.157,542.060,0.1502,0.2470,0.8421,-20.4894 +ellps=airy',
-    'RT90 (SWEDEN)': 
-        '+towgs84=414.0978567149,41.3381489658,603.0627177516,-0.8550434314,2.1413465185,-7.0227209516,0 +ellps=bessel', # http://sv.wikipedia.org/wiki/RT_90
-    
+    'EUROPEAN':             '+towgs84=-84.0000,-97.0000,-117.0000 +ellps=intl',
+    'WGS72':                '+ellps=WGS72 +towgs84=0,0,4.5,0,0,0.554,0.219',
+    'WGS1972':              '+ellps=WGS72 +towgs84=0,0,4.5,0,0,0.554,0.219',
+    'MERCHICH':             '+ellps=clrk80 +towgs84=31,146,47,0,0,0,0',
     # 'LOCAL DATUM'
     # 'LOCAL DATUM UNKNOWN'
     }
