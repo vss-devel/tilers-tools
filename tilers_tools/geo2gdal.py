@@ -25,6 +25,8 @@
 #  DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
+from __future__ import with_statement
+
 import os
 import logging
 import locale
@@ -206,14 +208,6 @@ if __name__=='__main__':
         help="override chart's datum (PROJ.4 definition)")
     parser.add_option("--proj", default=None,
         help="override chart's projection (BSB definition)")
-    parser.add_option("--bsb-datum", default=None,dest="datum_id",
-        help="override chart's datum (BSB definition)")
-    parser.add_option("--bsb-proj", default=None,dest="proj_id",
-        help="override chart's projection (BSB definition)")
-    parser.add_option("--last-column-bug", action="store_true", 
-        help='some BSB files are missing value for last column, here is a workaround')
-    parser.add_option("--broken-raster", action="store_true", 
-        help='try to workaround some BSB broken rasters (requires "convert" from ImageMagick)')
 
     (options, args) = parser.parse_args()
     

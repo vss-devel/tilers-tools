@@ -25,6 +25,8 @@
 #  DEALINGS IN THE SOFTWARE.
 #******************************************************************************
 
+from __future__ import with_statement
+
 import os
 import logging
 import locale
@@ -247,7 +249,7 @@ class OziMap(MapTranslator):
         ld(srs)
         return srs,dtm
 
-    try_encodings=(locale.getpreferredencoding(),'utf_8','cp1251','cp1252','cp1250')
+    try_encodings=(locale.getpreferredencoding(),'utf_8','cp1251','cp1252')
 
     def get_raster(self):
         img_path=self.header[2][0]

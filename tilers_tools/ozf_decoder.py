@@ -25,7 +25,9 @@
 #  DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
+from __future__ import with_statement
 from __future__ import print_function
+
 import sys
 import os
 import os.path
@@ -421,19 +423,16 @@ def make_new_map(src,dest,map_dir):
     patt=img_file.decode('utf_8','ignore').lower()
     try_enc=('utf_8','iso-8859-1','iso-8859-2','cp1251')
     for fn in dir_lst:
-        f=open(fn)
-        map_lines=[f.readline() for i in range(3)]
-        match_patt=[map_lines[2].decode(i,'ignore').lower() for i in try_enc]
-        if any([patt in m for m in match_patt]):
-            map_lines[2]=os.path.split(dest)[1]+'\r\n'
-            map_lines.extend(f.readlines())
-            f.close()
-            dest_map=dest+'.map'
-            d=open(dest_map,'w+')
-            d.writelines(map_lines)
-            d.close()
-            return dest_map,None
-        f.close()
+        with open(fn) as f:
+            map_lines=[f.readline() for i in range(3)]
+            match_patt=[map_lines[2].decode(i,'ignore').lower() for i in try_enc]
+            if any([patt in m for m in match_patt]):
+                map_lines[2]=os.path.split(dest)[1]+'\r\n'
+                map_lines.extend(f.readlines())
+                dest_map=dest+'.map'
+                with open(dest_map,'w+') as d:
+                    d.writelines(map_lines)
+                return dest_map,None
     else:
         err_msg='%s: map file not found' % src
         logging.warning(err_msg)
@@ -465,9 +464,8 @@ def convert(src):
             ozi_err.append(map_err)
 #        pf(map_file)
     if ozi_err:
-        f=open(ozi_file+'.errors','w+')
-        f.write('\n'.join(ozi_err))
-        f.close()
+        with open(ozi_file+'.errors','w+') as f:
+            f.write('\n'.join(ozi_err))
         return ozi_file,ozi_err
     else: 
         return None

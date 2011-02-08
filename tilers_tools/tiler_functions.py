@@ -25,7 +25,9 @@
 #  DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
+from __future__ import with_statement
 from __future__ import print_function
+
 import sys
 import os
 import os.path
@@ -113,11 +115,10 @@ def dest_path(src,dest_dir,ext='',template='%s'):
     
 def re_sub_file(fname, substitutions):
     'stream edit file using reg exp substitution list supplied'
-    out=open(fname+'.new', 'w')
-    for l in open(fname, 'r'):
-        for (pattern,repl) in substitutions:
-            l=re.sub(pattern,repl,string=l)
-        out.write(l)
-    out.close()
+    with open(fname+'.new', 'w') as out:
+        for l in open(fname, 'r'):
+            for (pattern,repl) in substitutions:
+                l=re.sub(pattern,repl,string=l)
+            out.write(l)
     shutil.move(fname+'.new',fname)
 
