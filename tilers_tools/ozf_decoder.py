@@ -417,7 +417,11 @@ def make_new_map(src,dest,map_dir):
         img_dir='.'
     if map_dir is None:
         map_dir=img_dir
-    dir_lst=glob.glob('%s/%s*.map' % (map_dir,base))+glob.glob('%s/*.map' % (map_dir,))
+    dir_lst=flatten(map(glob.glob,(
+        '%s/%s*.map' % (map_dir,base),
+        '%s/%s*.MAP' % (map_dir,base),
+        '%s/*.map' % (map_dir,),
+        '%s/*.MAP' % (map_dir,))))
     ld(img_file,dir_lst)
 
     patt=img_file.decode('utf_8','ignore').lower()
