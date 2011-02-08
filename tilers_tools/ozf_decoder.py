@@ -459,7 +459,7 @@ def convert(src):
         dest_dir=src_dir
     if dest_dir:
         dest='%s/%s' % (dest_dir,dest)
-    pf(src)
+    pf('\n%s.' % src,end='')
     ozi_file,ozi_err = ozf2tiff(src,dest,
         options.compression,options.ignore_decompression_errors)
     if not options.no_map_conversion:
@@ -521,13 +521,13 @@ if __name__=='__main__':
         raise Exception("No source specified")
             
     err_lst=filter(None,parallel_map(convert,sources))
+    pf('')
     if not err_lst:
         sys.exit(0)
     else:
-        pf('')
         logging.warning('Errors during execution')
         for fname,msg_lst in err_lst:
             logging.warning(' %s: %s' % (fname,msg_lst[0]))
 #            for msg in msg_lst:
 #                logging.warning(' %s: %s' % (fname,msg))
-        sys.exit(1)
+
