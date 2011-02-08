@@ -34,9 +34,9 @@ import locale
 from optparse import OptionParser
 
 from tiler_functions import *
-from translate2gdal import *
+from base_reader import *
 
-datum_map={    
+datum_map={
     'WGS84':                '+datum=WGS84',
     'NAD83':                '+datum=NAD83',
     'ED50':                 '+towgs84=-84.0000,-97.0000,-117.0000 +ellps=intl',
@@ -53,6 +53,7 @@ proj_map={
     }
 
 class GeoNosMap(MapTranslator):
+    magic='[MainChart]'
 
     def get_header(self): 
         'read map header'
@@ -73,14 +74,16 @@ class GeoNosMap(MapTranslator):
     def get_dtm(self):
         'get DTM northing, easting'
         dtm_parm=options.dtm_shift
+        denominator=3600 # seconds if options.dtm_shift
         if dtm_parm is None:
+            denominator=1 # degrees otherwise
             try:
                 dtm_parm=[self.hdr_parms(i)[0] for i in ('Longitude Offset','Latitude Offset')]
                 ld('DTM',dtm_parm)
             except IndexError: # DTM not found
                 ld('DTM not found')
                 dtm_parm=[0,0]
-        dtm=[float(s) for s in dtm_parm]
+        dtm=[float(s)/denominator for s in dtm_parm]
         return dtm if dtm != [0,0] else None
 
     def get_refs(self):
@@ -170,47 +173,8 @@ class GeoNosMap(MapTranslator):
         return self.hdr_parms('Name')[0]
 # GeoNosMap
 
-def proc_src(src):
-    GeoNosMap(src,options=options).convert()
-
 if __name__=='__main__':
-    usage = "usage: %prog <options>... KAP_file..."
-    parser = OptionParser(usage=usage,
-        description="Extends builtin GDAL's support for BSB charts: WGS84 northing/easting, more projections, border line. "
-        "The script converts .kap file with into GDAL .vrt, optionally clipping it out accroding to BSB border line.")
-    parser.add_option("-d", "--debug", action="store_true", dest="debug")
-    parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
-    parser.add_option("-t", "--dest-dir", default=None,
-        help='destination directory (default: current)')
-    parser.add_option("-l", "--long-names", action="store_true", 
-        help='give an output file a long name')
-    parser.add_option("--get-cutline", action="store_true", 
-        help='print cutline polygon from KAP file then exit')
-    parser.add_option("--expand", choices=('gray','rgb','rgba'),
-        help='expose a dataset with 1 band with a color table as a dataset with 3 (RGB) or 4 (RGBA) bands')
-    parser.add_option("--no-cut-file", action="store_true", 
-        help='do not create a file with a cutline polygon from KAP file')
-    parser.add_option("--force-dtm", action="store_true", 
-        help='force using BSB datum shift to WGS84 instead of native BSB datum')
-    parser.add_option("--dtm-shift",dest="dtm_shift",default=None,metavar="SHIFT_LAT,SHIFT_LON",
-        help='override DTM: BSB northing, easting (in seconds!)')
-    parser.add_option("--srs", default=None,
-        help='override full chart with PROJ.4 definition of the spatial reference system')
-    parser.add_option("--datum", default=None,
-        help="override chart's datum (PROJ.4 definition)")
-    parser.add_option("--proj", default=None,
-        help="override chart's projection (BSB definition)")
 
-    (options, args) = parser.parse_args()
-    
-    if not args:
-        parser.error('No input file(s) specified')
-
-    logging.basicConfig(level=logging.DEBUG if options.debug else 
-        (logging.ERROR if options.quiet else logging.INFO))
-
-    ld(os.name)
-    ld(options)
-
-    map(proc_src,args)
+    print('\nPlease use translate2gdal.py\n')
+    sys.exit(1)
 

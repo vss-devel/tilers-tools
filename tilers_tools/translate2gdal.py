@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-07 11:41:56 
+# 2011-02-08 17:08:43 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -29,132 +29,79 @@ from __future__ import with_statement
 
 import os
 import logging
-import locale
+
+from optparse import OptionParser
 
 from tiler_functions import *
 
-def dms2dec(degs='0',mins='0',ne='E',sec='0'):
-    return (float(degs)+float(mins)/60+float(sec)/3600)*(-1 if ne in ('W','S') else 1 )
+from bsb_reader import BsbKapMap
+from geo_reader import GeoNosMap
+from ozi_reader import OziMap
 
-def dest_path(src,dest_dir,ext='',template='%s'):
-    src_dir,src_file=os.path.split(src)
-    base,sext=os.path.splitext(src_file)
-    dest=(template % base)+ext
-    if not dest_dir:
-        dest_dir=src_dir
-    if dest_dir:
-        dest='%s/%s' % (dest_dir,dest)
-    ld(base,dest)
-    return dest
+class_map=(
+    BsbKapMap,
+    OziMap,
+    GeoNosMap,
+    )
+    
+def proc_src(src):
+    with open(src,'rU') as f:
+        lines=[f.readline() for i in range(10)]
+    for cls in class_map:
+        patt=cls.magic
+        if any((l.startswith(patt) for l in lines)):
+            break
+    else:
+        raise Exception(" Invalid file: %s" % src)
+    
+    cls(src,options=options).convert()
 
-class Opt(object):
-    def __init__(self,**dictionary):
-        self.dict=dictionary
-    def __getattr__(self, name):
-        return self.dict.setdefault(name,None)
+if __name__=='__main__':
+    usage = "usage: %prog <options>... map_file..."
+    parser = OptionParser(usage=usage,
+        description="Extends GDAL's builtin support for a few mapping formats: BSB/KAP, GEO/NOS, Ozi map"
+        "The script translates a map file with into GDAL .vrt, optionally producing .gmt shape file for a cutting polygon.")
+    parser.add_option("-d", "--debug", action="store_true", dest="debug")
+    parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
+    parser.add_option("-t", "--dest-dir", default=None,
+        help='destination directory (default: current)')
+    parser.add_option("-l", "--long-names", action="store_true", 
+        help='give an output file a long name')
+    parser.add_option("--get-cutline", action="store_true", 
+        help='print cutline polygon from KAP file then exit')
+    parser.add_option("--expand", choices=('gray','rgb','rgba'),
+        help='expose a dataset with 1 band with a color table as a dataset with 3 (RGB) or 4 (RGBA) bands')
+    parser.add_option("--no-cut-file", action="store_true", 
+        help='do not create a file with a cutline polygon from KAP file')
+    parser.add_option("--force-dtm", action="store_true", 
+        help='force using BSB datum shift to WGS84 instead of native BSB datum')
+    parser.add_option("--dtm-shift",dest="dtm_shift",default=None,metavar="SHIFT_LAT,SHIFT_LON",
+        help='override DTM: BSB northing, easting (in seconds!)')
+    parser.add_option("--srs", default=None,
+        help='override full chart with PROJ.4 definition of the spatial reference system')
+    parser.add_option("--datum", default=None,
+        help="override chart's datum (PROJ.4 definition)")
+    parser.add_option("--proj", default=None,
+        help="override chart's projection (BSB definition)")
+    parser.add_option("--bsb-datum", default=None,dest="datum_id",
+        help="override chart's datum (BSB definition)")
+    parser.add_option("--bsb-proj", default=None,dest="proj_id",
+        help="override chart's projection (BSB definition)")
+    parser.add_option("--last-column-bug", action="store_true", 
+        help='some BSB files are missing value for last column, here is a workaround')
+    parser.add_option("--broken-raster", action="store_true", 
+        help='try to workaround some BSB broken rasters (requires "convert" from ImageMagick)')
 
-class MapTranslator(object):
-    def __init__(self,src_file,options=None):
-        self.options=options
-        self.map_file=src_file.decode(locale.getpreferredencoding(),'ignore')
+    (options, args) = parser.parse_args()
+    
+    if not args:
+        parser.error('No input file(s) specified')
 
-        self.header=self.get_header()       # Read map header
-        self.img_file=self.get_raster()
+    logging.basicConfig(level=logging.DEBUG if options.debug else 
+        (logging.ERROR if options.quiet else logging.INFO))
 
-        self.name=self.get_name()
-        logging.info(' %s : %s (%s)' % (self.map_file,self.name,self.img_file))
+    ld(os.name)
+    ld(options)
 
-        self.refs=self.get_refs()           # fetch reference points
-        self.srs,self.dtm=self.get_srs()    # estimate SRS
-
-    gmt_templ='''# @VGMT1.0 @GPOLYGON
-# @Jp"%s"
-# FEATURE_DATA
->
-# @P
-%s'''
-
-    def cut_poly(self,out_dataset):
-        plys=self.shift_lonlat(self.get_plys(),self.dtm)   # as per dtm value
-        if not plys:
-            return '',''
-
-        # Create cutline
-        lonlat=''.join(['%r %r\n' % i[1] for i in plys])
-        if not plys[0][0]: # convert cutline coordinates to pixel xy using GDAL's navive srs for this raster
-            pix_lines=command(['gdaltransform','-tps','-i','-t_srs','+proj=longlat',out_dataset],
-                                lonlat).splitlines()
-            pix_lst=[(int(i[0]),int(i[1])) for i in pix_lines]
-        else:
-            pix_lst=[i[0] for i in plys]
-            pix_lines=['%d %d' % i for i in pix_lst]
-        poly='POLYGON((%s))' % ','.join(pix_lines) # Create cutline
-
-        size=self.get_size()
-        if size:
-            width,height=size
-            inside=[i for i in pix_lst # check if the polygon is inside the image border
-                if (i[0] > 0 or i[0] < width) or (i[1] > 0 or i[1] < height)]
-            if not inside:
-                return '',''
-
-        # convert cutline geo coordinates to the chart's srs
-        poly_xy=command(['gdaltransform','-tps','-s_srs','+proj=longlat','-t_srs',self.srs],lonlat)
-        return poly,self.gmt_templ % (self.srs,poly_xy)
-
-    def shift_lonlat(self,refs,dtm):
-        if not dtm:
-            return refs
-        else:
-            # alter refs as per DTM values
-            split=zip(*refs) # split refs
-            split[1]=[(lonlat[0]+dtm[0],lonlat[1]+dtm[1]) for lonlat in split[1]]
-            return zip(*split) # repack refs
-
-    def convert(self,dest=None):
-        if dest:
-            base=os.path.split(dest)[0]
-        else:
-            base=dest_path(self.map_file,self.options.dest_dir)
-
-        dest_dir=os.path.split(base)[0]
-        img_path=os.path.relpath(self.img_file,dest_dir)
-        out_dataset= os.path.basename(base+'.vrt') # output VRT file    
-
-        refs=self.shift_lonlat(self.refs,self.dtm)   # as per dtm value
-        if not refs[0][1]: # refs are cartesian with a zone defined
-            refs_proj=[(i[0],i[2]) for i in refs]
-        else: # refs are lat/long
-            if self.srs.startswith('+proj=latlong'):
-                refs_proj=refs
-            else: # reproject coordinates
-                ll = '\n'.join(['%r %r' % i[1] for i in refs])
-                refs_out=command(['gdaltransform','-s_srs','+proj=longlat','-t_srs',self.srs], ll)
-                coord_proj=[map(float,i.split()[:2]) for i in refs_out.splitlines()]
-                refs_proj=[(ref[0],coord) for ref,coord in zip(refs,coord_proj)]
-        if len(refs) == 2:
-            logging.warning(' Only 2 reference points: assuming the chart is north alligned')
-            refs_proj.append(((refs_proj[0][0][0],refs_proj[1][0][1]),
-                                (refs_proj[0][1][0],refs_proj[1][1][1])))
-        ld('refs_proj',refs_proj)
-        gcps=flatten([['-gcp']+map(repr, pix)+map(repr, coord) for pix,coord in refs_proj])
-        transl_cmd=['gdal_translate','-of','VRT',img_path,out_dataset,'-a_srs', self.srs]
-        if self.options.expand:
-            transl_cmd=transl_cmd+['-expand',self.options.expand]
-        try:
-            cdir=os.getcwd()
-            if dest_dir:
-                os.chdir(dest_dir)
-            command(transl_cmd + gcps)
-            poly,gmt_data=self.cut_poly(out_dataset)
-        finally:
-            os.chdir(cdir)
-
-        if self.options.get_cutline: # print cutline then return
-            print poly
-            return
-        if gmt_data and not self.options.no_cut_file: # create shapefile with a cut polygon
-            with open(base+'.gmt','w+') as f:
-                f.write(gmt_data)
-# MapTranslator
+    map(proc_src,args)
 

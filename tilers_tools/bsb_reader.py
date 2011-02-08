@@ -34,7 +34,7 @@ import locale
 from optparse import OptionParser
 
 from tiler_functions import *
-from translate2gdal import *
+from base_reader import *
 
 datum_map={    
     'WGS84':                '+datum=WGS84',
@@ -92,6 +92,7 @@ proj_knq={ # extra projection parameters for BSB v. 3.xx
     }
 
 class BsbKapMap(MapTranslator):
+    magic='KNP/'
 
     def get_header(self): 
         'read map header'
@@ -251,55 +252,8 @@ class BsbKapMap(MapTranslator):
         return bsb_name
 # BsbKapMap
 
-def proc_src(src):
-    BsbKapMap(src,options=options).convert()
-
 if __name__=='__main__':
-    usage = "usage: %prog <options>... KAP_file..."
-    parser = OptionParser(usage=usage,
-        description="Extends builtin GDAL's support for BSB charts: WGS84 northing/easting, more projections, border line. "
-        "The script converts .kap file with into GDAL .vrt, optionally clipping it out accroding to BSB border line.")
-    parser.add_option("-d", "--debug", action="store_true", dest="debug")
-    parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
-    parser.add_option("-t", "--dest-dir", default=None,
-        help='destination directory (default: current)')
-    parser.add_option("-l", "--long-names", action="store_true", 
-        help='give an output file a long name')
-    parser.add_option("--get-cutline", action="store_true", 
-        help='print cutline polygon from KAP file then exit')
-    parser.add_option("--expand", choices=('gray','rgb','rgba'),
-        help='expose a dataset with 1 band with a color table as a dataset with 3 (RGB) or 4 (RGBA) bands')
-    parser.add_option("--no-cut-file", action="store_true", 
-        help='do not create a file with a cutline polygon from KAP file')
-    parser.add_option("--force-dtm", action="store_true", 
-        help='force using BSB datum shift to WGS84 instead of native BSB datum')
-    parser.add_option("--dtm-shift",dest="dtm_shift",default=None,metavar="SHIFT_LAT,SHIFT_LON",
-        help='override DTM: BSB northing, easting (in seconds!)')
-    parser.add_option("--srs", default=None,
-        help='override full chart with PROJ.4 definition of the spatial reference system')
-    parser.add_option("--datum", default=None,
-        help="override chart's datum (PROJ.4 definition)")
-    parser.add_option("--proj", default=None,
-        help="override chart's projection (BSB definition)")
-    parser.add_option("--bsb-datum", default=None,dest="datum_id",
-        help="override chart's datum (BSB definition)")
-    parser.add_option("--bsb-proj", default=None,dest="proj_id",
-        help="override chart's projection (BSB definition)")
-    parser.add_option("--last-column-bug", action="store_true", 
-        help='some BSB files are missing value for last column, here is a workaround')
-    parser.add_option("--broken-raster", action="store_true", 
-        help='try to workaround some BSB broken rasters (requires "convert" from ImageMagick)')
 
-    (options, args) = parser.parse_args()
-    
-    if not args:
-        parser.error('No input file(s) specified')
-
-    logging.basicConfig(level=logging.DEBUG if options.debug else 
-        (logging.ERROR if options.quiet else logging.INFO))
-
-    ld(os.name)
-    ld(options)
-
-    map(proc_src,args)
+    print('\nPlease use translate2gdal.py\n')
+    sys.exit(1)
 

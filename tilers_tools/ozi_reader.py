@@ -35,15 +35,16 @@ import csv
 from optparse import OptionParser
 
 from tiler_functions import *
-from translate2gdal import *
+from base_reader import *
 
 class OziMap(MapTranslator):
+    magic='OziExplorer Map Data File'
 
     def __init__(self,src_file,options=None):
         self.init_data()
         super(OziMap,self).__init__(src_file,options)
 
-    proj_parms=( 
+    proj_parms=(
         '+lat_0=', # 1. Latitude Origin
         '+lon_0=', # 2. Longitude Origin
         '+k=',     # 3. K Factor
@@ -241,42 +242,8 @@ class OziMap(MapTranslator):
         return plys
 # OziMap
 
-def proc_src(src):
-    OziMap(src,options=options).convert()
-
 if __name__=='__main__':
-    usage = "usage: %prog [--cut] [--dest-dir=DEST_DIR] MAP_file..."
-    parser = OptionParser(usage=usage,
-        description="Converts OziExplorer's .MAP file into GDAL .VRT format")
-    parser.add_option("-d", "--debug", action="store_true", dest="debug")
-    parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
-    parser.add_option("-t", "--dest-dir", dest="dest_dir", default='',
-        help='destination directory (default: current)')
-    parser.add_option("--no-data", dest="no_data", default='',
-        help='set nodata masking values for input bands, separated by commas')
-    parser.add_option("--expand", choices=('gray','rgb','rgba'),
-        help='expose a dataset with 1 band with a color table as a dataset with 3 (RGB) or 4 (RGBA) bands')
-    parser.add_option("--of",  default='VRT',
-        help='Select the output format. The default is VRT')
-    parser.add_option("--no-cut-file", action="store_true", 
-        help='do not create a file with a cutline polygon from KAP file')
-    parser.add_option("--get-cutline", action="store_true", 
-        help='print cutline polygon from KAP file then exit')
-    parser.add_option("--srs", default=None,
-        help='override full chart with PROJ.4 definition of the spatial reference system')
-    parser.add_option("--datum", default=None,
-        help="override chart's datum (PROJ.4 definition)")
-    parser.add_option("--proj", default=None,
-        help="override chart's projection (BSB definition)")
 
-    (options, args) = parser.parse_args()
-    if not args:
-        parser.error('No input file(s) specified')
-    logging.basicConfig(level=logging.DEBUG if options.debug else 
-        (logging.ERROR if options.quiet else logging.INFO))
-
-    ld(os.name)
-    ld(options)
-
-    map(proc_src,args)
+    print('\nPlease use translate2gdal.py\n')
+    sys.exit(1)
 
