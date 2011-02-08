@@ -170,12 +170,6 @@ class GeoNosMap(MapTranslator):
         return self.hdr_parms('Name')[0]
 # GeoNosMap
 
-class Opt(object):
-    def __init__(self,**dictionary):
-        self.dict=dictionary
-    def __getattr__(self, name):
-        return self.dict.setdefault(name,None)
-
 def proc_src(src):
     GeoNosMap(src,options=options).convert()
 

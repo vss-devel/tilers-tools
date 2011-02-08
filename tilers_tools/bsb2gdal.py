@@ -251,12 +251,6 @@ class BsbKapMap(MapTranslator):
         return bsb_name
 # BsbKapMap
 
-class Opt(object):
-    def __init__(self,**dictionary):
-        self.dict=dictionary
-    def __getattr__(self, name):
-        return self.dict.setdefault(name,None)
-
 def proc_src(src):
     BsbKapMap(src,options=options).convert()
 
