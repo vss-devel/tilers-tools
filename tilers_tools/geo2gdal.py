@@ -159,7 +159,12 @@ class GeoNosMap(MapTranslator):
         return img_file
 
     def get_size(self):
-        return None
+        with open(self.img_file) as img:
+            hdr=img.readline()
+        assert hdr.startswith('NOS/')
+        patt='RA='
+        sz=hdr[hdr.index(patt)+len(patt):].split(',')[2:4]
+        return map(int,sz)
 
     def get_name(self):
         return self.hdr_parms('Name')[0]

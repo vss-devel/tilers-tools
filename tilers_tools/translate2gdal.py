@@ -53,13 +53,6 @@ class Opt(object):
     def __getattr__(self, name):
         return self.dict.setdefault(name,None)
 
-gmt_templ='''# @VGMT1.0 @GPOLYGON
-# @Jp"%s"
-# FEATURE_DATA
->
-# @P
-%s'''
-
 class MapTranslator(object):
     def __init__(self,src_file,options=None):
         self.options=options
@@ -73,6 +66,13 @@ class MapTranslator(object):
 
         self.refs=self.get_refs()           # fetch reference points
         self.srs,self.dtm=self.get_srs()    # estimate SRS
+
+    gmt_templ='''# @VGMT1.0 @GPOLYGON
+# @Jp"%s"
+# FEATURE_DATA
+>
+# @P
+%s'''
 
     def cut_poly(self,out_dataset):
         plys=self.shift_lonlat(self.get_plys(),self.dtm)   # as per dtm value
@@ -100,7 +100,7 @@ class MapTranslator(object):
 
         # convert cutline geo coordinates to the chart's srs
         poly_xy=command(['gdaltransform','-tps','-s_srs','+proj=longlat','-t_srs',self.srs],lonlat)
-        return poly,gmt_templ % (self.srs,poly_xy)
+        return poly,self.gmt_templ % (self.srs,poly_xy)
 
     def shift_lonlat(self,refs,dtm):
         if not dtm:
