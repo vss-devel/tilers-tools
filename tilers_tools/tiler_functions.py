@@ -79,7 +79,7 @@ try:
 except:
     win32pipe=None
 
-def if_set(x,default):
+def if_set(x,default=None):
     return x if x is not None else default
 
 def command(params,child_in=None):

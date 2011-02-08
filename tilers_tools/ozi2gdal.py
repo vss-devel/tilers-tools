@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-07 11:42:16
+# 2011-02-08 15:42:24 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -30,129 +30,57 @@ from __future__ import with_statement
 import os
 import logging
 import locale
+import csv
+
 from optparse import OptionParser
 
 from tiler_functions import *
 from translate2gdal import *
 
-datum_map={ 
-    # http://www.hemanavigator.com.au/Products/TopographicalGPS/OziExplorer/tabid/69/Default.aspx
-    'WGS 84':
-        '+datum=WGS84',
-    'WGS 72': # http://www.linz.govt.nz/docs/miscellaneous/transformation-parameters-chathamislands.pdf
-        '+ellps=WGS72 +towgs84=0,0,4.5,0,0,0.554,0.2263',
-    'NAD83':
-        '+datum=NAD83',
-    'European 1950':
-        #'+towgs84=-84.0000,-97.0000,-117.0000 +ellps=intl',
-        # http://trac.osgeo.org/proj/ticket/32
-        '+towgs84=+towgs84=-87,-98,-121 +ellps=intl', 
-    'European 1950 (Mean France)':
-        '+towgs84=+towgs84=-87,-98,-121 +ellps=intl', 
-    'European 1950 (Spain and Portugal)':
-        '+towgs84=+towgs84=-84,-107,-120 +ellps=intl', 
-    'European 1950 (Greece)':
-        '+towgs84=+towgs84=-84,-95,-130 +ellps=intl', 
-    'Geodetic Datum 1949':
-        '+datum=nzgd49',
-    'Ireland 1965':
-        '+datum=ire65',
-    'Hermannskogel':
-        '+datum=hermannskogel',
-    'Potsdam Rauenberg DHDN':
-        '+datum=potsdam',
-    'GGRS87':
-        '+datum=GGRS87',
-    'EGSA87':
-        '+datum=GGRS87',
-    'Rome 1940':
-        '+towgs84=-104.1,-49.1,-9.9,0.971,-2.917,0.714,-11.68 +ellps=intl',
-    'Pulkovo 1942 (1)': # http://trac.osgeo.org/gdal/ticket/3176
-        '+ellps=krass +towgs84=23.9,-141.3,-80.9,0,-0.37,-0.85,-0.12', 
-    'Pulkovo 1942 (2)':
-        '+ellps=krass +towgs84=23.9,-141.3,-80.9,0,-0.37,-0.85,-0.12', 
-    'Pulkovo 1942': # http://ne-grusti.narod.ru/oziexplorer.html
-        '+ellps=krass +towgs84=23.9,-141.3,-80.9,0,-0.37,-0.85,-0.12', 
-    'Australian Geodetic 1966': # http://www.osgeo.org/pipermail/gdal-dev/2006-February/008090.html
-        '+ellps=aust_SA +towgs84=-129.193,-41.212,130.73,-0.246,-0.374,-0.329,-2.955',
-    'Australian Geodetic 1984':
-        '+ellps=aust_SA +towgs84=-117.763,-51.51,139.061,-0.292,-0.443,-0.277,-0.191',
-    'Australian Geocentric 1994 (GDA94)':
-        '+ellps=GRS80 +towgs84=0,0,0,0,0,0,0',
-    'Ord Srvy Grt Britn':
-        '+towgs84=446.448,-125.157,542.060,0.1502,0.2470,0.8421,-20.4894 +ellps=airy',
-    'OSGB 36':
-        '+towgs84=446.448,-125.157,542.060,0.1502,0.2470,0.8421,-20.4894 +ellps=airy',
-    'Finland Hayford':
-        #'+towgs84=-90.7,-106.1,-119.2,4.09,0.218,-1.05,1.37 +ellps=intl', # see esri:4123
-        '+towgs84=-78.00,-231.00,-97.00 +ellps=intl',
-    'RT 90': # http://www.lantmateriet.se/templates/LMV_Page.aspx?id=4766&lang=EN
-        '+towgs84=414.0978567149,41.3381489658,603.0627177516,-0.8550434314,2.1413465185,-7.0227209516,0 +ellps=bessel', # http://sv.wikipedia.org/wiki/RT_90
-    #Datum Lisboa (Portugal), 29, -304.046, -60.576, 103.640
-    #European 1950 (Portugal), 14, -87.987, -108.639, -121.593
-
-    #'Carthage CH-1903':
-        #'+datum=carthage',    
-    # European 1979
-    # NTF France
-    # Norsk
-    # Rijksdriehoeksmeting
-    # Observatorio 1966
-    # S42
-    }
-
-proj_map={
-    'Latitude/Longitude':                       '+proj=latlong',
-    'Mercator':                                 '+proj=merc',
-    'Transverse Mercator':                      '+proj=tmerc',
-    '(UTM) Universal Transverse Mercator':      '+proj=utm',
-    '(BNG) British National Grid':              '+init=epsg:27700', # not tested
-    '(IG) Irish Grid':                          '+init=epsg:29902', # not tested
-    '(NZG) New Zealand Grid':                   '+init=epsg:27200', # not tested
-    #'(NZTM2) New Zealand TM 2000':              '+init=epsg:????', # not tested
-    '(SG) Swedish Grid': # http://www.fig.net/pub/fig2006/papers/ps05_03/ps05_03_04_engberg_lilje_0670.pdf
-        '+proj=tmerc +lon_0=15.808277777778 +x_0=1500000 +y_0=0', # http://en.wikipedia.org/wiki/Swedish_grid
-    '(SUI) Swiss Grid':                         '+init=epsg:21781', # not tested
-    '(I) France Zone I':                        '+init=epsg:27571', # not tested
-    '(II) France Zone II':                      '+init=epsg:27572', # not tested
-    '(III) France Zone III':                    '+init=epsg:27573', # not tested
-    '(IV) France Zone IV':                      '+init=epsg:27574', # not tested
-    'Lambert Conformal Conic':                  '+proj=lcc',
-    '(A)Lambert Azimuthual Equal Area':         '+proj=laea',       # not tested
-    '(EQC) Equidistant Conic':                  '+proj=eqdc',
-    'Sinusoidal':                               '+proj=sinu',       # not tested
-    'Polyconic (American)':                     '+proj=poly',
-    'Albers Equal Area':                        '+proj=aea',        # not tested
-    'Van Der Grinten':                          '+proj=vandg',      # not tested
-    'Vertical Near-Sided Perspective':          '+proj=nsper',      # not tested
-    '(WIV) Wagner IV':                          '+proj=wag4',       # not tested
-    'Bonne':                                    '+proj=bonne',      # not tested
-    '(MT0) Montana State Plane Zone 2500':      '+init=esri:102300',# not tested
-    '(ITA1) Italy Grid Zone 1': # http://mpa.itc.it/markus/shortcourse/notes2.html
-        '+init=epsg:26591 +towgs84=-85.88,-28.85,+49.67,-1.003,-2.383,-1.808,-27.82', # not tested
-    '(ITA2) Italy Grid Zone 2':
-        '+init=epsg:26592 +towgs84=-85.88,-28.85,+49.67,-1.003,-2.383,-1.808,-27.82', # not tested
-    '(VICMAP-TM) Victoria Aust.(pseudo AMG)': # http://www.gpsoz.com.au/VicRoadsInfo.htm
-        '+proj=tmerc +lat_0=145 +x_0=500000 +y_0=10000000',         # not tested
-    '(VICGRID) Victoria Australia':             '+init=epsg:3110',  # not tested
-    '(VG94) VICGRID94 Victoria Australia':      '+init=epsg:3111',  # not tested
-    'Gnomonic':                                 '+proj=gnom',
-    }
-
-parm_map=( 
-    '+lat_0=', # 1. Latitude Origin
-    '+lon_0=', # 2. Longitude Origin
-    '+k=',     # 3. K Factor
-    '+x_0=',   # 4. False Easting
-    '+y_0=',   # 5. False Northing
-    '+lat_1=', # 6. Latitude 1
-    '+lat_2=', # 7. Latitude 2
-    '+h=',     # 8. Height - used in the Vertical Near-Sided Perspective Projection
-               # 9. Sat - not used
-               #10. Path - not used
-    )
-
 class OziMap(MapTranslator):
+
+    def __init__(self,src_file,options=None):
+        self.init_data()
+        super(OziMap,self).__init__(src_file,options)
+
+    proj_parms=( 
+        '+lat_0=', # 1. Latitude Origin
+        '+lon_0=', # 2. Longitude Origin
+        '+k=',     # 3. K Factor
+        '+x_0=',   # 4. False Easting
+        '+y_0=',   # 5. False Northing
+        '+lat_1=', # 6. Latitude 1
+        '+lat_2=', # 7. Latitude 2
+        '+h=',     # 8. Height - used in the Vertical Near-Sided Perspective Projection
+                   # 9. Sat - not used
+                   #10. Path - not used
+        )
+        
+    def init_data(self):
+        'load datum definitions, ellipses, projections from a file'
+        self.datum_map={}
+        self.ellps_map={}
+        self.proj_map={}
+        ld('sys.path[0]',sys.path[0])
+        def_dir=sys.path[0]
+        with open(os.path.join(def_dir,'ozi_data.csv'),'rb') as data_f:
+            data_csv=csv.reader(data_f)
+            csv_map={
+                'datum': self.datum_map,
+                'ellps': self.ellps_map,
+                'proj': self.proj_map,
+                }
+            for row in data_csv:
+                ld(row)
+                try:
+                    csv_map[row[0]][row[1]]=row[2:]
+                except IndexError:
+                    pass
+                except KeyError:
+                    pass
+#        ld(self.datum_map)
+#        ld(self.ellps_map)
+#        ld(self.proj_map)
 
     def get_header(self): 
         'read map header'
@@ -194,34 +122,35 @@ class OziMap(MapTranslator):
         options=self.options
         refs=self.refs
         dtm=None
+        srs=[]
         if options.srs:
             return(self.options.srs,refs)
         if options.proj:
-            proj=options.proj
+            srs.append(options.proj)
         else:
             proj_id=self.hdr_parms('Map Projection')[0][1]
             parm_lst=self.hdr_parms('Projection Setup')[0]
             try:
-                proj=[proj_map[proj_id]]
+                srs.append(self.proj_map[proj_id][0])
             except KeyError: 
                 raise Exception("*** Unsupported projection (%s)" % proj_id)
-            if '+proj=' in proj[0]: # overwise assume it already has a full data defined
+            if '+proj=' in srs[0]: # overwise assume it already has a full data defined
                 # get projection parameters
-                parms=[ i[0]+i[1] for i in zip(parm_map,parm_lst[1:]) if i[1].translate(None,'0.')]
-                if '+proj=utm' in proj[0]:
+                srs.extend([ i[0]+i[1] for i in zip(self.proj_parms,parm_lst[1:]) if i[1].translate(None,'0.')])
+                if '+proj=utm' in srs[0]:
                     if not refs[0][1]: # refs are cartesian with a zone defined
                         hemisphere=refs[0][3]
                         utm_zone=int(refs[0][4])
-                        parms.append('+zone=%i' % utm_zone)
+                        srs.append('+zone=%i' % utm_zone)
                         if hemisphere != 'N': 
-                            parms.append('+south')
+                            srs.append('+south')
                     else: # refs are lat/long, then find zone, hemisphere
                         # doesn't seem to have central meridian for UTM
                         lon,lat=refs[0][1]
                         zone=(lon + 3 % 360) // 6 + 30
-                        parms.append('+zone=%d' % zone)
+                        srs.append('+zone=%d' % zone)
                         if lat < 0: 
-                            parms.append('+south')
+                            srs.append('+south')
                 else:
                     if refs[0][1]: # refs are lat/long
                         # setup a central meridian artificialy to allow charts crossing meridian 180
@@ -229,9 +158,7 @@ class OziMap(MapTranslator):
                         rightmost=max(refs,key=lambda r: r[0][0])
                         ld('leftmost',leftmost,'rightmost',rightmost)
                         if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in proj[0]:
-                            proj.append(' +lon_0=%i' % int(leftmost[1][0]))
-                if parms:
-                    proj.extend(parms)
+                            srs.append(' +lon_0=%i' % int(leftmost[1][0]))
         datum_id=self.header[4][0]
         logging.info(' %s, %s' % (datum_id,proj_id))
         if options.datum: 
@@ -239,15 +166,28 @@ class OziMap(MapTranslator):
         elif datum_id.startswith('Auto Shift'):
             ld(header[4])
             dtm=self.get_dtm(header) # get northing, easting to WGS84 if any
-            datum='WGS84'
+            datum='+datum=WGS84'
         else:
             try:
-                datum=datum_map[datum_id] 
+                datum_def=self.datum_map[datum_id]
+                datum=if_set(datum_def[5]) # PROJ4 datum defined ?
+                if datum:
+                    srs.append(datum)
+                else:
+                    ellps_id=datum_def[1]
+                    ellps_def=self.ellps_map[ellps_id]
+                    ellps=if_set(ellps_def[2])
+                    if ellps:
+                        srs.append(ellps)
+                    else:
+                        srs.append('+a=%s',ellps_def[0])
+                        srs.append('+rf=%s',ellps_def[1])                        
+                    srs.append('+towgs84=%s,%s,%s' % tuple(datum_def[2:5]))
             except KeyError: 
                 raise Exception("*** Unsupported datum (%s)" % datum_id)
-        srs=' '.join(proj)+' '+datum+' +nodefs'
+        srs.append('+nodefs')
         ld(srs)
-        return srs,dtm
+        return ' '.join(srs),dtm
 
     try_encodings=(locale.getpreferredencoding(),'utf_8','cp1251','cp1252')
 
