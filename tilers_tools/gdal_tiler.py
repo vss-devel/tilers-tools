@@ -437,7 +437,7 @@ class Pyramid(object):
         res=self.zoom2res(zoom)
         temp_tif=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % zoom) # img of the base zoom
 
-        warp_parms=['-multi', '--debug','on',
+        warp_parms=['-multi', #'--debug','on',
             '-wm','256','--config','GDAL_CACHEMAX','100',
             '-r',self.base_resampling, 
             '-co','INTERLEAVE=BAND',
