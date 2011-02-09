@@ -65,7 +65,9 @@ if __name__=='__main__':
     parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
     parser.add_option("-t", "--dest-dir", default=None,
         help='destination directory (default: current)')
-    parser.add_option("-l", "--long-names", action="store_true", 
+    parser.add_option("-i", "--as-image", action="store_true", 
+        help='give an output file name after a image file name (Ozi)')
+    parser.add_option("-l", "--long-name", action="store_true", 
         help='give an output file a long name')
     parser.add_option("--get-cutline", action="store_true", 
         help='print cutline polygon from KAP file then exit')

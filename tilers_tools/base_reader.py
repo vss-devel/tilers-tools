@@ -181,14 +181,22 @@ class MapTranslator(object):
         return ' '.join(srs),dtm
 
     def convert(self,dest=None):
+        options=self.options
         if dest:
             base=os.path.split(dest)[0]
         else:
-            base=dest_path(self.map_file,self.options.dest_dir)
+            name_patt=self.map_file
+            if options.as_image:
+                name_patt=self.img_file
+            base=dest_path(name_patt,self.options.dest_dir)
+            if options.long_name:
+                base+=' - '+self.name
 
         dest_dir=os.path.split(base)[0]
         img_path=os.path.relpath(self.img_file,dest_dir)
-        out_dataset= os.path.basename(base+'.vrt') # output VRT file    
+        format='VRT'
+        ext='.'+format.lower()
+        out_dataset= os.path.basename(base+ext) # output file
 
         refs=self.shift_lonlat(self.refs,self.dtm)   # as per dtm value
         if not refs[0][1]: # refs are cartesian with a zone defined
@@ -207,7 +215,7 @@ class MapTranslator(object):
                                 (refs_proj[0][1][0],refs_proj[1][1][1])))
         ld('refs_proj',refs_proj)
         gcps=flatten([['-gcp']+map(repr, pix)+map(repr, coord) for pix,coord in refs_proj])
-        transl_cmd=['gdal_translate','-of','VRT',img_path,out_dataset,'-a_srs', self.srs]
+        transl_cmd=['gdal_translate','-of',format,img_path,out_dataset,'-a_srs', self.srs]
         if self.options.expand:
             transl_cmd=transl_cmd+['-expand',self.options.expand]
         try:
