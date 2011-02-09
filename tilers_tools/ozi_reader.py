@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-08 15:42:24 
+# 2011-02-08 17:38:41 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -30,7 +30,6 @@ from __future__ import with_statement
 import os
 import logging
 import locale
-import csv
 
 from optparse import OptionParser
 
@@ -39,10 +38,6 @@ from base_reader import *
 
 class OziMap(MapTranslator):
     magic='OziExplorer Map Data File'
-
-    def __init__(self,src_file,options=None):
-        self.init_data()
-        super(OziMap,self).__init__(src_file,options)
 
     proj_parms=(
         '+lat_0=', # 1. Latitude Origin
@@ -57,31 +52,17 @@ class OziMap(MapTranslator):
                    #10. Path - not used
         )
         
-    def init_data(self):
+    def load_data(self):
         'load datum definitions, ellipses, projections from a file'
         self.datum_map={}
         self.ellps_map={}
         self.proj_map={}
-        ld('sys.path[0]',sys.path[0])
-        def_dir=sys.path[0]
-        with open(os.path.join(def_dir,'ozi_data.csv'),'rb') as data_f:
-            data_csv=csv.reader(data_f)
-            csv_map={
-                'datum': self.datum_map,
-                'ellps': self.ellps_map,
-                'proj': self.proj_map,
-                }
-            for row in data_csv:
-                ld(row)
-                try:
-                    csv_map[row[0]][row[1]]=row[2:]
-                except IndexError:
-                    pass
-                except KeyError:
-                    pass
-#        ld(self.datum_map)
-#        ld(self.ellps_map)
-#        ld(self.proj_map)
+        csv_map={
+            'datum': (self.datum_map,self.ini_lst),
+            'ellps': (self.ellps_map,self.ini_lst),
+            'proj': (self.proj_map,self.ini_lst),
+            }
+        self.load_csv('ozi_data.csv',csv_map)
 
     def get_header(self): 
         'read map header'
@@ -158,16 +139,18 @@ class OziMap(MapTranslator):
                         leftmost=min(refs,key=lambda r: r[0][0])
                         rightmost=max(refs,key=lambda r: r[0][0])
                         ld('leftmost',leftmost,'rightmost',rightmost)
-                        if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in proj[0]:
+                        if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in srs[0]:
                             srs.append(' +lon_0=%i' % int(leftmost[1][0]))
         datum_id=self.header[4][0]
         logging.info(' %s, %s' % (datum_id,proj_id))
         if options.datum: 
-            datum=options.datum
+            srs.append(options.datum)
         elif datum_id.startswith('Auto Shift'):
             ld(header[4])
             dtm=self.get_dtm(header) # get northing, easting to WGS84 if any
-            datum='+datum=WGS84'
+            srs.append('+datum=WGS84')
+        elif not '+proj=' in srs[0]: 
+            pass # assume datum is defined already
         else:
             try:
                 datum_def=self.datum_map[datum_id]

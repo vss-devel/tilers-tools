@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-07 13:33:49 
+# 2011-02-08 17:39:55 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -36,64 +36,23 @@ from optparse import OptionParser
 from tiler_functions import *
 from base_reader import *
 
-datum_map={    
-    'WGS84':                '+datum=WGS84',
-    'NAD83':                '+datum=NAD83',
-    'POTSDAM':              '+datum=potsdam',
-    'EUROPEAN DATUM 1950' : '+towgs84=-84.0000,-97.0000,-117.0000 +ellps=intl',
-    'EUROPEAN 1950':        '+towgs84=-84.0000,-97.0000,-117.0000 +ellps=intl',
-    'EUROPEAN 1950 (NORWAY FINLAND)':
-        '+towgs84=-85,-95,-120 +ellps=intl', #http://earth-info.nga.mil/GandG/coordsys/onlinedatum/CountryEuropeTable.html
-    'ROMA DATUM 1940':      '+towgs84=-104.1,-49.1,-9.9,0.971,-2.917,0.714,-11.68 +ellps=intl',
-    'ROMA 1940':            '+towgs84=-104.1,-49.1,-9.9,0.971,-2.917,0.714,-11.68 +ellps=intl',
-    'HERMANSKOGEL DATUM':   '+datum=hermannskogel',
-    'OSGB36':               '+towgs84=446.448,-125.157,542.060,0.1502,0.2470,0.8421,-20.4894 +ellps=airy',
-    'RT90 (SWEDEN)': 
-        '+towgs84=414.0978567149,41.3381489658,603.0627177516,-0.8550434314,2.1413465185,-7.0227209516,0 +ellps=bessel', # http://sv.wikipedia.org/wiki/RT_90
-    u'SYSTEM KÜSTE':        '+datum=potsdam', # ???
-    
-    # 'LOCAL DATUM'
-    # 'LOCAL DATUM UNKNOWN'
-    }
-
-datum_guess={ # guess the datum by a comment/copyright string pattern
-    'Croatia':
-        # http://spatial-analyst.net/wiki/index.php?title=MGI_/_Balkans_coordinate_systems
-        '+ellps=bessel +towgs84=550.499,164.116,475.142,5.80967,2.07902,-11.62386,0.99999445824',
-        # http://earth-info.nga.mil/GandG/coordsys/onlinedatum/DatumTable.html
-        #'+datum=hermannskogel',
-        #'+ellps=bessel +towgs84=682,-203,480',
-    }
-
-proj_knp={ # projection parameters
-    'MERCATOR':
-        {'PROJ': '+proj=merc',  'PP': '+lat_ts='},
-    'TRANSVERSE MERCATOR':
-        {'PROJ': '+proj=tmerc', 'PP': '+lon_0=', 'P1': '+lat_0=', 'P2': '+k=', 'P3': '+y_0=', 'P4': '+x_0='},
-    'UNIVERSAL TRANSVERSE MERCATOR':
-        {'PROJ': '+proj=utm', 'PP': '+lon_0='},
-    'GNOMONIC':
-        {'PROJ': '+proj=gnom',  'PP': '+lon_0=', 'P1': '+lat_0='},
-    'LAMBERT CONFORMAL CONIC':
-        {'PROJ': '+proj=lcc', 'PP': '+lon_0='},
-    'POLYCONIC':
-        {'PROJ': '+proj=poly',  'PP': '+lon_0='},
-    'SWEDISH GRID':
-        {'PROJ': '+proj=tmerc +lon_0=15.808277777778 +x_0=1500000 +y_0=0'},
-    }
-
-proj_knq={ # extra projection parameters for BSB v. 3.xx
-    'TRANSVERSE MERCATOR':
-        {'P1': '+lon_0=', 'P2': '+k=', 'P3': '+lat_0='}, # P3 - guess
-    'LAMBERT CONFORMAL CONIC':
-        {'P1': '+lon_0=', 'P2': '+lat_1=', 'P3': '+lat_2='},
-    'POLYCONIC':
-        {'P1': '+lon_0=', 'P2': '+lat_0='}, # P2 - guess
-    }
-
 class BsbKapMap(MapTranslator):
     magic='KNP/'
 
+    def load_data(self):
+        'load datum definitions, ellipses, projections from a file'
+        self.datum_map={}
+        self.guess_map={}
+        self.knp_map={}
+        self.knq_map={}
+        csv_map={
+            'datum': (self.datum_map,self.ini_lst),
+            'guess': (self.guess_map,self.ini_lst),
+            'knp': (self.knp_map,self.ini_map),
+            'knq': (self.knq_map,self.ini_map),
+            }
+        self.load_csv('bsb_data.csv',csv_map)
+            
     def get_header(self): 
         'read map header'
         header=[]
@@ -129,12 +88,6 @@ class BsbKapMap(MapTranslator):
             else:
                 out[key] += ','+i
         return out
-
-    def assemble_parms(self,parm_map,parm_info):    
-        check_parm=lambda s: (s not in ['NOT_APPLICABLE','UNKNOWN']) and s.replace('0','').replace('.','')
-        res=' '.join([parm_map[i]+parm_info[i] for i in parm_map
-                        if  i in parm_info and check_parm(parm_info[i])])
-        return ' '+res if res else ''
         
     def get_dtm(self):
         'get DTM northing, easting'
@@ -163,81 +116,90 @@ class BsbKapMap(MapTranslator):
         plys_ll=[(float(i[2]),float(i[1])) for i in self.hdr_parms2list('PLY')]
         return [((),i) for i in plys_ll]
         
+    def assemble_parms(self,parm_map,parm_info):    
+        check_parm=lambda s: (s not in ['NOT_APPLICABLE','UNKNOWN']) and s.replace('0','').replace('.','')
+        return [parm_map[i]+parm_info[i] for i in parm_map
+                        if  i in parm_info and check_parm(parm_info[i])]
+
     def get_srs(self):
         'returns srs for the BSB chart projection and srs for the REF points'
         options=self.options
         refs=self.refs
         dtm=None
+        srs=[]
         # Get a list of geo refs in tuples
         if options.srs:
-            return options.srs
+            return(self.options.srs,refs)
         # evaluate chart's projection
-        proj=options.proj
-        if not proj:
+        if options.proj:
+            srs.append(options.proj)
+        else:
             knp_info=self.hdr_parm2dict('KNP')
             ld(knp_info)
             proj_id=if_set(options.proj_id,knp_info['PR'])
             try:            
-                knp_parm=proj_knp[proj_id.upper()]
+                knp_parm=self.knp_map[proj_id.upper()]
+                ld(knp_parm)
             except KeyError: 
                 raise Exception(' Unsupported projection %s' % proj_id)
             # get projection and parameters
-            proj=knp_parm['PROJ']
-            if '+proj=utm' in proj[0]: # UTM
+            srs.append(knp_parm['PROJ4'])
+            if '+proj=utm' in srs[0]: # UTM
                 # GDAL 1.7.2 doesn't seem to make use of lon_0 with UTM, but BSB doesn't use zones
                 northing='10000000' if refs[0][1][1] < 0 else '0' # Southern hemisphere?
-                proj='+proj=tmerc +k=0.9996 +x_0=500000 +y_0=%s +lon_0=%s' % (northing,knp_info['PP'])
+                srs=('+proj=tmerc +k=0.9996 +x_0=500000 +y_0=%s +lon_0=%s' % 
+                        (northing,knp_info['PP'])).split(' ')
             else:
                 try: # extra projection parameters for BSB 3.xx, put them before KNP parms
                     knq_info=self.hdr_parm2dict('KNQ')
                     ld(knq_info)
-                    knq_parm=proj_knq[proj_id.upper()]
-                    proj+=assemble_parms(knq_parm,knq_info)
+                    knq_parm=self.knp_map[proj_id.upper()]
+                    srs.extend(self.assemble_parms(knq_parm,knq_info))
                 except IndexError:  # No KNQ
                     pass
                 except KeyError:    # No such proj in KNQ map
                     pass
-                proj+=self.assemble_parms(knp_parm,knp_info)
+                srs.extend(self.assemble_parms(knp_parm,knp_info))
         # setup a central meridian artificialy to allow charts crossing meridian 180
         leftmost=min(refs,key=lambda r: r[0][0])
         rightmost=max(refs,key=lambda r: r[0][0])
         ld('leftmost',leftmost,'rightmost',rightmost)
         if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in proj:
-            proj+=' +lon_0=%i' % int(leftmost[1][0])
+            srs.append(' +lon_0=%i' % int(leftmost[1][0]))
         
         # evaluate chart's datum
         datum_id=if_set(options.datum_id,knp_info['GD'])
         logging.info(' %s, %s' % (datum_id,proj_id))
-        datum=options.datum
-        if datum:
-            pass
+        if options.datum: 
+            srs.append(options.datum)
         elif options.force_dtm or options.dtm_shift:
-            datum='+datum=WGS84'
             dtm=self.get_dtm() # get northing, easting to WGS84 if any
-        elif not '+proj=' in proj: 
-            datum='' # assume datum is defined already
+            srs.append('+datum=WGS84')
+        elif not '+proj=' in srs[0]: 
+            pass # assume datum is defined already
         else:
             try:
-                datum=datum_map[datum_id.upper()]
+                datum=self.datum_map[datum_id.upper()][0]
+                srs.append(datum)
             except KeyError: 
                 # try to guess the datum by comment and copyright string(s)
                 crr=' '.join(self.hdr_parms('!')+self.hdr_parms('CRR'))
                 try:
-                    datum=[datum_guess[crr_patt] 
-                        for crr_patt in datum_guess if crr_patt in crr][0]
+                    datum=[self.guess_map[crr_patt][0]
+                        for crr_patt in self.guess_map if crr_patt in crr][0]
+                    srs.append(datum)
                     logging.warning(' Unknown datum "%s", guessed as "%s"' % (datum_id,datum))
                 except IndexError:
                     # datum still not found
                     dtm=self.get_dtm() # get northing, easting to WGS84 if any
+                    srs.append('+datum=WGS84')
                     if dtm: 
                         logging.warning(' Unknown datum %s, trying WGS 84 with DTM shifts' % datum_id)
-                        datum='+datum=WGS84'
                     else: # assume DTM is 0,0
                         logging.warning(' Unknown datum %s, trying WGS 84' % datum_id)
-                        datum='+datum=WGS84'
-        srs=proj+' '+datum+' +nodefs'
+        srs.append('+nodefs')
         ld(srs)
-        return srs,dtm
+        return ' '.join(srs),dtm
 
     def get_raster(self):
         return self.map_file

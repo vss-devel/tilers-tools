@@ -30,6 +30,7 @@ from __future__ import with_statement
 import os
 import logging
 import locale
+import csv
 
 from tiler_functions import *
 
@@ -56,16 +57,45 @@ class Opt(object):
 class MapTranslator(object):
     def __init__(self,src_file,options=None):
         self.options=options
-        self.map_file=src_file.decode(locale.getpreferredencoding(),'ignore')
 
+        self.load_data() # load datum definitions, ellipses, projections
+        self.map_file=src_file.decode(locale.getpreferredencoding(),'ignore')
         self.header=self.get_header()       # Read map header
         self.img_file=self.get_raster()
-
         self.name=self.get_name()
         logging.info(' %s : %s (%s)' % (self.map_file,self.name,self.img_file))
 
         self.refs=self.get_refs()           # fetch reference points
         self.srs,self.dtm=self.get_srs()    # estimate SRS
+
+    def load_csv(self,csv_file,csv_map):
+        'load datum definitions, ellipses, projections from a file'
+        data_dir=sys.path[0]
+        ld('data_dir',data_dir)
+        csv.register_dialect('strip', skipinitialspace=True)
+        with open(os.path.join(data_dir,csv_file),'rb') as data_f:
+            data_csv=csv.reader(data_f,'strip')
+            for row in data_csv:
+                row=[s.decode('utf-8') for s in row]
+                ld(row)
+                try:
+                    dct,unpack=csv_map[row[0]]
+                    unpack(dct,row)
+                except IndexError:
+                    pass
+                except KeyError:
+                    pass
+        for dct,func in csv_map.values():
+            ld(dct)
+            
+    def ini_lst(self,dct,row):
+        dct[row[1]]=row[2:]
+
+    def ini_map(self,dct,row):
+        vlst=row[2:]
+        keys=vlst[0::2]
+        vals=vlst[1::2]
+        dct[row[1]]=dict(zip(keys,vals))
 
     gmt_templ='''# @VGMT1.0 @GPOLYGON
 # @Jp"%s"

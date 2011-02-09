@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-07 13:33:49 
+# 2011-02-08 17:40:11 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -36,24 +36,18 @@ from optparse import OptionParser
 from tiler_functions import *
 from base_reader import *
 
-datum_map={
-    'WGS84':                '+datum=WGS84',
-    'NAD83':                '+datum=NAD83',
-    'ED50':                 '+towgs84=-84.0000,-97.0000,-117.0000 +ellps=intl',
-    'EUROPEAN':             '+towgs84=-84.0000,-97.0000,-117.0000 +ellps=intl',
-    'WGS72':                '+ellps=WGS72 +towgs84=0,0,4.5,0,0,0.554,0.219',
-    'WGS1972':              '+ellps=WGS72 +towgs84=0,0,4.5,0,0,0.554,0.219',
-    'MERCHICH':             '+ellps=clrk80 +towgs84=31,146,47,0,0,0,0',
-    # 'LOCAL DATUM'
-    # 'LOCAL DATUM UNKNOWN'
-    }
-
-proj_map={
-    'MERCATOR':                                 '+proj=merc',
-    }
-
 class GeoNosMap(MapTranslator):
     magic='[MainChart]'
+
+    def load_data(self):
+        'load datum definitions, ellipses, projections from a file'
+        self.datum_map={}
+        self.proj_map={}
+        csv_map={
+            'datum': (self.datum_map,self.ini_lst),
+            'proj': (self.proj_map,self.ini_lst),
+            }
+        self.load_csv('geo_data.csv',csv_map)
 
     def get_header(self): 
         'read map header'
@@ -104,48 +98,46 @@ class GeoNosMap(MapTranslator):
         options=self.options
         refs=self.refs
         dtm=None
+        srs=[]
         if options.srs:
             return(self.options.srs,refs)
         if options.proj:
-            proj=options.proj
+            srs.append(options.proj)
         else:
             proj_id=self.hdr_parms('Projection')[0]
             #parm_lst=self.hdr_parms('Projection Setup')[0]
             try:
-                proj=[proj_map[proj_id]]
+                srs.append(self.proj_map[proj_id][0])
             except KeyError: 
                 raise Exception("*** Unsupported projection (%s)" % proj_id)
-            if '+proj=' in proj[0]: # overwise assume it already has a full data defined
-                parms=[]
+            if '+proj=' in srs[0]: # overwise assume it already has a full data defined
                 # setup a central meridian artificialy to allow charts crossing meridian 180
                 leftmost=min(refs,key=lambda r: r[0][0])
                 rightmost=max(refs,key=lambda r: r[0][0])
                 ld('leftmost',leftmost,'rightmost',rightmost)
-                if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in proj[0]:
-                    parms.append('+lon_0=%i' % int(leftmost[1][0]))
-                if parms:
-                    proj.extend(parms)
+                if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in srs[0]:
+                    srs.append('+lon_0=%i' % int(leftmost[1][0]))
         datum_id=self.hdr_parms('Datum')[0]
         logging.info(' %s, %s' % (datum_id,proj_id))
         if options.datum: 
-            datum=options.datum
+            srs.append(options.datum)
         elif options.force_dtm or options.dtm_shift:
-            datum='+datum=WGS84'
             dtm=self.get_dtm() # get northing, easting to WGS84 if any
+            srs.append('+datum=WGS84')
         else:
             try:
-                datum=datum_map[datum_id] 
+                datum=self.datum_map[datum_id][0]
+                srs.append(datum)
             except KeyError: 
                 dtm=self.get_dtm() # get northing, easting to WGS84 if any
+                srs.append('+datum=WGS84')
                 if dtm: 
                     logging.warning(' Unknown datum %s, trying WGS 84 with DTM shifts' % datum_id)
-                    datum='+datum=WGS84'
                 else: # assume DTM is 0,0
                     logging.warning(' Unknown datum %s, trying WGS 84' % datum_id)
-                    datum='+datum=WGS84'
-        srs=' '.join(proj)+' '+datum+' +nodefs'
+        srs.append('+nodefs')
         ld(srs)
-        return srs,dtm
+        return ' '.join(srs),dtm
 
     def get_raster(self):
         name_patt=self.hdr_parms('Bitmap')[0].lower()
