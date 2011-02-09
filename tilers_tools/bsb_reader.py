@@ -121,85 +121,56 @@ class BsbKapMap(MapTranslator):
         return [parm_map[i]+parm_info[i] for i in parm_map
                         if  i in parm_info and check_parm(parm_info[i])]
 
-    def get_srs(self):
-        'returns srs for the BSB chart projection and srs for the REF points'
-        options=self.options
-        refs=self.refs
-        dtm=None
-        srs=[]
-        # Get a list of geo refs in tuples
-        if options.srs:
-            return(self.options.srs,refs)
-        # evaluate chart's projection
-        if options.proj:
-            srs.append(options.proj)
+    def get_proj(self):
+        knp_info=self.hdr_parm2dict('KNP')
+        ld(knp_info)
+        proj_id=knp_info['PR']
+        try:            
+            knp_parm=self.knp_map[proj_id.upper()]
+            ld(knp_parm)
+        except KeyError: 
+            raise Exception(' Unsupported projection %s' % proj_id)
+        # get projection and parameters
+        proj=[knp_parm['PROJ4']]
+        if '+proj=utm' in proj[0]: # UTM
+            # GDAL 1.7.2 doesn't seem to make use of lon_0 with UTM, but BSB doesn't use zones
+            northing='10000000' if self.refs[0][1][1] < 0 else '0' # Southern hemisphere?
+            proj=('+proj=tmerc +k=0.9996 +x_0=500000 +y_0=%s +lon_0=%s' % 
+                    (northing,knp_info['PP'])).split(' ')
         else:
-            knp_info=self.hdr_parm2dict('KNP')
-            ld(knp_info)
-            proj_id=if_set(options.proj_id,knp_info['PR'])
-            try:            
-                knp_parm=self.knp_map[proj_id.upper()]
-                ld(knp_parm)
-            except KeyError: 
-                raise Exception(' Unsupported projection %s' % proj_id)
-            # get projection and parameters
-            srs.append(knp_parm['PROJ4'])
-            if '+proj=utm' in srs[0]: # UTM
-                # GDAL 1.7.2 doesn't seem to make use of lon_0 with UTM, but BSB doesn't use zones
-                northing='10000000' if refs[0][1][1] < 0 else '0' # Southern hemisphere?
-                srs=('+proj=tmerc +k=0.9996 +x_0=500000 +y_0=%s +lon_0=%s' % 
-                        (northing,knp_info['PP'])).split(' ')
-            else:
-                try: # extra projection parameters for BSB 3.xx, put them before KNP parms
-                    knq_info=self.hdr_parm2dict('KNQ')
-                    ld(knq_info)
-                    knq_parm=self.knp_map[proj_id.upper()]
-                    srs.extend(self.assemble_parms(knq_parm,knq_info))
-                except IndexError:  # No KNQ
-                    pass
-                except KeyError:    # No such proj in KNQ map
-                    pass
-                srs.extend(self.assemble_parms(knp_parm,knp_info))
-        # setup a central meridian artificialy to allow charts crossing meridian 180
-        leftmost=min(refs,key=lambda r: r[0][0])
-        rightmost=max(refs,key=lambda r: r[0][0])
-        ld('leftmost',leftmost,'rightmost',rightmost)
-        if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in proj:
-            srs.append(' +lon_0=%i' % int(leftmost[1][0]))
-        
-        # evaluate chart's datum
-        datum_id=if_set(options.datum_id,knp_info['GD'])
-        logging.info(' %s, %s' % (datum_id,proj_id))
-        if options.datum: 
-            srs.append(options.datum)
-        elif options.force_dtm or options.dtm_shift:
-            dtm=self.get_dtm() # get northing, easting to WGS84 if any
-            srs.append('+datum=WGS84')
-        elif not '+proj=' in srs[0]: 
-            pass # assume datum is defined already
-        else:
+            try: # extra projection parameters for BSB 3.xx, put them before KNP parms
+                knq_info=self.hdr_parm2dict('KNQ')
+                ld(knq_info)
+                knq_parm=self.knp_map[proj_id.upper()]
+                proj.extend(self.assemble_parms(knq_parm,knq_info))
+            except IndexError:  # No KNQ
+                pass
+            except KeyError:    # No such proj in KNQ map
+                pass
+            proj.extend(self.assemble_parms(knp_parm,knp_info))
+        return proj,proj_id
+
+    def get_datum(self):
+        knp_info=self.hdr_parm2dict('KNP')
+        datum_id=knp_info['GD']
+        try:
+            datum=self.datum_map[datum_id.upper()][0]
+        except KeyError: 
+            # try to guess the datum by comment and copyright string(s)
+            crr=' '.join(self.hdr_parms('!')+self.hdr_parms('CRR'))
             try:
-                datum=self.datum_map[datum_id.upper()][0]
-                srs.append(datum)
-            except KeyError: 
-                # try to guess the datum by comment and copyright string(s)
-                crr=' '.join(self.hdr_parms('!')+self.hdr_parms('CRR'))
-                try:
-                    datum=[self.guess_map[crr_patt][0]
-                        for crr_patt in self.guess_map if crr_patt in crr][0]
-                    srs.append(datum)
-                    logging.warning(' Unknown datum "%s", guessed as "%s"' % (datum_id,datum))
-                except IndexError:
-                    # datum still not found
-                    dtm=self.get_dtm() # get northing, easting to WGS84 if any
-                    srs.append('+datum=WGS84')
-                    if dtm: 
-                        logging.warning(' Unknown datum %s, trying WGS 84 with DTM shifts' % datum_id)
-                    else: # assume DTM is 0,0
-                        logging.warning(' Unknown datum %s, trying WGS 84' % datum_id)
-        srs.append('+nodefs')
-        ld(srs)
-        return ' '.join(srs),dtm
+                datum=[self.guess_map[crr_patt][0]
+                    for crr_patt in self.guess_map if crr_patt in crr][0]
+                logging.warning(' Unknown datum "%s", guessed as "%s"' % (datum_id,datum))
+            except IndexError:
+                # datum still not found
+                dtm=self.get_dtm() # get northing, easting to WGS84 if any
+                datum='+datum=WGS84'
+                if dtm: 
+                    logging.warning(' Unknown datum %s, trying WGS 84 with DTM shifts' % datum_id)
+                else: # assume DTM is 0,0
+                    logging.warning(' Unknown datum %s, trying WGS 84' % datum_id)
+        return datum.split(' '),datum_id
 
     def get_raster(self):
         return self.map_file

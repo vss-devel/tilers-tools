@@ -100,78 +100,52 @@ class OziMap(MapTranslator):
         dtm=[float(s)/3600 for s in self.header[4][2:4]]
         return dtm if dtm != [0,0] else None
 
-    def get_srs(self):
-        options=self.options
-        refs=self.refs
-        dtm=None
-        srs=[]
-        if options.srs:
-            return(self.options.srs,refs)
-        if options.proj:
-            srs.append(options.proj)
-        else:
-            proj_id=self.hdr_parms('Map Projection')[0][1]
-            parm_lst=self.hdr_parms('Projection Setup')[0]
-            try:
-                srs.append(self.proj_map[proj_id][0])
-            except KeyError: 
-                raise Exception("*** Unsupported projection (%s)" % proj_id)
-            if '+proj=' in srs[0]: # overwise assume it already has a full data defined
-                # get projection parameters
-                srs.extend([ i[0]+i[1] for i in zip(self.proj_parms,parm_lst[1:]) if i[1].translate(None,'0.')])
-                if '+proj=utm' in srs[0]:
-                    if not refs[0][1]: # refs are cartesian with a zone defined
-                        hemisphere=refs[0][3]
-                        utm_zone=int(refs[0][4])
-                        srs.append('+zone=%i' % utm_zone)
-                        if hemisphere != 'N': 
-                            srs.append('+south')
-                    else: # refs are lat/long, then find zone, hemisphere
-                        # doesn't seem to have central meridian for UTM
-                        lon,lat=refs[0][1]
-                        zone=(lon + 3 % 360) // 6 + 30
-                        srs.append('+zone=%d' % zone)
-                        if lat < 0: 
-                            srs.append('+south')
-                else:
-                    if refs[0][1]: # refs are lat/long
-                        # setup a central meridian artificialy to allow charts crossing meridian 180
-                        leftmost=min(refs,key=lambda r: r[0][0])
-                        rightmost=max(refs,key=lambda r: r[0][0])
-                        ld('leftmost',leftmost,'rightmost',rightmost)
-                        if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in srs[0]:
-                            srs.append(' +lon_0=%i' % int(leftmost[1][0]))
+    def get_proj(self):
+        proj_id=self.hdr_parms('Map Projection')[0][1]
+        parm_lst=self.hdr_parms('Projection Setup')[0]
+        try:
+            proj=self.proj_map[proj_id][0:1]
+        except KeyError: 
+            raise Exception("*** Unsupported projection (%s)" % proj_id)
+        if '+proj=' in proj[0]: # overwise assume it already has a full data defined
+            # get projection parameters
+            proj.extend([ i[0]+i[1] for i in zip(self.proj_parms,parm_lst[1:]) 
+                            if i[1].translate(None,'0.')])
+            if '+proj=utm' in proj[0]:
+                if not refs[0][1]: # refs are cartesian with a zone defined
+                    hemisphere=refs[0][3]
+                    utm_zone=int(refs[0][4])
+                    proj.append('+zone=%i' % utm_zone)
+                    if hemisphere != 'N': 
+                        proj.append('+south')
+                else: # refs are lat/long, then find zone, hemisphere
+                    # doesn't seem to have central meridian for UTM
+                    lon,lat=refs[0][1]
+                    zone=(lon + 3 % 360) // 6 + 30
+                    proj.append('+zone=%d' % zone)
+                    if lat < 0: 
+                        proj.append('+south')
+        return proj,proj_id
+
+    def get_datum(self):
         datum_id=self.header[4][0]
-        logging.info(' %s, %s' % (datum_id,proj_id))
-        if options.datum: 
-            srs.append(options.datum)
-        elif datum_id.startswith('Auto Shift'):
-            ld(header[4])
-            dtm=self.get_dtm(header) # get northing, easting to WGS84 if any
-            srs.append('+datum=WGS84')
-        elif not '+proj=' in srs[0]: 
-            pass # assume datum is defined already
-        else:
-            try:
-                datum_def=self.datum_map[datum_id]
-                datum=if_set(datum_def[5]) # PROJ4 datum defined ?
-                if datum:
-                    srs.append(datum)
+        try:
+            datum_def=self.datum_map[datum_id]
+            if datum_def[5]: # PROJ4 datum defined ?
+                datum=[datum_def[5]]
+            else:
+                datum=['+towgs84=%s,%s,%s' % tuple(datum_def[2:5])]               
+                ellps_id=datum_def[1]
+                ellps_def=self.ellps_map[ellps_id]
+                ellps=if_set(ellps_def[2])
+                if ellps:
+                    datum.append(ellps)
                 else:
-                    ellps_id=datum_def[1]
-                    ellps_def=self.ellps_map[ellps_id]
-                    ellps=if_set(ellps_def[2])
-                    if ellps:
-                        srs.append(ellps)
-                    else:
-                        srs.append('+a=%s',ellps_def[0])
-                        srs.append('+rf=%s',ellps_def[1])                        
-                    srs.append('+towgs84=%s,%s,%s' % tuple(datum_def[2:5]))
-            except KeyError: 
-                raise Exception("*** Unsupported datum (%s)" % datum_id)
-        srs.append('+nodefs')
-        ld(srs)
-        return ' '.join(srs),dtm
+                    datum.append('+a=%s',ellps_def[0])
+                    datum.append('+rf=%s',ellps_def[1])                        
+        except KeyError: 
+            raise Exception("*** Unsupported datum (%s)" % datum_id)
+        return datum,datum_id
 
     try_encodings=(locale.getpreferredencoding(),'utf_8','cp1251','cp1252')
 

@@ -141,6 +141,45 @@ class MapTranslator(object):
             split[1]=[(lonlat[0]+dtm[0],lonlat[1]+dtm[1]) for lonlat in split[1]]
             return zip(*split) # repack refs
 
+    def get_srs(self):
+        'returns srs for the map, and DTM shifts if any'
+        options=self.options
+        refs=self.refs
+        dtm=None
+        srs=[]
+        datum_id,proj_id='',''
+        # Get a list of geo refs in tuples
+        if options.srs:
+            return(self.options.srs,None)
+        # evaluate chart's projection
+        if options.proj:
+            srs.append(options.proj)
+        else:
+            srs,proj_id=self.get_proj()
+        # setup a central meridian artificialy to allow charts crossing meridian 180
+        if refs[0][1]: # refs are lat/long
+            leftmost=min(refs,key=lambda r: r[0][0])
+            rightmost=max(refs,key=lambda r: r[0][0])
+            ld('leftmost',leftmost,'rightmost',rightmost)
+            if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in proj:
+                srs.append(' +lon_0=%i' % int(leftmost[1][0]))
+        
+        # evaluate chart's datum
+        if options.datum: 
+            srs.append(options.datum)
+        elif options.force_dtm or options.dtm_shift:
+            dtm=self.get_dtm() # get northing, easting to WGS84 if any
+            srs.append('+datum=WGS84')
+        elif not '+proj=' in srs[0]: 
+            pass # assume datum is defined already
+        else:
+            datum,datum_id=self.get_datum()
+            srs.extend(datum)
+        srs.append('+nodefs')
+        ld(srs)
+        logging.info(' %s, %s' % (datum_id,proj_id))
+        return ' '.join(srs),dtm
+
     def convert(self,dest=None):
         if dest:
             base=os.path.split(dest)[0]

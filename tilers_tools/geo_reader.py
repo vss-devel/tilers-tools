@@ -94,50 +94,26 @@ class GeoNosMap(MapTranslator):
         plys_ll=[(float(i[1]),float(i[0])) for i in self.hdr_parms2list('Vertex')]
         return [((),i) for i in plys_ll]
         
-    def get_srs(self):
-        options=self.options
-        refs=self.refs
-        dtm=None
-        srs=[]
-        if options.srs:
-            return(self.options.srs,refs)
-        if options.proj:
-            srs.append(options.proj)
-        else:
-            proj_id=self.hdr_parms('Projection')[0]
-            #parm_lst=self.hdr_parms('Projection Setup')[0]
-            try:
-                srs.append(self.proj_map[proj_id][0])
-            except KeyError: 
-                raise Exception("*** Unsupported projection (%s)" % proj_id)
-            if '+proj=' in srs[0]: # overwise assume it already has a full data defined
-                # setup a central meridian artificialy to allow charts crossing meridian 180
-                leftmost=min(refs,key=lambda r: r[0][0])
-                rightmost=max(refs,key=lambda r: r[0][0])
-                ld('leftmost',leftmost,'rightmost',rightmost)
-                if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in srs[0]:
-                    srs.append('+lon_0=%i' % int(leftmost[1][0]))
+    def get_proj(self):
+        proj_id=self.hdr_parms('Projection')[0]
+        try:
+            proj=[self.proj_map[proj_id][0]]
+        except KeyError: 
+            raise Exception("*** Unsupported projection (%s)" % proj_id)
+        return proj,proj_id
+
+    def get_datum(self):
         datum_id=self.hdr_parms('Datum')[0]
-        logging.info(' %s, %s' % (datum_id,proj_id))
-        if options.datum: 
-            srs.append(options.datum)
-        elif options.force_dtm or options.dtm_shift:
+        try:
+            datum=self.datum_map[datum_id][0]
+        except KeyError: 
             dtm=self.get_dtm() # get northing, easting to WGS84 if any
-            srs.append('+datum=WGS84')
-        else:
-            try:
-                datum=self.datum_map[datum_id][0]
-                srs.append(datum)
-            except KeyError: 
-                dtm=self.get_dtm() # get northing, easting to WGS84 if any
-                srs.append('+datum=WGS84')
-                if dtm: 
-                    logging.warning(' Unknown datum %s, trying WGS 84 with DTM shifts' % datum_id)
-                else: # assume DTM is 0,0
-                    logging.warning(' Unknown datum %s, trying WGS 84' % datum_id)
-        srs.append('+nodefs')
-        ld(srs)
-        return ' '.join(srs),dtm
+            datum='+datum=WGS84'
+            if dtm: 
+                logging.warning(' Unknown datum %s, trying WGS 84 with DTM shifts' % datum_id)
+            else: # assume DTM is 0,0
+                logging.warning(' Unknown datum %s, trying WGS 84' % datum_id)
+        return datum.split(' '),datum_id
 
     def get_raster(self):
         name_patt=self.hdr_parms('Bitmap')[0].lower()
