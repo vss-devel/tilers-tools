@@ -34,9 +34,9 @@ from optparse import OptionParser
 
 from tiler_functions import *
 
-from bsb_reader import BsbKapMap
-from geo_reader import GeoNosMap
-from ozi_reader import OziMap
+from reader_bsb import BsbKapMap
+from reader_geo import GeoNosMap
+from reader_ozi import OziMap
 
 class_map=(
     BsbKapMap,
@@ -59,7 +59,7 @@ def proc_src(src):
 if __name__=='__main__':
     usage = "usage: %prog <options>... map_file..."
     parser = OptionParser(usage=usage,
-        description="Extends GDAL's builtin support for a few mapping formats: BSB/KAP, GEO/NOS, Ozi map"
+        description="Extends GDAL's builtin support for a few mapping formats: BSB/KAP, GEO/NOS, Ozi map. "
         "The script translates a map file with into GDAL .vrt, optionally producing .gmt shape file for a cutting polygon.")
     parser.add_option("-d", "--debug", action="store_true", dest="debug")
     parser.add_option("-q", "--quiet", action="store_true", dest="quiet")

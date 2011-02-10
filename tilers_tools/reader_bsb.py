@@ -34,10 +34,11 @@ import locale
 from optparse import OptionParser
 
 from tiler_functions import *
-from base_reader import *
+from reader_base import *
 
 class BsbKapMap(MapTranslator):
     magic='KNP/'
+    data_file='reader_bsb_data.csv'
 
     def load_data(self):
         'load datum definitions, ellipses, projections from a file'
@@ -51,7 +52,7 @@ class BsbKapMap(MapTranslator):
             'knp': (self.knp_map,self.ini_map),
             'knq': (self.knq_map,self.ini_map),
             }
-        self.load_csv('bsb_data.csv',csv_map)
+        self.load_csv(self.data_file,csv_map)
             
     def get_header(self): 
         'read map header'

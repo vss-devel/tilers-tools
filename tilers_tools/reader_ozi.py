@@ -34,10 +34,11 @@ import locale
 from optparse import OptionParser
 
 from tiler_functions import *
-from base_reader import *
+from reader_base import *
 
 class OziMap(MapTranslator):
     magic='OziExplorer Map Data File'
+    data_file='reader_ozi_data.csv'
 
     proj_parms=(
         '+lat_0=', # 1. Latitude Origin
@@ -62,7 +63,7 @@ class OziMap(MapTranslator):
             'ellps': (self.ellps_map,self.ini_lst),
             'proj': (self.proj_map,self.ini_lst),
             }
-        self.load_csv('ozi_data.csv',csv_map)
+        self.load_csv(self.data_file,csv_map)
 
     def get_header(self): 
         'read map header'

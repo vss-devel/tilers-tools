@@ -34,11 +34,12 @@ import locale
 from optparse import OptionParser
 
 from tiler_functions import *
-from base_reader import *
+from reader_base import *
 
 class GeoNosMap(MapTranslator):
     magic='[MainChart]'
-
+    data_file='reader_geo_data.csv'
+    
     def load_data(self):
         'load datum definitions, ellipses, projections from a file'
         self.datum_map={}
@@ -47,7 +48,7 @@ class GeoNosMap(MapTranslator):
             'datum': (self.datum_map,self.ini_lst),
             'proj': (self.proj_map,self.ini_lst),
             }
-        self.load_csv('geo_data.csv',csv_map)
+        self.load_csv(self.data_file,csv_map)
 
     def get_header(self): 
         'read map header'
