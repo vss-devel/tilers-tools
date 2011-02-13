@@ -82,19 +82,28 @@ class OziMap(MapTranslator):
         'get a list of geo refs in tuples'
         points=[i for i in self.hdr_parms('Point') if i[2] != ''] # Get a list of geo refs
         if points[0][14] != '': # refs are cartesian
-            refs=[(
+            refs=RefPoints(self,[
+                (i[0],                                  # id
                 (int(i[2]),int(i[3])),                  # pixel
                 (),                                     # lat/long
                 (float(i[14]),float(i[15])),            # cartesian coords
-                i[16],                                  # hemisphere
-                i[13],                                  # utm zone
-                ) for i in points]
+                ) for i in points],
+                extra=(points[0][16],points[0][13]) # hemisphere, utm zone
+                )
         else:
-            refs=[(
+            refs=RefPoints(self,[(i[0],                 # id
                 (int(i[2]),int(i[3])),                  # pixel
                 (dms2dec(*i[9:12]), dms2dec(*i[6:9])),  # lat/long
-                ) for i in points]
+                ) for i in points])
         return refs
+
+    def get_plys(self):
+        'boundary polygon'
+        ply_pix=[(int(i[2]),int(i[3])) for i in self.hdr_parms('MMPXY')]    # Moving Map border pixels
+        ply_ll=[(float(i[2]),float(i[3])) for i in self.hdr_parms('MMPLL')] # Moving Map border lat,lon
+        ids=[i[0] for i in self.hdr_parms('MMPXY')]    # Moving Map border pixels
+        plys=RefPoints(self,ids=ids,pixels=ply_pix,lonlat=ply_ll)
+        return plys
 
     def get_dtm(self):
         'get DTM northing, easting'
@@ -190,14 +199,7 @@ class OziMap(MapTranslator):
                 pass
         ld('ozi_name',ozi_name)
         return ozi_name
-        
-    def get_plys(self):
-        'boundary polygon'
-        ply_ll=[(float(i[2]),float(i[3])) for i in self.hdr_parms('MMPLL')] # Moving Map border lat,lon
-        ply_pix=[(int(i[2]),int(i[3])) for i in self.hdr_parms('MMPXY')]    # Moving Map border pixels
-        plys=zip(ply_pix,ply_ll)
-        ld('plys',plys)
-        return plys
+                
 # OziMap
 
 if __name__=='__main__':

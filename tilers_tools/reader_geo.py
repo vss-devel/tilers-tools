@@ -61,14 +61,16 @@ class GeoNosMap(MapTranslator):
 
     def hdr_parms(self, patt): 
         'filter header for params starting with "patt"'
-        return [i[1] for i in self.header if i[0].startswith(patt)]
+        plen=len(patt)
+        return [('%s %s' % (i[0][plen:],i[1]) if len(i[0]) > plen else i[1])
+                    for i in self.header if i[0].startswith(patt)]
 
     def hdr_parms2list(self, patt):
         return [s.split() for s in self.hdr_parms(patt)]
         
     def get_dtm(self):
         'get DTM northing, easting'
-        dtm_parm=options.dtm_shift
+        dtm_parm=self.options.dtm_shift
         denominator=3600 # seconds if options.dtm_shift
         if dtm_parm is None:
             denominator=1 # degrees otherwise
@@ -83,17 +85,21 @@ class GeoNosMap(MapTranslator):
 
     def get_refs(self):
         'get a list of geo refs in tuples'
-        refs=[(
-            (int(i[3]),int(i[2])),                  # pixel
-            (float(i[0]),float(i[1]))               # lat/long
-            ) for i in self.hdr_parms2list('Point')]
+        refs=RefPoints(self,[(i[0],
+            (int(i[4]),int(i[3])),                  # pixel
+            (float(i[1]),float(i[2]))               # lat/long
+            ) for i in self.hdr_parms2list('Point')])
         ld('refs',refs)
         return refs
 
     def get_plys(self):
         'boundary polygon'
-        plys_ll=[(float(i[1]),float(i[0])) for i in self.hdr_parms2list('Vertex')]
-        return [((),i) for i in plys_ll]
+        plys=RefPoints(self,[(
+            i[0],
+            None,                                   # pixel
+            (float(i[2]),float(i[1]))               # lat/long
+            ) for i in self.hdr_parms2list('Vertex')])
+        return plys
         
     def get_proj(self):
         proj_id=self.hdr_parms('Projection')[0]

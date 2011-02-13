@@ -64,6 +64,81 @@ class Opt(object):
     def __getattr__(self, name):
         return self.dict.setdefault(name,None)
 
+class RefPoints(object):
+    'source geo-reference points and polygons'
+    def __init__(self,owner,ref_lst=None,ids=None,pixels=None,lonlat=None,cartesian=None,extra=None):
+        self.owner=owner
+        self._ids=ids
+        self._pixels=pixels
+        self._lonlat=lonlat
+        self._cartesian=cartesian
+        self._extra=extra
+        if ref_lst:
+            transposed=[i if any(i) else None for i in zip(*ref_lst)]
+            pad=[None]*(4-len(transposed))
+            transposed.extend(pad)
+            self._ids,self._pixels,self._lonlat,self._cartesian=transposed
+
+        items=len(filter(None,(self._pixels,self._lonlat,self._cartesian))[0])
+        if not self._ids:
+            self._ids=map(str,range(1,items+1))
+
+        if items == 2:
+            logging.warning(' Only 2 reference points: assuming the chart is north alligned')
+            for i in (self._pixels,self._lonlat,self._cartesian):
+                if i is not None:
+                    i.append((i[0][0],i[1][1]))
+            self._ids.append('3')
+
+        self._ids=[s.encode('utf-8') for s in self._ids]
+
+    def ids(self):
+        return self._ids
+
+    def pixels(self,geo_transform=None):
+        if self._pixels is None: # in a case of a mere polygon
+            assert geo_transform is not None # must have geo_transform
+            inv_gt=gdal.InvGeoTransform(geo_transform)
+            assert inv_gt[0]
+            self._pixels=[gdal.ApplyGeoTransform(inv_gt[1],x,y) for x,y,z in self.projected()]
+        return self._pixels
+        
+    def projected(self):
+        srs=self.owner.srs
+        if srs.startswith('+proj=latlong'):
+            return self.longlat()
+        if self._cartesian is None:
+            srs_proj = osr.SpatialReference()
+            srs_proj.ImportFromProj4(srs)
+            srs_geo = osr.SpatialReference()
+            srs_geo.ImportFromProj4('+proj=latlong')
+            srs_geo.CopyGeogCSFrom(srs_proj)
+
+            tr=osr.CoordinateTransformation(srs_geo,srs_proj)
+            
+            geo_coords=self.longlat()
+            self._cartesian=tr.TransformPoints(geo_coords)
+            ld('geo_coords',geo_coords,'cartesian',self._cartesian)
+        return self._cartesian
+
+    def longlat(self):
+        dtm=self.owner.dtm
+        lonlat=self._lonlat
+        if not dtm:
+            return lonlat
+        else: # alter refs as per DTM values
+            return [(lon+dtm[0],lat+dtm[1]) for lon,lat in self._lonlat]
+
+    def over_180(self):
+        lonlat=self._lonlat
+        if lonlat: # refs are lat/long
+            leftmost=min(lonlat,key=lambda r: r[0])
+            rightmost=max(lonlat,key=lambda r: r[0])
+            ld('leftmost',leftmost,'rightmost',rightmost)
+            if leftmost[0] > rightmost[0]:
+                return leftmost[0]
+        return None
+        
 class MapTranslator(object):
         
     def __init__(self,src_file,options=None):
@@ -108,23 +183,12 @@ class MapTranslator(object):
         vals=vlst[1::2]
         dct[row[1]]=dict(zip(keys,vals))
 
-    def shift_lonlat(self,refs,dtm):
-        if not dtm:
-            return refs
-        else:
-            # alter refs as per DTM values
-            split=zip(*refs) # split refs
-            split[1]=[(lonlat[0]+dtm[0],lonlat[1]+dtm[1]) for lonlat in split[1]]
-            return zip(*split) # repack refs
-
     def get_srs(self):
         'returns srs for the map, and DTM shifts if any'
         options=self.options
-        refs=self.refs
         dtm=None
         srs=[]
         datum_id,proj_id='',''
-        # Get a list of geo refs in tuples
         if options.srs:
             return(self.options.srs,None)
         # evaluate chart's projection
@@ -132,13 +196,11 @@ class MapTranslator(object):
             srs.append(options.proj)
         else:
             srs,proj_id=self.get_proj()
+
         # setup a central meridian artificialy to allow charts crossing meridian 180
-        if refs[0][1]: # refs are lat/long
-            leftmost=min(refs,key=lambda r: r[0][0])
-            rightmost=max(refs,key=lambda r: r[0][0])
-            ld('leftmost',leftmost,'rightmost',rightmost)
-            if leftmost[1][0] > rightmost[1][0] and '+lon_0=' not in proj:
-                srs.append(' +lon_0=%i' % int(leftmost[1][0]))
+        leftmost=self.refs.over_180()
+        if leftmost and '+lon_0=' not in proj:
+            srs.append(' +lon_0=%i' % int(leftmost))
         
         # evaluate chart's datum
         if options.datum: 
@@ -156,41 +218,10 @@ class MapTranslator(object):
         logging.info(' %s, %s' % (datum_id,proj_id))
         return str(' '.join(srs)),dtm
 
-    def geo2proj(self,proj4_proj,geo_coords):
-        srs_proj = osr.SpatialReference()
-        srs_proj.ImportFromProj4(proj4_proj)
-        srs_geo = osr.SpatialReference()
-        srs_geo.ImportFromProj4('+proj=latlong')
-        srs_geo.CopyGeogCSFrom(srs_proj)
-
-        proj_coords=osr.CoordinateTransformation(srs_geo,srs_proj).TransformPoints(geo_coords)
-        ld('geo_coords',geo_coords,'\nproj_coords',proj_coords)
-        return proj_coords
-
     def convert(self,dest=None):
         options=self.options
         
         gdal.UseExceptions()
-
-        refs=self.shift_lonlat(self.refs,self.dtm)   # as per dtm value
-        if not refs[0][1]: # refs are cartesian with a zone defined
-            refs_proj=[(i[0],i[2]) for i in refs]
-        else: # refs are lat/long
-            if self.srs.startswith('+proj=latlong'):
-                refs_proj=refs
-            else: # reproject coordinates
-                coords_proj=self.geo2proj(self.srs,[i[1] for i in refs])
-                refs_proj=[(ref[0],coord) for ref,coord in zip(refs,coords_proj)]
-        if len(refs) == 2:
-            logging.warning(' Only 2 reference points: assuming the chart is north alligned')
-            refs_proj.append(((refs_proj[0][0][0],refs_proj[1][0][1]),
-                                (refs_proj[0][1][0],refs_proj[1][1][1])))
-        ld('refs_proj',refs_proj)
-        
-        #double x = 0.0, double y = 0.0, double z = 0.0, double pixel = 0.0, 
-        #double line = 0.0, char info = "", char id = ""
-        gcps=[gdal.GCP(r[1][0],r[1][1],0,r[0][0],r[0][1], '','%d'%i)
-                for r,i in zip(refs_proj,range(1,len(refs_proj)+1))]
 
         if dest:
             base=os.path.split(dest)[0]
@@ -216,6 +247,12 @@ class MapTranslator(object):
             dest_drv = gdal.GetDriverByName(out_format)
             dest_ds = dest_drv.CreateCopy(dest_file,src_ds,0)
             dest_ds.SetProjection(self.srs)
+
+            refs=self.refs
+            #double x = 0.0, double y = 0.0, double z = 0.0, double pixel = 0.0, 
+            #double line = 0.0, char info = "", char id = ""
+            gcps=[gdal.GCP(c[0],c[1],0,p[0],p[1], '',i)
+                    for i,p,c in zip(refs.ids(),refs.pixels(),refs.projected())]
             dest_ds.SetGCPs(gcps,self.srs)
             dest_geotr=gdal.GCPsToGeoTransform(gcps)
             dest_ds.SetGeoTransform(dest_geotr)
@@ -241,20 +278,11 @@ class MapTranslator(object):
 '''
 
     def cut_poly(self,dest_ds):
-        plys=self.shift_lonlat(self.get_plys(),self.dtm)   # as per dtm value
+        plys=self.get_plys()
         if not plys:
             return '',''
 
-        # Create cutline
-        lonlat=[i[1] for i in plys]
-        poly_proj=self.geo2proj(self.srs,lonlat) # projected cutline
-        # get cutline pixel coordinates
-        if plys[0][0]: # pixels coordinates available?
-            pix_lst=[i[0] for i in plys]
-        else: # convert cutline coordinates to pixel xy using GDAL's navive srs for this raster
-            inv_gt=gdal.InvGeoTransform(dest_ds.GetGeoTransform())
-            assert inv_gt[0]
-            pix_lst=[gdal.ApplyGeoTransform(inv_gt[1],x,y) for x,y,z in poly_proj]
+        pix_lst=plys.pixels(dest_ds.GetGeoTransform())
 
         # check if the raster really needs cutting
         width=dest_ds.RasterXSize
@@ -264,8 +292,11 @@ class MapTranslator(object):
         if not inside:
             return '',''
 
-        poly='POLYGON((%s))' % ','.join(['%r %r' % tuple(i) for i in pix_lst]) # Create cutline
-        return poly,self.gmt_templ % (self.srs,'\n'.join(['%r %r %r' % tuple(i) for i in poly_proj]))
+        # Create cutline
+        poly_proj=plys.projected()
+        poly_shape=self.gmt_templ % (self.srs,'\n'.join(['%r %r %r' % tuple(i) for i in poly_proj]))
+        poly_wkt='POLYGON((%s))' % ','.join(['%r %r' % tuple(i) for i in pix_lst]) # Create cutline
+        return poly_wkt,poly_shape
 
 # MapTranslator
 

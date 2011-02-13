@@ -105,17 +105,22 @@ class BsbKapMap(MapTranslator):
 
     def get_refs(self):
         'get a list of geo refs in tuples'
-        refs=[(
+        refs=RefPoints(self,[(
+            i[0],
             (int(i[1]),int(i[2])),                  # pixel
             (float(i[4]),float(i[3]))               # lat/long
-            ) for i in self.hdr_parms2list('REF')]
+            ) for i in self.hdr_parms2list('REF')])
         ld('refs',refs)
         return refs
 
     def get_plys(self):
         'boundary polygon'
-        plys_ll=[(float(i[2]),float(i[1])) for i in self.hdr_parms2list('PLY')]
-        return [((),i) for i in plys_ll]
+        plys=RefPoints(self,[(
+            i[0],
+            None,                                   # pixel
+            (float(i[2]),float(i[1]))               # lat/long
+            ) for i in self.hdr_parms2list('PLY')])
+        return plys
         
     def assemble_parms(self,parm_map,parm_info):    
         check_parm=lambda s: (s not in ['NOT_APPLICABLE','UNKNOWN']) and s.replace('0','').replace('.','')
