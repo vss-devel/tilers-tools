@@ -65,6 +65,7 @@ class Opt(object):
         return self.dict.setdefault(name,None)
 
 class MapTranslator(object):
+        
     def __init__(self,src_file,options=None):
         self.options=options
 
@@ -106,46 +107,6 @@ class MapTranslator(object):
         keys=vlst[0::2]
         vals=vlst[1::2]
         dct[row[1]]=dict(zip(keys,vals))
-
-    gmt_templ='''# @VGMT1.0 @GPOLYGON
-# @Jp"%s"
-# FEATURE_DATA
->
-# @P
-%s'''
-
-    def cut_poly(self,dest_ds,lonlat2proj):
-        plys=self.shift_lonlat(self.get_plys(),self.dtm)   # as per dtm value
-        if not plys:
-            return '',''
-
-        # Create cutline
-        dest_geotr=dest_ds.GetGeoTransform()
-
-#        lonlat=''.join(['%r %r\n' % i[1] for i in plys])
-        lonlat=[i[1] for i in plys]
-        if not plys[0][0]: # convert cutline coordinates to pixel xy using GDAL's navive srs for this raster
-#            pix_lines=command(['gdaltransform','-tps','-i','-t_srs','+proj=longlat',out_dataset],
-#                                lonlat).splitlines()
-#            pix_lst=[(int(i[0]),int(i[1])) for i in pix_lines]
-            inv_gt=gdal.InvGeoTransform(dest_geotr)
-            pix_lst=[gdal.ApplyGeoTransform(inv_gt,lon,lat) for lon,lat in lonlat]
-        else:
-            pix_lst=[i[0] for i in plys]
-            pix_lines=['%d %d' % i for i in pix_lst]
-        poly='POLYGON((%s))' % ','.join(pix_lines) # Create cutline
-
-        width=dest_ds.GetRasterXSize
-        height=dest_ds.GetRasterYSize
-        inside=[i for i in pix_lst # check if the polygon is inside the image border
-            if (i[0] > 0 or i[0] < width) or (i[1] > 0 or i[1] < height)]
-        if not inside:
-            return '',''
-
-        # convert cutline geo coordinates to the chart's srs
-        poly_proj=lonlat2proj.TransformPoints(lonlat)
-#        poly_xy=command(['gdaltransform','-tps','-s_srs','+proj=longlat','-t_srs',self.srs],lonlat)
-        return poly,self.gmt_templ % (self.srs,poly_xy)
 
     def shift_lonlat(self,refs,dtm):
         if not dtm:
@@ -195,6 +156,17 @@ class MapTranslator(object):
         logging.info(' %s, %s' % (datum_id,proj_id))
         return str(' '.join(srs)),dtm
 
+    def geo2proj(self,proj4_proj,geo_coords):
+        srs_proj = osr.SpatialReference()
+        srs_proj.ImportFromProj4(proj4_proj)
+        srs_geo = osr.SpatialReference()
+        srs_geo.ImportFromProj4('+proj=latlong')
+        srs_geo.CopyGeogCSFrom(srs_proj)
+
+        proj_coords=osr.CoordinateTransformation(srs_geo,srs_proj).TransformPoints(geo_coords)
+        ld('geo_coords',geo_coords,'\nproj_coords',proj_coords)
+        return proj_coords
+
     def convert(self,dest=None):
         options=self.options
         
@@ -207,21 +179,8 @@ class MapTranslator(object):
             if self.srs.startswith('+proj=latlong'):
                 refs_proj=refs
             else: # reproject coordinates
-#                ll = '\n'.join(['%r %r' % i[1] for i in refs])
-#                refs_out=command(['gdaltransform','-s_srs','+proj=longlat','-t_srs',self.srs], ll)
-#                coord_proj=[map(float,i.split()[:2]) for i in refs_out.splitlines()]
-
-                srs_proj = osr.SpatialReference()
-                srs_proj.ImportFromProj4(self.srs)
-                srs_geo = osr.SpatialReference()
-                srs_geo.ImportFromProj4('+proj=latlong')
-                srs_geo.CopyGeogCSFrom(srs_proj)
-
-                lonlat2proj=osr.CoordinateTransformation(srs_geo,srs_proj)
-                lonlat=[i[1] for i in refs]
-                coord_proj=lonlat2proj.TransformPoints(lonlat)
-                ld('lonlat',lonlat,'\ncoord_proj',coord_proj)
-                refs_proj=[(ref[0],coord) for ref,coord in zip(refs,coord_proj)]
+                coords_proj=self.geo2proj(self.srs,[i[1] for i in refs])
+                refs_proj=[(ref[0],coord) for ref,coord in zip(refs,coords_proj)]
         if len(refs) == 2:
             logging.warning(' Only 2 reference points: assuming the chart is north alligned')
             refs_proj.append(((refs_proj[0][0][0],refs_proj[1][0][1]),
@@ -232,10 +191,6 @@ class MapTranslator(object):
         #double line = 0.0, char info = "", char id = ""
         gcps=[gdal.GCP(r[1][0],r[1][1],0,r[0][0],r[0][1], '','%d'%i)
                 for r,i in zip(refs_proj,range(1,len(refs_proj)+1))]
-                
-#        transl_cmd=['gdal_translate','-of',format,img_path,out_dataset,'-a_srs', self.srs]
-#        if self.options.expand:
-#            transl_cmd=transl_cmd+['-expand',self.options.expand]
 
         if dest:
             base=os.path.split(dest)[0]
@@ -256,6 +211,7 @@ class MapTranslator(object):
             cdir=os.getcwd()
             if dest_dir:
                 os.chdir(dest_dir)
+
             src_ds = gdal.Open(img_path,GA_ReadOnly)
             dest_drv = gdal.GetDriverByName(out_format)
             dest_ds = dest_drv.CreateCopy(dest_file,src_ds,0)
@@ -263,16 +219,53 @@ class MapTranslator(object):
             dest_ds.SetGCPs(gcps,self.srs)
             dest_geotr=gdal.GCPsToGeoTransform(gcps)
             dest_ds.SetGeoTransform(dest_geotr)
-#            poly,gmt_data=self.cut_poly(dest_ds,lonlat2proj)
+
+            poly,gmt_data=self.cut_poly(dest_ds)
             del dest_ds
         finally:
             os.chdir(cdir)
 
-#        if self.options.get_cutline: # print cutline then return
-#            print poly
-#            return
-#        if gmt_data and not self.options.no_cut_file: # create shapefile with a cut polygon
-#            with open(base+'.gmt','w+') as f:
-#                f.write(gmt_data)
+        if self.options.get_cutline: # print cutline then return
+            print poly
+            return
+        if gmt_data and not self.options.no_cut_file: # create shapefile with a cut polygon
+            with open(base+'.gmt','w+') as f:
+                f.write(gmt_data)
+
+    gmt_templ='''# @VGMT1.0 @GPOLYGON
+# @Jp"%s"
+# FEATURE_DATA
+>
+# @P
+%s
+'''
+
+    def cut_poly(self,dest_ds):
+        plys=self.shift_lonlat(self.get_plys(),self.dtm)   # as per dtm value
+        if not plys:
+            return '',''
+
+        # Create cutline
+        lonlat=[i[1] for i in plys]
+        poly_proj=self.geo2proj(self.srs,lonlat) # projected cutline
+        # get cutline pixel coordinates
+        if plys[0][0]: # pixels coordinates available?
+            pix_lst=[i[0] for i in plys]
+        else: # convert cutline coordinates to pixel xy using GDAL's navive srs for this raster
+            inv_gt=gdal.InvGeoTransform(dest_ds.GetGeoTransform())
+            assert inv_gt[0]
+            pix_lst=[gdal.ApplyGeoTransform(inv_gt[1],x,y) for x,y,z in poly_proj]
+
+        # check if the raster really needs cutting
+        width=dest_ds.RasterXSize
+        height=dest_ds.RasterYSize
+        inside=[i for i in pix_lst # check if the polygon is inside the image border
+            if (i[0] > 0 or i[0] < width) or (i[1] > 0 or i[1] < height)]
+        if not inside:
+            return '',''
+
+        poly='POLYGON((%s))' % ','.join(['%r %r' % tuple(i) for i in pix_lst]) # Create cutline
+        return poly,self.gmt_templ % (self.srs,'\n'.join(['%r %r %r' % tuple(i) for i in poly_proj]))
+
 # MapTranslator
 

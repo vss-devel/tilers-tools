@@ -71,8 +71,6 @@ if __name__=='__main__':
         help='give an output file a long name')
     parser.add_option("--get-cutline", action="store_true", 
         help='print cutline polygon from KAP file then exit')
-    parser.add_option("--expand", choices=('gray','rgb','rgba'),
-        help='expose a dataset with 1 band with a color table as a dataset with 3 (RGB) or 4 (RGBA) bands')
     parser.add_option("--no-cut-file", action="store_true", 
         help='do not create a file with a cutline polygon from KAP file')
     parser.add_option("--force-dtm", action="store_true", 
