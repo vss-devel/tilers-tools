@@ -39,6 +39,16 @@ import mmap
 import operator
 import struct
 
+try:
+    from osgeo import gdal
+    from osgeo import osr
+    from osgeo.gdalconst import *
+    gdal.TermProgress = gdal.TermProgress_nocb
+except ImportError:
+    import osr
+    import gdal
+    from gdalconst import *
+
 from tiler_functions import *
 
 #############################
@@ -102,9 +112,9 @@ class TiledTiff(object):
         if not src: 
             src=self.mmap
         #ld(self.order+fmt,src[start:start+len])
-        res=struct.unpack_from(self.order+fmt,src,start)
-        #ld(res)
-        return res
+        r=struct.unpack_from(self.order+fmt,src,start)
+        #ld(r)
+        return r
 
     def tag_in(self,name,tag_dict):
         return self.tag_map[name] in tag_dict
@@ -198,8 +208,8 @@ class BigTiffLE(TiledTiff):
     IFD_cnt_code='Q'
     
     def read_hdr(self):
-        endian,version,plen,res,self.IFD0_ofs=self.unpack('2sHHH'+self.ptr_code,0,8+self.ptr_len)
-        assert plen==self.ptr_len and res==0
+        endian,version,plen,resr,self.IFD0_ofs=self.unpack('2sHHH'+self.ptr_code,0,8+self.ptr_len)
+        assert plen==self.ptr_len and resr==0
 
 class BigTiffBE(BigTiffLE):
     signature='MM\x00+'
@@ -236,6 +246,30 @@ def resampling_lst(): return resampling_map.keys()
 base_resampling_map=('near', 'bilinear','cubic','cubicspline','lanczos')
 
 def base_resampling_lst(): return base_resampling_map
+
+#############################
+#
+# GDAL utility functions
+#
+#############################
+
+
+def srs2srs(proj4_from,proj4_to):
+    srs_proj = osr.SpatialReference()
+    srs_proj.ImportFromProj4(proj4_from)
+    srs_geo = osr.SpatialReference()
+    srs_geo.ImportFromProj4(proj4_to)
+    return osr.CoordinateTransformation(srs_geo,srs_proj)
+
+def wkt2proj4(wkt):
+    srs = osr.SpatialReference()
+    srs.ImportFromWkt(wkt)
+    return srs.ExportToProj4()
+
+def proj4wkt(proj4):
+    srs = osr.SpatialReference()
+    srs.ImportFromProj4(proj4)
+    return srs.ExportToWkt()
     
 #############################
 #
@@ -302,8 +336,8 @@ class Pyramid(object):
 
     def coord2pix(self,zoom,coord):
         'cartesian coordinates to pixel coordinates'
-        c_ul=(coord[0]+self.coord_offset[0],self.coord_offset[1]-coord[1])
-        out=tuple([int(c/r) for c,r in zip(c_ul,self.zoom2res(zoom))])
+        ul_c=(coord[0]+self.coord_offset[0],self.coord_offset[1]-coord[1])
+        out=tuple([int(c/r) for c,r in zip(ul_c,self.zoom2res(zoom))])
         return out
 
     def pix2coord(self,zoom,pix_coord):
@@ -357,10 +391,10 @@ class Pyramid(object):
         return zip(ul_lst,lr_lst)
 
     def corner_tiles(self,zoom):
-        p_ul=self.coord2pix(zoom,self.corners['Upper Left'])
+        p_ul=self.coord2pix(zoom,self.origin)
         t_ul=[zoom]+map(lambda p,ts:(p+1)//ts,p_ul,self.tile_sz)
 
-        p_lr=self.coord2pix(zoom,self.corners['Lower Right'])
+        p_lr=self.coord2pix(zoom,self.extent)
         t_lr=[zoom]+map(lambda p,ts:(p-1)//ts,p_lr,self.tile_sz)
 
         ld('zoom',zoom,'p_ul',p_ul,'p_lr',p_lr,'t_ul',t_ul,'t_lr',t_lr,
@@ -396,10 +430,10 @@ class Pyramid(object):
     def init_map(self,zoom_parm):
         src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
         temp_vrt=os.path.join(self.dest,self.base+'.tmp.vrt') # auxilary VRT file
+        self.src_ds=self.get_src_ds(src_vrt)
 
         # calculate zoom range
         pf('%s -> %s '%(self.src,self.dest),end='')
-        src_alpha,self.src_size=self.src2rgb(src_vrt)
         self.zoom_range=self.calc_zoom(zoom_parm,temp_vrt)
              
         # reproject to base zoom
@@ -410,11 +444,14 @@ class Pyramid(object):
         shifted_srs=self.shift_srs(zoom)
 
         # get origin and corners at the target SRS
-        self.warp(self.src_path,temp_vrt,t_srs=shifted_srs,of='VRT')
-        info=command(['gdalinfo',temp_vrt]).splitlines()
-        self.corners=dict((i,eval(self.info(info,i))) 
-                    for i in ('Upper Left','Lower Left','Upper Right','Lower Right'))
-        shift_x=self.transform([(0,0)],s_srs=shifted_srs,t_srs=self.srs)[0][0]
+        t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
+        t_geotr=t_ds.GetGeoTransform()
+        t_res=(t_geotr[1], -t_geotr[5])
+        self.origin=(t_geotr[0], t_geotr[3])
+        self.extent=gdal.ApplyGeoTransform(t_geotr,t_ds.RasterXSize,t_ds.RasterYSize)
+
+        tr_srs=srs2srs(shifted_srs,self.srs)
+        shift_x=tr_srs.TransformPoint(0,0)[0]
         ld('new_srs',shifted_srs,'shift_x',shift_x,'coord_offset',self.coord_offset)
         if shift_x < 0:
             shift_x+=self.zoom0_tile_dim[0]*2
@@ -422,30 +459,52 @@ class Pyramid(object):
         self.shift_x=shift_x
         self.srs=shifted_srs
 
-        # adjust raster extends to tile boundaries
+        # adjust raster extents to tile boundaries
         tile_ul,tile_lr=self.corner_tiles(zoom)
         ld('tile_ul',tile_ul,'tile_lr',tile_lr)
-        c_ul=self.tile2coord_box(tile_ul)[0]
-        c_lr=self.tile2coord_box(tile_lr)[1]
+        ul_c=self.tile2coord_box(tile_ul)[0]
+        lr_c=self.tile2coord_box(tile_lr)[1]
+        ul_pix=self.tile_corners(tile_ul)[0]
+        lr_pix=self.tile_corners(tile_lr)[1]
+        d_width_pix=lr_pix[0]-ul_pix[0]
+        d_heigth_pix=lr_pix[1]-ul_pix[1]
+        d_res=self.zoom2res(zoom)
+        d_geotr=(ul_c[0],d_res[0],0,
+                 ul_c[1],0,-d_res[1])        
+        
+        ld('Upper Left ',self.origin,ul_c)
+        ld('Lower Right',self.extent,lr_c)
+        ld('coord_offset',self.coord_offset,'ul_c+c_off',map(operator.add,ul_c,self.coord_offset))
+#        ld(self.transform([self.corners['Upper Left'],ul_c,self.corners['Lower Right'],lr_c],
+#            s_srs=self.srs,t_srs=self.latlong))
 
-        ld('Upper Left ',self.corners['Upper Left'],c_ul)
-        ld('Lower Right',self.corners['Lower Right'],c_lr)
-        ld('coord_offset',self.coord_offset,'c_ul+c_off',map(operator.add,c_ul,self.coord_offset))
-        ld(self.transform([self.corners['Upper Left'],c_ul,self.corners['Lower Right'],c_lr],
-            s_srs=self.srs,t_srs=self.latlong))
+        drv = gdal.GetDriverByName( 'GTiff' )
+        temp_tif=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % zoom) # img for the base zoom
+        dst_ds=drv.Create(temp_tif,d_width_pix,d_heigth_pix,4,gdal.GDT_Byte,[
+			'TILED=YES',
+            'INTERLEAVE=BAND',
+            'BLOCKXSIZE=%i' % self.tile_sz[0],
+            'BLOCKYSIZE=%i' % self.tile_sz[1],
+            ])
+        dst_ds.SetProjection(proj4wkt(self.srs))
+        dst_ds.SetGeoTransform(d_geotr)
+        pf('!!!')
+        r=gdal.ReprojectImage(self.src_ds,dst_ds)
+        pf('r',r)
 
-        res=self.zoom2res(zoom)
-        temp_tif=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % zoom) # img of the base zoom
+#        del dst_ds
 
-        warp_parms=['-multi', #'--debug','on',
-            '-wm','256','--config','GDAL_CACHEMAX','100',
-            '-r',self.base_resampling, 
-            '-co','INTERLEAVE=BAND',
-			'-co','TILED=YES',
-            '-co','BLOCKXSIZE=%i' % self.tile_sz[0],
-            '-co','BLOCKYSIZE=%i' % self.tile_sz[1],
-            ]
-        if not src_alpha: # create alpha channel
+        sys.exit(1)
+
+#        warp_parms=['-multi', #'--debug','on',
+#            '-wm','256','--config','GDAL_CACHEMAX','100',
+#            '-r',self.base_resampling, 
+#            '-co','INTERLEAVE=BAND',
+#			'-co','TILED=YES',
+#            '-co','BLOCKXSIZE=%i' % self.tile_sz[0],
+#            '-co','BLOCKYSIZE=%i' % self.tile_sz[1],
+#            ]
+        if t_ds.RasterCount < 4: # create alpha channel
             warp_parms+=['-dstalpha']
         if options.no_data:
             nodata=' '.join(options.no_data.split(','))
@@ -466,7 +525,7 @@ class Pyramid(object):
         pf('...',end='')
         self.warp(self.src_path, temp_tif, *warp_parms,
             t_srs=self.srs, of='GTiff', tr=res,
-            te=(c_ul[0],c_lr[1],c_lr[0],c_ul[1]) # xmin ymin xmax ymax
+            te=(ul_c[0],lr_c[1],lr_c[0],ul_c[1]) # xmin ymin xmax ymax
             )
         pf('.',end='')
         # create base_image raster
@@ -480,17 +539,25 @@ class Pyramid(object):
 
     def shift_srs(self,zoom=None):
         'change prime meridian to allow charts crossing 180 meridian'
-        src_ul,src_lr=self.transform([(0,0),self.src_size],src=self.src_path,t_srs=self.latlong)
-        if src_ul[0] < src_lr[0]:
-            return self.srs
-        left_lon=int(math.floor(src_ul[0]))
-        left_x=self.transform([(left_lon,0)],s_srs=self.latlong,t_srs=self.srs)[0]
+        t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(self.latlong))
+        tr_pix_ll=gdal.Transformer(t_ds,None,[])
+        ok,ul=tr_pix_ll.TransformPoint(0,0,0)
+        ok,lr=tr_pix_ll.TransformPoint(t_ds.RasterXSize,t_ds.RasterYSize,0)
+        ld('ul',ul,'lr',lr)
+#        if ul[0] < lr[0]:
+#            return self.srs
+
+        left_lon=int(math.floor(ul[0]))
+        tr_srs=srs2srs(self.latlong,self.srs)
+        left_xy=tr_srs.TransformPoint(left_lon,0)
         if zoom is not None: # adjust to a tile boundary
-            left_x=self.tile2coord_box(self.coord2tile(zoom,left_x))[0]
+            left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
+
+        tr_srs=srs2srs(self.srs,self.latlong)
         new_pm=int(math.floor(
-                self.transform([left_x],s_srs=self.srs,t_srs=self.latlong)[0][0]
+                tr_srs.TransformPoint(*left_xy)[0]
                 ))#-180
-        ld('src_ul',src_ul,'src_lr',src_lr,'left_x',left_x,'new_pm',new_pm)
+        ld('left_xy',left_xy,'new_pm',new_pm)
         return '%s +lon_0=%d' % (self.srs,new_pm)
 
     def calc_zoom(self,zoom_parm,temp_vrt):
@@ -501,15 +568,17 @@ class Pyramid(object):
             # modify target srs to allow charts crossing meridian 180
             ld('"automatic" zoom levels')
             shifted_srs=self.shift_srs()
-            self.warp(self.src_path,temp_vrt,t_srs=shifted_srs,of='VRT')
-            info=command(['gdalinfo',temp_vrt]).splitlines()
-            corners=dict((i,eval(self.info(info,i))) for i in ('Upper Left','Lower Left','Upper Right','Lower Right'))
-            r=eval(self.info(info,'Pixel Size =')) # 'natural' resolution
-            res=(r[0],-r[1])
 
+            t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
+            geotr=t_ds.GetGeoTransform()
+            res=(geotr[1], -geotr[5])
             max_zoom=max(self.res2zoom_xy(res))
+
             # calculate min_zoom
-            wh=map(lambda ur,ll: ur-ll,corners['Upper Right'],corners['Lower Left'])
+            ul_c=(geotr[0], geotr[3])
+            lr_c=gdal.ApplyGeoTransform(geotr,t_ds.RasterXSize,t_ds.RasterYSize)
+            wh=(lr_c[0]-ul_c[0],ul_c[1]-lr_c[1])
+            ld(ul_c,lr_c,wh)
             min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_sz[i]for i in (0,1)]))
             zoom_parm='%d-%d'%(min_zoom,max_zoom)
         zchunks=[map(int,z.split('-')) for z in zoom_parm.split(',')]
@@ -521,33 +590,80 @@ class Pyramid(object):
                 zrange+=range(min(z),max(z)+1)
         zoom_range=list(reversed(sorted(set(zrange))))
         ld(('res',res,'zoom_range',zoom_range,'z0 (0,0)',self.coord2pix(0,(0,0))))
+#        sys.exit(1)
         return zoom_range
 
-    def src2rgb(self,src_vrt):
-        'convert src raster to RGB(A) if required'
+    def get_src_ds(self,src_vrt):
+        'get src dataset, convert to RGB(A) if required'
         if os.path.exists(self.src):
             self.src_path=os.path.abspath(self.src)
         # check for source raster type
-        src_alpha=False
-        src_info=command(['gdalinfo',self.src]).splitlines()
-        size=map(int,self.info(src_info,'Size is ').split(','))
-                
-        try: # this is rather durty
-            self.info(src_info,'Color Table') # exception otherwise
-            # check for transparency
-            if any([i.split(',')[-1].strip()!='255' for i in src_info if ':0,0,0,' in i]):
-                src_alpha=True
-            expand='rgba' if src_alpha else 'rgb'
-            # convert to RGB(A), otherwise resampling is horrible
-            command(['gdal_translate','-of','VRT','-expand',expand,self.src_path,src_vrt])
-            self.src_path=os.path.abspath(src_vrt)
-        except: 
-            try:
-                self.info(src_info,'Band 4') # exception otherwise
-                src_alpha=True
-            except:
-                pass
-        return src_alpha,size
+#        src_info=command(['gdalinfo',self.src]).splitlines()
+#        size=map(int,self.info(src_info,'Size is ').split(','))
+        
+        src_ds=gdal.Open(self.src_path,GA_ReadOnly)
+        nbands=src_ds.RasterCount
+        if nbands >= 3:
+            return src_ds
+
+        # convert to rgb VRT
+        assert nbands == 1
+        xsize,ysize=(src_ds.RasterXSize,src_ds.RasterYSize)
+        ds_proj=wkt2proj4(src_ds.GetProjection())
+
+        geotr=src_ds.GetGeoTransform()
+        vrt_geotr=self.geotr_templ % geotr if geotr else ''
+
+        vrt_gcplst=''
+        gcps=src_ds.GetGCPs()
+        if gcps:
+            vrt_gcps=''.join((self.gcp_templ % (g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) 
+                                for g in gcps))
+            gcp_proj=wkt2proj4(src_ds.GetGCPProjection())
+            vrt_gcplst=self.gcplst_templ % (gcp_proj,vrt_gcps)
+
+        vrt_bands=''.join((self.band_templ % {
+            'band':     band,
+            'color':    color,
+            'src':      self.src_path,
+            'xsize':    xsize,
+            'ysize':    ysize,
+            } for band,color in ((1,'Red'),(2,'Green'),(3,'Blue'))))
+        vrt_text=self.vrt_templ % {
+            'xsize':    xsize,
+            'ysize':    ysize,
+            'srs':      ds_proj,
+            'geotr':    vrt_geotr,
+            'gcp_list': vrt_gcplst,
+            'band_list':vrt_bands,
+            }
+        if options.verbose >= 2:
+            self.src_path=src_vrt
+            with open(src_vrt,'w') as f:
+                f.write(vrt_text)
+
+        src_ds=gdal.Open(vrt_text,GA_ReadOnly)
+        return src_ds
+
+    gcp_templ='    <GCP Id="%s" Pixel="%r" Line="%r" X="%r" Y="%r" Z="%r"/>\n'
+    gcplst_templ='  <GCPList Projection="%s">\n%s  </GCPList>\n'
+    geotr_templ='  <GeoTransform>  %r,  %r,  %r,  %r,  %r,  %r</GeoTransform>\n'
+    band_templ='''  <VRTRasterBand dataType="Byte" band="%(band)d">
+    <ColorInterp>%(color)s</ColorInterp>
+    <ComplexSource>
+      <SourceFilename relativeToVRT="0">%(src)s</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SourceProperties RasterXSize="%(xsize)d" RasterYSize="%(ysize)d" DataType="Byte" BlockXSize="128" BlockYSize="128"/>
+      <SrcRect xOff="0" yOff="0" xSize="%(xsize)d" ySize="%(ysize)d"/>
+      <DstRect xOff="0" yOff="0" xSize="%(xsize)d" ySize="%(ysize)d"/>
+      <ColorTableComponent>%(band)d</ColorTableComponent>
+    </ComplexSource>
+  </VRTRasterBand>
+'''
+    vrt_templ='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d">
+  <SRS>%(srs)s</SRS>
+%(geotr)s%(gcp_list)s%(band_list)s</VRTDataset>
+'''
 
     #############################
     #
@@ -781,7 +897,7 @@ class Gmaps(Pyramid):
     #srs='epsg:900913' # Google Maps Global Mercator
     #srs='epsg:3857' # Google Maps Global Mercator
     srs='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext' # Google Maps Global Mercator
-    latlong='+proj=latlong +datum=WGS84'
+    latlong='+proj=latlong +a=6378137 +b=6378137  +nadgrids=@null +wktext'
     
     def init_tiles(self):
         # Half Equator length in meters
@@ -792,7 +908,7 @@ class Gmaps(Pyramid):
         ld(self.transform([[semi_circ,semi_circ]],t_srs=self.latlong,s_srs=self.srs)[0])
 
     def make_googlemaps(self):
-        ul,lr=self.boxes2latlong([(self.corners['Upper Left'],self.corners['Lower Right'])])[0]
+        ul,lr=self.boxes2latlong([(self.origin,self.extent)])[0]
         googlemaps = google_templ % dict(
             title=      os.path.basename(self.dest),
             longlat_ll= '%s, %s' % (lr[1],ul[0]),
