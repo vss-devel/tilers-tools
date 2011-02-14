@@ -98,9 +98,9 @@ class RefPoints(object):
     def pixels(self,geo_transform=None):
         if self._pixels is None: # in a case of a mere polygon
             assert geo_transform is not None # must have geo_transform
-            inv_gt=gdal.InvGeoTransform(geo_transform)
-            assert inv_gt[0]
-            self._pixels=[gdal.ApplyGeoTransform(inv_gt[1],x,y) for x,y,z in self.projected()]
+            ok,inv_gt=gdal.InvGeoTransform(geo_transform)
+            assert ok
+            self._pixels=[gdal.ApplyGeoTransform(inv_gt,x,y) for x,y,z in self.projected()]
         return self._pixels
         
     def projected(self):
@@ -143,6 +143,7 @@ class MapTranslator(object):
         
     def __init__(self,src_file,options=None):
         self.options=options
+        gdal.UseExceptions()
 
         self.load_data() # load datum definitions, ellipses, projections
         self.map_file=src_file.decode(locale.getpreferredencoding(),'ignore')
@@ -221,8 +222,6 @@ class MapTranslator(object):
     def convert(self,dest=None):
         options=self.options
         
-        gdal.UseExceptions()
-
         if dest:
             base=os.path.split(dest)[0]
         else:
