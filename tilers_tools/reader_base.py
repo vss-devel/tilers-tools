@@ -47,14 +47,14 @@ except ImportError:
 def dms2dec(degs='0',mins='0',ne='E',sec='0'):
     return (float(degs)+float(mins)/60+float(sec)/3600)*(-1 if ne in ('W','S') else 1 )
 
-def dest_path(src,dest_dir,ext='',template='%s'):
+def dst_path(src,dst_dir,ext='',template='%s'):
     src_dir,src_file=os.path.split(src)
     base,sext=os.path.splitext(src_file)
     dest=(template % base)+ext
-    if not dest_dir:
-        dest_dir=src_dir
-    if dest_dir:
-        dest='%s/%s' % (dest_dir,dest)
+    if not dst_dir:
+        dst_dir=src_dir
+    if dst_dir:
+        dest='%s/%s' % (dst_dir,dest)
     ld(base,dest)
     return dest
 
@@ -228,36 +228,36 @@ class MapTranslator(object):
             name_patt=self.map_file
             if options.as_image:
                 name_patt=self.img_file
-            base=dest_path(name_patt,self.options.dest_dir)
+            base=dst_path(name_patt,self.options.dst_dir)
             if options.long_name:
                 base+=' - '+self.name
-        dest_dir=os.path.split(base)[0]
+        dst_dir=os.path.split(base)[0]
         out_format='VRT'
         ext='.'+out_format.lower()
-        dest_file= os.path.basename(base+ext).encode('utf-8') # output file
-        img_path=os.path.relpath(self.img_file,dest_dir).encode('utf-8')
+        dst_file= os.path.basename(base+ext).encode('utf-8') # output file
+        img_path=os.path.relpath(self.img_file,dst_dir).encode('utf-8')
 
         try:
             cdir=os.getcwd()
-            if dest_dir:
-                os.chdir(dest_dir)
+            if dst_dir:
+                os.chdir(dst_dir)
 
             src_ds = gdal.Open(img_path,GA_ReadOnly)
-            dest_drv = gdal.GetDriverByName(out_format)
-            dest_ds = dest_drv.CreateCopy(dest_file,src_ds,0)
-            dest_ds.SetProjection(self.srs)
+            dst_drv = gdal.GetDriverByName(out_format)
+            dst_ds = dst_drv.CreateCopy(dst_file,src_ds,0)
+            dst_ds.SetProjection(self.srs)
 
             refs=self.refs
             #double x = 0.0, double y = 0.0, double z = 0.0, double pixel = 0.0, 
             #double line = 0.0, char info = "", char id = ""
             gcps=[gdal.GCP(c[0],c[1],0,p[0],p[1], '',i)
                     for i,p,c in zip(refs.ids(),refs.pixels(),refs.projected())]
-            dest_ds.SetGCPs(gcps,self.srs)
-            dest_geotr=gdal.GCPsToGeoTransform(gcps)
-            dest_ds.SetGeoTransform(dest_geotr)
+            dst_ds.SetGCPs(gcps,self.srs)
+            dst_geotr=gdal.GCPsToGeoTransform(gcps)
+            dst_ds.SetGeoTransform(dst_geotr)
 
-            poly,gmt_data=self.cut_poly(dest_ds)
-            del dest_ds
+            poly,gmt_data=self.cut_poly(dst_ds)
+            del dst_ds
         finally:
             os.chdir(cdir)
 
@@ -276,16 +276,16 @@ class MapTranslator(object):
 %s
 '''
 
-    def cut_poly(self,dest_ds):
+    def cut_poly(self,dst_ds):
         plys=self.get_plys()
         if not plys:
             return '',''
 
-        pix_lst=plys.pixels(dest_ds.GetGeoTransform())
+        pix_lst=plys.pixels(dst_ds.GetGeoTransform())
 
         # check if the raster really needs cutting
-        width=dest_ds.RasterXSize
-        height=dest_ds.RasterYSize
+        width=dst_ds.RasterXSize
+        height=dst_ds.RasterYSize
         inside=[i for i in pix_lst # check if the polygon is inside the image border
             if (i[0] > 0 or i[0] < width) or (i[1] > 0 or i[1] < height)]
         if not inside:
