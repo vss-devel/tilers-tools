@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-01-25 18:01:06 
+# 2011-02-16 17:05:10  
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -245,9 +245,20 @@ resampling_map={
     }
 def resampling_lst(): return resampling_map.keys()
     
-base_resampling_map=('near', 'bilinear','cubic','cubicspline','lanczos')
+base_resampling_map={
+    'near':         'NearestNeighbour', 
+    'bilinear':     'Bilinear',
+    'cubic':        'Cubic',
+    'cubicspline':  'CubicSpline',
+    'lanczos':      'Lanczos',
+    }
 
-def base_resampling_lst(): return base_resampling_map
+def base_resampling_lst(): return base_resampling_map.keys()
+
+def xml_elm(elm_name,elm_value=None,elm_indent=0,**attr):
+    attr_txt=''.join((' %s="%s"' % (key,attr[key]) for key in attr))
+    val_txt=('>%s</%s' % (elm_value,elm_name)) if elm_value else '/'
+    return '%s<%s%s%s>' % (' '*elm_indent,elm_name,attr_lst,val_txt)
 
 #############################
 #
@@ -255,13 +266,12 @@ def base_resampling_lst(): return base_resampling_map
 #
 #############################
 
-
-def srs2srs(proj4_from,proj4_to):
-    srs_proj = osr.SpatialReference()
-    srs_proj.ImportFromProj4(proj4_from)
-    srs_geo = osr.SpatialReference()
-    srs_geo.ImportFromProj4(proj4_to)
-    return osr.CoordinateTransformation(srs_geo,srs_proj)
+def srs2srs(proj4_src,proj4_dst):
+    srs_src = osr.SpatialReference()
+    srs_src.ImportFromProj4(proj4_src)
+    srs_dst = osr.SpatialReference()
+    srs_dst.ImportFromProj4(proj4_dst)
+    return osr.CoordinateTransformation(srs_src,srs_dst)
 
 def wkt2proj4(wkt):
     srs = osr.SpatialReference()
@@ -272,6 +282,97 @@ def proj4wkt(proj4):
     srs = osr.SpatialReference()
     srs.ImportFromProj4(proj4)
     return srs.ExportToWkt()
+
+#############################
+#
+# templates for VRT XML
+#
+#############################
+
+#    <WarpMemoryLimit>2.68435e+08</WarpMemoryLimit>
+warp_vrt='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d" subClass="VRTWarpedDataset">
+  <SRS>%(srs)s</SRS>
+%(geotr)s%(band_list)s
+  <BlockXSize>%(blxsize)d</BlockXSize>
+  <BlockYSize>%(blysize)d</BlockYSize>
+  <GDALWarpOptions>
+    <ResampleAlg>%(wo_ResampleAlg)s</ResampleAlg>
+    <WorkingDataType>Byte</WorkingDataType>
+    <SourceDataset relativeToVRT="0">%(wo_src_path)s</SourceDataset>
+%(warp_options)s
+    <Transformer>
+      <ApproxTransformer>
+        <MaxError>0.125</MaxError>
+        <BaseTransformer>
+          <GenImgProjTransformer>
+%(wo_src_transform)s
+%(wo_dst_transform)s
+            <ReprojectTransformer>
+              <ReprojectionTransformer>
+                <SourceSRS>%(wo_src_srs)s</SourceSRS>
+                <TargetSRS>%(wo_dst_srs)s</TargetSRS>
+              </ReprojectionTransformer>
+            </ReprojectTransformer>
+          </GenImgProjTransformer>
+        </BaseTransformer>
+      </ApproxTransformer>
+    </Transformer>
+    <BandList>
+%(wo_BandList)s
+    </BandList>
+%(wo_DstAlphaBand)s%(wo_Cutline)s  </GDALWarpOptions>
+</VRTDataset>
+'''
+warp_band='  <VRTRasterBand dataType="Byte" band="%d" subClass="VRTWarpedRasterBand"%s>'
+warp_band_color='>\n    <ColorInterp>%s</ColorInterp>\n  </VRTRasterBand'
+warp_dst_alpha_band='    <DstAlphaBand>4</DstAlphaBand>\n'
+warp_cutline='    <Cutline>%s</Cutline>\n'
+warp_dst_geotr= '            <DstGeoTransform> %r, %r, %r, %r, %r, %r</DstGeoTransform>'
+warp_dst_igeotr='            <DstInvGeoTransform> %r, %r, %r, %r, %r, %r</DstInvGeoTransform>'
+warp_src_geotr= '            <SrcGeoTransform> %r, %r, %r, %r, %r, %r</SrcGeoTransform>'
+warp_src_igeotr='            <SrcInvGeoTransform> %r, %r, %r, %r, %r, %r</SrcInvGeoTransform>'
+warp_band_mapping='      <BandMapping src="%d" dst="%d"%s>'
+warp_band_mapping_nodata='''>
+        <SrcNoDataReal>%d</SrcNoDataReal>
+        <SrcNoDataImag>%d</SrcNoDataImag>
+      </BandMapping'''
+warp_src_gcp_transformer='''            <SrcGCPTransformer>
+              <GCPTransformer>
+                <Order>%d</Order>
+                <Reversed>0</Reversed>
+                <GCPList>
+%s
+                </GCPList>
+              </GCPTransformer>
+            </SrcGCPTransformer>'''
+warp_src_tps_transformer='''            <SrcTPSTransformer>
+              <TPSTransformer>
+                <Reversed>0</Reversed>
+                <GCPList>
+%s
+                </GCPList>
+              </TPSTransformer>
+            </SrcTPSTransformer>'''
+
+gcp_templ='    <GCP Id="%s" Pixel="%r" Line="%r" X="%r" Y="%r" Z="%r"/>'
+gcplst_templ='  <GCPList Projection="%s">\n%s\n  </GCPList>\n'
+geotr_templ='  <GeoTransform> %r, %r, %r, %r, %r, %r</GeoTransform>\n'
+band_templ='''  <VRTRasterBand dataType="Byte" band="%(band)d">
+    <ColorInterp>%(color)s</ColorInterp>
+    <ComplexSource>
+      <SourceFilename relativeToVRT="0">%(src)s</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SourceProperties RasterXSize="%(xsize)d" RasterYSize="%(ysize)d" DataType="Byte" BlockXSize="%(blxsize)d" BlockYSize="%(blysize)d"/>
+      <SrcRect xOff="0" yOff="0" xSize="%(xsize)d" ySize="%(ysize)d"/>
+      <DstRect xOff="0" yOff="0" xSize="%(xsize)d" ySize="%(ysize)d"/>
+      <ColorTableComponent>%(band)d</ColorTableComponent>
+    </ComplexSource>
+  </VRTRasterBand>
+'''
+vrt_templ='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d">
+  <SRS>%(srs)s</SRS>
+%(geotr)s%(gcp_list)s%(band_list)s</VRTDataset>
+'''
     
 #############################
 #
@@ -293,9 +394,322 @@ class Pyramid(object):
         if os.path.isdir(self.dest):
             shutil.rmtree(self.dest,ignore_errors=True)
         os.makedirs(self.dest)
-        self.base_resampling=base_resampling
+        self.base_resampling=base_resampling_map[base_resampling]
         self.resampling=resampling_map[resampling]
         self.init_map(zoom_parm)
+
+    #############################
+    #
+    # initialize geo-parameters and generate base zoom level
+    #
+    #############################
+
+    def init_map(self,zoom_parm):
+#        options=self.options
+        src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
+        temp_vrt=os.path.join(self.dest,self.base+'.tmp.vrt') # auxilary VRT file
+        self.src_ds=self.get_src_ds(src_vrt)
+
+        # calculate zoom range
+        pf('%s -> %s '%(self.src,self.dest),end='')
+        self.zoom_range=self.calc_zoom(zoom_parm,temp_vrt)
+             
+        # reproject to base zoom
+        zoom=self.zoom_range[0]
+        #
+        # extend the raster to cover full tiles
+        ld("extend the raster")
+        shifted_srs=self.shift_srs(zoom)
+
+        # get origin and corners at the target SRS
+        t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
+#        dst_drv = gdal.GetDriverByName('VRT')
+#        dst_drv.CreateCopy(os.path.join(self.dest,self.base+'.tmp_warp.vrt'),t_ds,0)
+
+        t_geotr=t_ds.GetGeoTransform()
+        t_res=(t_geotr[1], -t_geotr[5])
+        self.origin=(t_geotr[0], t_geotr[3])
+        self.extent=gdal.ApplyGeoTransform(t_geotr,t_ds.RasterXSize,t_ds.RasterYSize)
+
+        tr_srs=srs2srs(shifted_srs,self.proj)
+        shift_x=tr_srs.TransformPoint(0,0)[0]
+        ld('new_srs',shifted_srs,'shift_x',shift_x,'coord_offset',self.coord_offset)
+        if shift_x < 0:
+            shift_x+=self.zoom0_tile_dim[0]*2
+        self.coord_offset[0]+=shift_x
+        self.shift_x=shift_x
+        self.proj=shifted_srs
+
+        # adjust raster extents to tile boundaries
+        tile_ul,tile_lr=self.corner_tiles(zoom)
+        ld('tile_ul',tile_ul,'tile_lr',tile_lr)
+        ul_c=self.tile2coord_box(tile_ul)[0]
+        lr_c=self.tile2coord_box(tile_lr)[1]
+        ul_pix=self.tile_corners(tile_ul)[0]
+        lr_pix=self.tile_corners(tile_lr)[1]
+        xsize=lr_pix[0]-ul_pix[0]
+        ysize=lr_pix[1]-ul_pix[1]
+        res=self.zoom2res(zoom)
+        geotr=( ul_c[0], res[0],     0.0,
+                ul_c[1],    0.0, -res[1] )
+        ok,igeotr=gdal.InvGeoTransform(geotr)
+        assert ok
+        
+        ld('Upper Left ',self.origin,ul_c)
+        ld('Lower Right',self.extent,lr_c)
+        ld('coord_offset',self.coord_offset,'ul_c+c_off',map(operator.add,ul_c,self.coord_offset))
+
+        def w_option(name,value):
+            return '    <Option name="%s">%s</Option>' % (name,value)
+            
+        warp_options=[]
+        warp_options.append(w_option('INIT_DEST','0'))
+
+        if options.cut:
+            cut_wkt=self.cut_line()
+        else:
+            cut_wkt=None
+        if cut_wkt:
+            warp_options.append(w_option('CUTLINE',cut_wkt))
+            if options.blend_dist:
+                warp_options.append(w_option('CUTLINE_BLEND_DIST',options.blend_dist))
+
+        nodata=None
+        if options.no_data:
+            nodata=options.no_data.split(',')
+            warp_options.append(w_option('UNIFIED_SRC_NODATA','YES'))
+
+        src_bands=self.src_ds.RasterCount
+        assert src_bands in (3,4)
+        vrt_bands=[]
+        wo_BandList=[]
+        for i in range(1,src_bands+1):
+            vrt_bands.append(warp_band % (i,'/'))
+            wo_BandList.append(warp_band_mapping % (i,i,
+                (warp_band_mapping_nodata % (nodata[i],0)) if nodata else '/'))
+
+        if src_bands < 4:
+            vrt_bands.append(warp_band % (i+1,warp_band_color % 'Alpha'))
+
+        dst_transform='%s\n%s' % (warp_dst_geotr % geotr,warp_dst_igeotr % igeotr)
+        src_geotr=self.src_ds.GetGeoTransform()
+        if src_geotr and src_geotr != (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
+            ok,src_igeotr=gdal.InvGeoTransform(src_geotr)
+            assert ok
+            src_transform='%s\n%s' % (warp_src_geotr % src_geotr,warp_src_igeotr % src_igeotr)
+        else:
+            gcps=self.src_ds.GetGCPs()
+            assert gcps, ' Neither geotransform, nor gpcs are in the source file %s' % self.src
+            gcp_lst='\n'.join((gcp_templ % (g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) for g in gcps))
+            #src_transform=warp_src_gcp_transformer % (0,gcp_lst)
+            src_transform=warp_src_tps_transformer % gcp_lst
+
+        block_sz=self.src_ds.GetRasterBand(1).GetBlockSize()
+
+        vrt_text=warp_vrt % {
+            'xsize':            xsize,
+            'ysize':            ysize,
+            'srs':              self.proj,
+            'geotr':            geotr_templ % geotr,
+            'band_list':        '\n'.join(vrt_bands),
+            'blxsize':          block_sz[0],
+            'blysize':          block_sz[1],
+            'wo_ResampleAlg':   self.base_resampling,
+            'wo_src_path':      self.src_path,
+            'warp_options':     '\n'.join(warp_options),
+            'wo_src_srs':       self.src_srs,
+            'wo_dst_srs':       self.proj,
+            'wo_src_transform': src_transform,
+            'wo_dst_transform': dst_transform,
+            'wo_BandList':      '\n'.join(wo_BandList),
+            'wo_DstAlphaBand':  warp_dst_alpha_band if src_bands < 4 else '',
+            'wo_Cutline':       (warp_cutline % cut_wkt) if cut_wkt else '',
+            }
+
+        with open(temp_vrt,'w') as f:
+            f.write(vrt_text)
+
+        t_ds = gdal.Open(vrt_text,GA_ReadOnly)
+        # create Gtiff
+        pf('...',end='')
+        dst_drv = gdal.GetDriverByName('Gtiff')
+        temp_tif=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % zoom) # img for the base zoom
+            
+        dst_ds = dst_drv.CreateCopy(temp_tif,t_ds,0,[
+			'TILED=YES',
+            'INTERLEAVE=BAND',
+            'BLOCKXSIZE=%i' % self.tile_sz[0],
+            'BLOCKYSIZE=%i' % self.tile_sz[1],
+            ])#, gdal.TermProgress)
+        del dst_ds
+        pf('.',end='')
+
+        # create base_image raster
+        self.base_img=BaseImg(temp_tif,tile_ul[1:],tile_lr[1:])
+
+        if options.verbose < 2:
+            try:
+                os.remove(temp_vrt)
+                os.remove(src_vrt)
+            except: pass
+
+    def get_src_ds(self,src_vrt):
+        'get src dataset, convert to RGB(A) if required'
+        if os.path.exists(self.src):
+            self.src_path=os.path.abspath(self.src)
+
+        # check for source raster type
+        src_ds=gdal.Open(self.src_path,GA_ReadOnly)
+        src_bands=src_ds.RasterCount
+        if src_bands >= 3:
+            return src_ds
+
+        # convert to rgb VRT
+        assert src_bands == 1
+        xsize,ysize=(src_ds.RasterXSize,src_ds.RasterYSize)
+        src_srs=wkt2proj4(src_ds.GetProjection())
+
+        src_geotr=src_ds.GetGeoTransform()
+        ld('src geotr',src_geotr)
+        if not src_geotr or src_geotr == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
+            geotr_elm=''
+        else:
+            geotr_elm=self.geotr_templ % src_geotr
+
+        gcplst_elm=''
+        gcps=src_ds.GetGCPs()
+        if gcps:
+            gcp_lst='\n'.join((gcp_templ % (g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) 
+                                for g in gcps))
+            gcp_proj=wkt2proj4(src_ds.GetGCPProjection())
+            gcplst_elm=gcplst_templ % (gcp_proj,gcp_lst)
+
+        block_sz=src_ds.GetRasterBand(1).GetBlockSize()
+        band_lst=''.join((band_templ % {
+            'band':     band,
+            'color':    color,
+            'src':      self.src_path,
+            'xsize':    xsize,
+            'ysize':    ysize,
+            'blxsize':    block_sz[0],
+            'blysize':    block_sz[1],
+            } for band,color in ((1,'Red'),(2,'Green'),(3,'Blue'))))
+        vrt_text=vrt_templ % {
+            'xsize':    xsize,
+            'ysize':    ysize,
+            'srs':      src_srs,
+            'geotr':    geotr_elm,
+            'gcp_list': gcplst_elm,
+            'band_list':band_lst,
+            }
+        with open(src_vrt,'w') as f:
+            f.write(vrt_text)
+        self.src_path=src_vrt
+        self.src_srs=src_srs
+
+        src_ds=gdal.Open(vrt_text,GA_ReadOnly)
+        return src_ds
+
+    def cut_line(self):
+        if options.cutline:
+            cut_file=self.options.cutline
+        else: # try to find a file with a cut shape
+            for ext in ('.gmt','.shp'):
+                cut_file=os.path.join(self.src_dir,self.base+ext)
+                if os.path.exists(cut_file):
+                    break
+            else:
+                cut_file=None
+        if cut_file:
+            src_ds=self.src_ds
+            src_proj=wkt2proj4(src_ds.GetProjection())
+
+            cut_ds=ogr.Open(cut_file)
+            assert cut_ds, ' Invalid cutline file %s' % cut_file
+            layer=cut_ds.GetLayer()
+            poly_srs=layer.GetSpatialRef()
+            if poly_srs:
+                poly_proj=poly_srs.ExportToProj4()
+            else:
+                poly_proj=src_proj
+            feature=layer.GetFeature(0)
+            geom=feature.GetGeometryRef()
+            gname=geom.GetGeometryName()
+            poly_iter={
+                'MULTIPOLYGON':(geom.GetGeometryRef(i) for i in range(geom.GetGeometryCount())),
+                'POLYGON': (geom,),
+                }[gname]
+            mpoly=[]
+            srs_tr=srs2srs(poly_proj,src_proj)
+            if poly_proj == src_proj:
+                srs_tr.TransformPoints=lambda x:x
+            pix_tr=gdal.Transformer(src_ds,None,[])
+            for pl in poly_iter:
+                assert pl.GetGeometryName() == 'POLYGON'
+                for ln in (pl.GetGeometryRef(j) for j in range(pl.GetGeometryCount())):
+                    assert ln.GetGeometryName() == 'LINEARRING'
+                    points=[ln.GetPoint(n) for n in range(ln.GetPointCount())]
+                    p_src=srs_tr.TransformPoints(points)
+                    p_pix,ok=pix_tr.TransformPoints(True,p_src)
+                    assert all(ok)
+                    mpoly.append(','.join(['%r %r' % (p[0],p[1]) for p in p_pix]))
+            cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly])
+        return cutline
+
+    def shift_srs(self,zoom=None):
+        'change prime meridian to allow charts crossing 180 meridian'
+        t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(self.latlong))
+        tr_pix_ll=gdal.Transformer(t_ds,None,[])
+        ok,ul=tr_pix_ll.TransformPoint(0,0,0)
+        ok,lr=tr_pix_ll.TransformPoint(t_ds.RasterXSize,t_ds.RasterYSize,0)
+        ld('ul',ul,'lr',lr)
+        if ul[0] < lr[0]:
+            return self.proj
+
+        left_lon=int(math.floor(ul[0]))
+        tr_srs=srs2srs(self.latlong,self.proj)
+        left_xy=tr_srs.TransformPoint(left_lon,0)
+        if zoom is not None: # adjust to a tile boundary
+            left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
+
+        tr_srs=srs2srs(self.proj,self.latlong)
+        new_pm=int(math.floor(
+                tr_srs.TransformPoint(*left_xy)[0]
+                ))#-180
+        ld('left_xy',left_xy,'new_pm',new_pm)
+        return '%s +lon_0=%d' % (self.proj,new_pm)
+
+    def calc_zoom(self,zoom_parm,temp_vrt):
+        'determite zoom levels to generate'
+        res=None
+        if not zoom_parm: # calculate "automatic" zoom levels
+            # check raster parameters to find default zoom range
+            # modify target srs to allow charts crossing meridian 180
+            ld('"automatic" zoom levels')
+            shifted_srs=self.shift_srs()
+
+            t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
+            geotr=t_ds.GetGeoTransform()
+            res=(geotr[1], -geotr[5])
+            max_zoom=max(self.res2zoom_xy(res))
+
+            # calculate min_zoom
+            ul_c=(geotr[0], geotr[3])
+            lr_c=gdal.ApplyGeoTransform(geotr,t_ds.RasterXSize,t_ds.RasterYSize)
+            wh=(lr_c[0]-ul_c[0],ul_c[1]-lr_c[1])
+            ld(ul_c,lr_c,wh)
+            min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_sz[i]for i in (0,1)]))
+            zoom_parm='%d-%d'%(min_zoom,max_zoom)
+        zchunks=[map(int,z.split('-')) for z in zoom_parm.split(',')]
+        zrange=[]
+        for z in zchunks:
+            if len(z) == 1:
+                zrange+=z
+            else:
+                zrange+=range(min(z),max(z)+1)
+        zoom_range=list(reversed(sorted(set(zrange))))
+        ld(('res',res,'zoom_range',zoom_range,'z0 (0,0)',self.coord2pix(0,(0,0))))
+        return zoom_range
 
     #############################
     #
@@ -357,37 +771,16 @@ class Pyramid(object):
         zoom_tiles=map(lambda v: v*2**z,self.zoom0_tiles)
         return [z,x%zoom_tiles[0],y%zoom_tiles[1]]
 
-    def transform(self,inp_lst,s_srs=None,t_srs=None,src=None,dst=None,*other_parms):
-        'transform GDAL dataset (file) to another format'
-        inp='\n'.join([' '.join(map(repr,c)) for c in inp_lst])
-        cmd=['gdaltransform']+list(other_parms)#+['-tps']
-        if s_srs: cmd += ['-s_srs',s_srs]
-        if t_srs: cmd += ['-t_srs',t_srs]
-        if src: cmd.append(src)
-        if dst: cmd.append(dst)
-        out=[map(float,l.split()[0:2]) for l in command(cmd,inp).splitlines()]
-        return out
-        
-    def warp(self,src,dest,*others,**kw):
-        'warp GDAL dataset (file)'
-        try:
-            os.remove(dest)
-        except: pass
-        parm=list(others)
-        # convert kw parameters
-        for w in kw:
-            p=kw[w]
-            if type(p) not in (list,tuple):
-                p=[p]
-            parm.extend(['-'+w] + [i if isinstance(i,str) else repr(i) for i in p])
-        command(['gdalwarp',src,dest]+parm)#,'-tps'
-
     def coords2latlong(self, coords): # redefined in PlateCarree
-        return self.transform(coords,s_srs=self.srs,t_srs=self.latlong)
+        try:
+            self.tr_proj2latlong
+        except: # first time call
+            self.tr_proj2latlong=srs2srs(self.proj,self.latlong)
+        return [i[:2] for i in self.tr_proj2latlong.TransformPoints(coords)]
 
     def boxes2latlong(self,box_lst):
         out=self.coords2latlong(flatten(box_lst))
-        deg_lst=[[(j+180)%360-180 for j in i ] for i in out]
+        deg_lst=[[(j+180)%360-180 for j in i] for i in out]
         ul_lst=deg_lst[0::2]
         lr_lst=[((x if x != -180 else 180),y) for x,y in deg_lst[1::2]]
         return zip(ul_lst,lr_lst)
@@ -422,371 +815,6 @@ class Pyramid(object):
             return True
         else:
             return False
-
-    #############################
-    #
-    # initialize geo-parameters and generate base zoom level
-    #
-    #############################
-
-    def init_map(self,zoom_parm):
-        src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
-        temp_vrt=os.path.join(self.dest,self.base+'.tmp.vrt') # auxilary VRT file
-        self.src_ds=self.get_src_ds(src_vrt)
-
-        # calculate zoom range
-        pf('%s -> %s '%(self.src,self.dest),end='')
-        self.zoom_range=self.calc_zoom(zoom_parm,temp_vrt)
-             
-        # reproject to base zoom
-        zoom=self.zoom_range[0]
-        #
-        # extend the raster to cover full tiles
-        ld("extend the raster")
-        shifted_srs=self.shift_srs(zoom)
-
-        # get origin and corners at the target SRS
-        t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
-
-        dst_drv = gdal.GetDriverByName('VRT')
-        temp_tif=os.path.join(self.dest,self.base+'.tmp_warp.vrt')
-            
-        dst_drv.CreateCopy(os.path.join(self.dest,self.base+'.tmp_warp.vrt'),t_ds,0)
-
-        t_geotr=t_ds.GetGeoTransform()
-        t_res=(t_geotr[1], -t_geotr[5])
-        self.origin=(t_geotr[0], t_geotr[3])
-        self.extent=gdal.ApplyGeoTransform(t_geotr,t_ds.RasterXSize,t_ds.RasterYSize)
-
-        tr_srs=srs2srs(shifted_srs,self.srs)
-        shift_x=tr_srs.TransformPoint(0,0)[0]
-        ld('new_srs',shifted_srs,'shift_x',shift_x,'coord_offset',self.coord_offset)
-        if shift_x < 0:
-            shift_x+=self.zoom0_tile_dim[0]*2
-        self.coord_offset[0]+=shift_x
-        self.shift_x=shift_x
-        self.srs=shifted_srs
-
-        # adjust raster extents to tile boundaries
-        tile_ul,tile_lr=self.corner_tiles(zoom)
-        ld('tile_ul',tile_ul,'tile_lr',tile_lr)
-        ul_c=self.tile2coord_box(tile_ul)[0]
-        lr_c=self.tile2coord_box(tile_lr)[1]
-        ul_pix=self.tile_corners(tile_ul)[0]
-        lr_pix=self.tile_corners(tile_lr)[1]
-        xsize=lr_pix[0]-ul_pix[0]
-        ysize=lr_pix[1]-ul_pix[1]
-        res=self.zoom2res(zoom)
-        geotr=( ul_c[0], res[0],     0.0,
-                ul_c[1],    0.0, -res[1] )
-        ok,igeotr=gdal.InvGeoTransform(geotr)
-        assert ok
-        
-        ld('Upper Left ',self.origin,ul_c)
-        ld('Lower Right',self.extent,lr_c)
-        ld('coord_offset',self.coord_offset,'ul_c+c_off',map(operator.add,ul_c,self.coord_offset))
-
-        def warp_option(name,value):
-            return '    <Option name="%s">%s</Option>' % (name,value)
-
-        wo_options=[]
-        wo_options.append(warp_option('INIT_DEST','0'))
-
-        cut_wkt=None # cutline wkt
-        if options.cut:
-            if options.cutline:
-                cut_file=options.cutline
-            else: # try to find a file with a cut shape
-                for ext in ('.gmt','.shp'):
-                    cut_file=os.path.join(self.src_dir,self.base+ext)
-                    if os.path.exists(cut_file):
-                        break
-                else:
-                    cut_file=None
-            if cut_file:
-                cut_wkt=self.get_cutwkt(cut_file)
-            if cut_wkt:
-                wo_options.append(warp_option('CUTLINE',cut_wkt))
-                if options.blend_dist:
-                    wo_options.append(warp_option('CUTLINE_BLEND_DIST',options.blend_dist))
-
-        nodata=None
-        if options.no_data:
-            nodata=options.no_data.split(',')
-            wo_options.append(warp_option('UNIFIED_SRC_NODATA','YES'))
-
-        src_bands=self.src_ds.RasterCount
-        assert src_bands in (3,4)
-        vrt_bands=[]
-        wo_BandList=[]
-        for i in range(1,src_bands+1):
-            vrt_bands.append(self.warp_band % (i,'/'))
-            wo_BandList.append(self.warp_band_mapping % (i,i,
-                (self.warp_band_mapping_nodata % (nodata[i],0)) if nodata else '/'))
-
-        if src_bands < 4:
-            vrt_bands.append(self.warp_band % (i+1,self.warp_band_color % 'Alpha'))
-
-        dst_transform='%s\n%s' % (self.warp_dst_geotr % geotr,self.warp_dst_igeotr % igeotr)
-        src_geotr=self.src_ds.GetGeoTransform()
-        if src_geotr:
-            ok,src_igeotr=gdal.InvGeoTransform(src_geotr)
-            assert ok
-            src_transform='%s\n%s' % (self.warp_src_geotr % src_geotr,self.warp_src_igeotr % src_igeotr)
-        else:
-            gcps=src_ds.GetGCPs()
-            assert gcps, ' Neither geotransform, nor gpcs are in the source file %s' % self.src
-            src_transform=self.warp_src_tps_transformer % '\n'.join(
-                (self.gcp_templ % (g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) for g in gcps))
-
-        block_sz=self.src_ds.GetRasterBand(1).GetBlockSize()
-
-        vrt_text=self.warp_vrt % {
-            'xsize':            xsize,
-            'ysize':            ysize,
-            'srs':              self.srs,
-            'geotr':            self.geotr_templ % geotr,
-            'band_list':        '\n'.join(vrt_bands),
-            'blxsize':          block_sz[0],
-            'blysize':          block_sz[1],
-            'wo_options':       '\n'.join(wo_options),
-            'wo_src_path':      self.src_path,
-            'wo_src_srs':       self.src_srs,
-            'wo_dst_srs':       self.srs,
-            'wo_src_transform': src_transform,
-            'wo_dst_transform': dst_transform,
-            'wo_BandList':      '\n'.join(wo_BandList),
-            'wo_DstAlphaBand':  self.warp_dst_alpha_band if src_bands < 4 else '',
-            'wo_Cutline':       (self.warp_cutline % cut_wkt) if cut_wkt else '',
-            }
-
-        with open(temp_vrt,'w') as f:
-            f.write(vrt_text)
-
-        t_ds = gdal.Open(vrt_text,GA_ReadOnly)
-        # create Gtiff
-        pf('...',end='')
-        dst_drv = gdal.GetDriverByName('Gtiff')
-        temp_tif=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % zoom) # img for the base zoom
-            
-        dst_ds = dst_drv.CreateCopy(temp_tif,t_ds,0,[
-			'TILED=YES',
-            'INTERLEAVE=BAND',
-            'BLOCKXSIZE=%i' % self.tile_sz[0],
-            'BLOCKYSIZE=%i' % self.tile_sz[1],
-            ])#, gdal.TermProgress)
-        del dst_ds
-        pf('.',end='')
-        
-#        sys.exit(1)
-
-        # create base_image raster
-        self.base_img=BaseImg(temp_tif,tile_ul[1:],tile_lr[1:])
-
-        if options.verbose < 2:
-            try:
-                os.remove(temp_vrt)
-                os.remove(src_vrt)
-            except: pass
-
-    def get_cutwkt(self,cut_file):
-        #self.src_ds
-        ds=ogr.Open(cut_file)
-        assert ds, ' Invalid cutline file %s' % cut_file
-        layer=ds.GetLayer()
-        l_srs=layer.GetSpatialRef()
-        feature=layer.GetFeature(0)
-        geom=feature.GetGeometryRef()
-
-        return 'POLYGON((%s))'
-
-    warp_band='  <VRTRasterBand dataType="Byte" band="%d" subClass="VRTWarpedRasterBand"%s>'
-    warp_band_color='>\n    <ColorInterp>%s</ColorInterp>\n  </VRTRasterBand'
-    warp_vrt='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d" subClass="VRTWarpedDataset">
-  <SRS>%(srs)s</SRS>
-%(geotr)s%(band_list)s
-  <BlockXSize>%(blxsize)d</BlockXSize>
-  <BlockYSize>%(blysize)d</BlockYSize>
-  <GDALWarpOptions>
-    <WarpMemoryLimit>2.68435e+08</WarpMemoryLimit>
-    <ResampleAlg>Bilinear</ResampleAlg>
-    <WorkingDataType>Byte</WorkingDataType>
-    <SourceDataset relativeToVRT="0">%(wo_src_path)s</SourceDataset>
-%(wo_options)s
-    <Transformer>
-      <ApproxTransformer>
-        <MaxError>0.125</MaxError>
-        <BaseTransformer>
-          <GenImgProjTransformer>
-%(wo_src_transform)s
-%(wo_dst_transform)s
-            <ReprojectTransformer>
-              <ReprojectionTransformer>
-                <SourceSRS>%(wo_src_srs)s</SourceSRS>
-                <TargetSRS>%(wo_dst_srs)s</TargetSRS>
-              </ReprojectionTransformer>
-            </ReprojectTransformer>
-          </GenImgProjTransformer>
-        </BaseTransformer>
-      </ApproxTransformer>
-    </Transformer>
-    <BandList>
-%(wo_BandList)s
-    </BandList>
-%(wo_DstAlphaBand)s
-%(wo_Cutline)s
-  </GDALWarpOptions>
-</VRTDataset>
-'''
-    warp_dst_geotr= '            <DstGeoTransform> %r, %r, %r, %r, %r, %r</DstGeoTransform>'
-    warp_dst_igeotr='            <DstInvGeoTransform> %r, %r, %r, %r, %r, %r</DstInvGeoTransform>'
-    warp_src_geotr= '            <SrcGeoTransform> %r, %r, %r, %r, %r, %r</SrcGeoTransform>'
-    warp_src_igeotr='            <SrcInvGeoTransform> %r, %r, %r, %r, %r, %r</SrcInvGeoTransform>'
-    warp_src_tps_transformer='''            <SrcTPSTransformer>
-              <TPSTransformer>
-                <Reversed>0</Reversed>
-                <GCPList>
-%s
-                </GCPList>
-              </TPSTransformer>'''
-    warp_band_mapping='      <BandMapping src="%d" dst="%d"%s>'
-    warp_band_mapping_nodata='''>
-        <SrcNoDataReal>%d</SrcNoDataReal>
-        <SrcNoDataImag>%d</SrcNoDataImag>
-      </BandMapping'''
-    warp_dst_alpha_band='    <DstAlphaBand>4</DstAlphaBand>'
-    warp_cutline='    <Cutline>%s</Cutline>'
-
-    gcp_templ='    <GCP Id="%s" Pixel="%r" Line="%r" X="%r" Y="%r" Z="%r"/>'
-    gcplst_templ='  <GCPList Projection="%s">\n%s\n  </GCPList>\n'
-    geotr_templ='  <GeoTransform> %r, %r, %r, %r, %r, %r</GeoTransform>\n'
-    band_templ='''  <VRTRasterBand dataType="Byte" band="%(band)d">
-    <ColorInterp>%(color)s</ColorInterp>
-    <ComplexSource>
-      <SourceFilename relativeToVRT="0">%(src)s</SourceFilename>
-      <SourceBand>1</SourceBand>
-      <SourceProperties RasterXSize="%(xsize)d" RasterYSize="%(ysize)d" DataType="Byte" BlockXSize="%(blxsize)d" BlockYSize="%(blysize)d"/>
-      <SrcRect xOff="0" yOff="0" xSize="%(xsize)d" ySize="%(ysize)d"/>
-      <DstRect xOff="0" yOff="0" xSize="%(xsize)d" ySize="%(ysize)d"/>
-      <ColorTableComponent>%(band)d</ColorTableComponent>
-    </ComplexSource>
-  </VRTRasterBand>
-'''
-    vrt_templ='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d">
-  <SRS>%(srs)s</SRS>
-%(geotr)s%(gcp_list)s%(band_list)s</VRTDataset>
-'''
-
-    def get_src_ds(self,src_vrt):
-        'get src dataset, convert to RGB(A) if required'
-        if os.path.exists(self.src):
-            self.src_path=os.path.abspath(self.src)
-        # check for source raster type
-#        src_info=command(['gdalinfo',self.src]).splitlines()
-#        size=map(int,self.info(src_info,'Size is ').split(','))
-        
-        src_ds=gdal.Open(self.src_path,GA_ReadOnly)
-        src_bands=src_ds.RasterCount
-        if src_bands >= 3:
-            return src_ds
-
-        # convert to rgb VRT
-        assert src_bands == 1
-        xsize,ysize=(src_ds.RasterXSize,src_ds.RasterYSize)
-        src_srs=wkt2proj4(src_ds.GetProjection())
-
-        geotr=src_ds.GetGeoTransform()
-        vrt_geotr=self.geotr_templ % geotr if geotr else ''
-
-        vrt_gcplst=''
-        gcps=src_ds.GetGCPs()
-        if gcps:
-            vrt_gcps='\n'.join((self.gcp_templ % (g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) 
-                                for g in gcps))
-            gcp_proj=wkt2proj4(src_ds.GetGCPProjection())
-            vrt_gcplst=self.gcplst_templ % (gcp_proj,vrt_gcps)
-
-        block_sz=src_ds.GetRasterBand(1).GetBlockSize()
-        vrt_bands=''.join((self.band_templ % {
-            'band':     band,
-            'color':    color,
-            'src':      self.src_path,
-            'xsize':    xsize,
-            'ysize':    ysize,
-            'blxsize':    block_sz[0],
-            'blysize':    block_sz[1],
-            } for band,color in ((1,'Red'),(2,'Green'),(3,'Blue'))))
-        vrt_text=self.vrt_templ % {
-            'xsize':    xsize,
-            'ysize':    ysize,
-            'srs':      src_srs,
-            'geotr':    vrt_geotr,
-            'gcp_list': vrt_gcplst,
-            'band_list':vrt_bands,
-            }
-        with open(src_vrt,'w') as f:
-            f.write(vrt_text)
-        self.src_path=src_vrt
-        self.src_srs=src_srs
-
-        src_ds=gdal.Open(vrt_text,GA_ReadOnly)
-        return src_ds
-
-    def shift_srs(self,zoom=None):
-        'change prime meridian to allow charts crossing 180 meridian'
-        t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(self.latlong))
-        tr_pix_ll=gdal.Transformer(t_ds,None,[])
-        ok,ul=tr_pix_ll.TransformPoint(0,0,0)
-        ok,lr=tr_pix_ll.TransformPoint(t_ds.RasterXSize,t_ds.RasterYSize,0)
-        ld('ul',ul,'lr',lr)
-#        if ul[0] < lr[0]:
-#            return self.srs
-
-        left_lon=int(math.floor(ul[0]))
-        tr_srs=srs2srs(self.latlong,self.srs)
-        left_xy=tr_srs.TransformPoint(left_lon,0)
-        if zoom is not None: # adjust to a tile boundary
-            left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
-
-        tr_srs=srs2srs(self.srs,self.latlong)
-        new_pm=int(math.floor(
-                tr_srs.TransformPoint(*left_xy)[0]
-                ))#-180
-        ld('left_xy',left_xy,'new_pm',new_pm)
-        return '%s +lon_0=%d' % (self.srs,new_pm)
-
-    def calc_zoom(self,zoom_parm,temp_vrt):
-        'determite zoom levels to generate'
-        res=None
-        if not zoom_parm: # calculate "automatic" zoom levels
-            # check raster parameters to find default zoom range
-            # modify target srs to allow charts crossing meridian 180
-            ld('"automatic" zoom levels')
-            shifted_srs=self.shift_srs()
-
-            t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
-            geotr=t_ds.GetGeoTransform()
-            res=(geotr[1], -geotr[5])
-            max_zoom=max(self.res2zoom_xy(res))
-
-            # calculate min_zoom
-            ul_c=(geotr[0], geotr[3])
-            lr_c=gdal.ApplyGeoTransform(geotr,t_ds.RasterXSize,t_ds.RasterYSize)
-            wh=(lr_c[0]-ul_c[0],ul_c[1]-lr_c[1])
-            ld(ul_c,lr_c,wh)
-            min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_sz[i]for i in (0,1)]))
-            zoom_parm='%d-%d'%(min_zoom,max_zoom)
-        zchunks=[map(int,z.split('-')) for z in zoom_parm.split(',')]
-        zrange=[]
-        for z in zchunks:
-            if len(z) == 1:
-                zrange+=z
-            else:
-                zrange+=range(min(z),max(z)+1)
-        zoom_range=list(reversed(sorted(set(zrange))))
-        ld(('res',res,'zoom_range',zoom_range,'z0 (0,0)',self.coord2pix(0,(0,0))))
-#        sys.exit(1)
-        return zoom_range
 
     #############################
     #
@@ -884,11 +912,12 @@ class PlateCarree(Pyramid):
     # projection where the meridians and parallels are equidistant, straight lines, with the two sets 
     # crossing at right angles. This projection is also known as Lat/Lon WGS84"    
 
-    srs='+proj=eqc +datum=WGS84 +ellps=WGS84' # Equirectangular (aka plate carrée, aka Simple Cylindrical)
+    proj='+proj=eqc +datum=WGS84 +ellps=WGS84' # Equirectangular (aka plate carrée, aka Simple Cylindrical)
     latlong='+proj=latlong +datum=WGS84'
 
     def init_tiles(self):
-        semi_circ,semi_meridian=self.transform([(180,90)],s_srs=self.latlong,t_srs=self.srs)[0]
+        tr=srs2srs(self.latlong,self.proj)
+        semi_circ,semi_meridian,boo=tr.TransformPoint(180,90)
         self.zoom0_tiles=[2,1] # tiles at zoom 0
         self.zoom0_tile_dim=[semi_circ,semi_meridian*2] # dimentions of a tile at zoom 0
         self.coord_offset=[semi_circ,semi_meridian]
@@ -1017,18 +1046,19 @@ class Gmaps(Pyramid):
     format='gmaps'
     defaul_ext='.gmaps'
 
-    #srs='epsg:900913' # Google Maps Global Mercator
-    #srs='epsg:3857' # Google Maps Global Mercator
-    srs='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext' # Google Maps Global Mercator
+    #proj='epsg:900913' # Google Maps Global Mercator
+    #proj='epsg:3857' # Google Maps Global Mercator
+    proj='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext' # Google Maps Global Mercator
     latlong='+proj=latlong +a=6378137 +b=6378137  +nadgrids=@null +wktext'
     
     def init_tiles(self):
         # Half Equator length in meters
-        semi_circ,foo=self.transform([(180,0)],s_srs=self.latlong,t_srs=self.srs)[0]
+        tr=srs2srs(self.latlong,self.proj)
+        semi_circ,foo,boo=tr.TransformPoint(180,0)
+        ld(semi_circ)
         self.zoom0_tiles=[1,1] # tiles at zoom 0
         self.zoom0_tile_dim=[semi_circ*2,semi_circ*2]  # dimentions of a tile at zoom 0
         self.coord_offset=[semi_circ,semi_circ]
-        ld(self.transform([[semi_circ,semi_circ]],t_srs=self.latlong,s_srs=self.srs)[0])
 
     def make_googlemaps(self):
         ul,lr=self.boxes2latlong([(self.origin,self.extent)])[0]
@@ -1279,4 +1309,4 @@ def main(argv):
 if __name__=='__main__':
 
     main(sys.argv)
-    
+
