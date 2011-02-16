@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-08 17:08:43 
+# 2011-02-16 18:12:01 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -71,8 +71,8 @@ if __name__=='__main__':
         help='give an output file a long name')
     parser.add_option("--get-cutline", action="store_true", 
         help='print cutline polygon from KAP file then exit')
-    parser.add_option("--no-cut-file", action="store_true", 
-        help='do not create a file with a cutline polygon from KAP file')
+    parser.add_option("--cut-file", action="store_true", 
+        help='create a separate .GMT file with a cutline polygon')
     parser.add_option("--force-dtm", action="store_true", 
         help='force using BSB datum shift to WGS84 instead of native BSB datum')
     parser.add_option("--dtm-shift",dest="dtm_shift",default=None,metavar="SHIFT_LAT,SHIFT_LON",

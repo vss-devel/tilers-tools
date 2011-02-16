@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-07 11:41:56 
+# 2011-02-16 18:11:18 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -255,8 +255,10 @@ class MapTranslator(object):
             dst_ds.SetGCPs(gcps,self.srs)
             dst_geotr=gdal.GCPsToGeoTransform(gcps)
             dst_ds.SetGeoTransform(dst_geotr)
-
             poly,gmt_data=self.cut_poly(dst_ds)
+            if poly:
+                dst_ds.SetMetadataItem('CUTLINE',poly)
+
             del dst_ds
         finally:
             os.chdir(cdir)
@@ -264,7 +266,7 @@ class MapTranslator(object):
         if self.options.get_cutline: # print cutline then return
             print poly
             return
-        if gmt_data and not self.options.no_cut_file: # create shapefile with a cut polygon
+        if gmt_data and self.options.cut_file: # create shapefile with a cut polygon
             with open(base+'.gmt','w+') as f:
                 f.write(gmt_data)
 
@@ -294,7 +296,7 @@ class MapTranslator(object):
         # Create cutline
         poly_proj=plys.projected()
         poly_shape=self.gmt_templ % (self.srs,'\n'.join(['%r %r %r' % tuple(i) for i in poly_proj]))
-        poly_wkt='POLYGON((%s))' % ','.join(['%r %r' % tuple(i) for i in pix_lst]) # Create cutline
+        poly_wkt='MULTIPOLYGON(((%s)))' % ','.join(['%r %r' % tuple(i) for i in pix_lst]) # Create cutline
         return poly_wkt,poly_shape
 
 # MapTranslator

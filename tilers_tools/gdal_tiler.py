@@ -255,11 +255,6 @@ base_resampling_map={
 
 def base_resampling_lst(): return base_resampling_map.keys()
 
-def xml_elm(elm_name,elm_value=None,elm_indent=0,**attr):
-    attr_txt=''.join((' %s="%s"' % (key,attr[key]) for key in attr))
-    val_txt=('>%s</%s' % (elm_value,elm_name)) if elm_value else '/'
-    return '%s<%s%s%s>' % (' '*elm_indent,elm_name,attr_lst,val_txt)
-
 #############################
 #
 # GDAL utility functions
@@ -288,6 +283,11 @@ def proj4wkt(proj4):
 # templates for VRT XML
 #
 #############################
+
+def xml_txt(elm_name,elm_value=None,elm_indent=0,**attr_dict):
+    attr_txt=''.join((' %s="%s"' % (key,attr_dict[key]) for key in attr_dict))
+    val_txt=('>%s</%s' % (elm_value,elm_name)) if elm_value else '/'
+    return '%s<%s%s%s>' % (' '*elm_indent,elm_name,attr_txt,val_txt)
 
 #    <WarpMemoryLimit>2.68435e+08</WarpMemoryLimit>
 warp_vrt='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d" subClass="VRTWarpedDataset">
@@ -357,6 +357,7 @@ warp_src_tps_transformer='''            <SrcTPSTransformer>
 gcp_templ='    <GCP Id="%s" Pixel="%r" Line="%r" X="%r" Y="%r" Z="%r"/>'
 gcplst_templ='  <GCPList Projection="%s">\n%s\n  </GCPList>\n'
 geotr_templ='  <GeoTransform> %r, %r, %r, %r, %r, %r</GeoTransform>\n'
+meta_templ='  <Metadata>\n%s\n  </Metadata>\n'
 band_templ='''  <VRTRasterBand dataType="Byte" band="%(band)d">
     <ColorInterp>%(color)s</ColorInterp>
     <ComplexSource>
@@ -371,7 +372,7 @@ band_templ='''  <VRTRasterBand dataType="Byte" band="%(band)d">
 '''
 vrt_templ='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d">
   <SRS>%(srs)s</SRS>
-%(geotr)s%(gcp_list)s%(band_list)s</VRTDataset>
+%(metadata)s%(geotr)s%(gcp_list)s%(band_list)s</VRTDataset>
 '''
     
 #############################
@@ -572,17 +573,24 @@ class Pyramid(object):
         src_geotr=src_ds.GetGeoTransform()
         ld('src geotr',src_geotr)
         if not src_geotr or src_geotr == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
-            geotr_elm=''
+            geotr_txt=''
         else:
-            geotr_elm=self.geotr_templ % src_geotr
+            geotr_txt=geotr_templ % src_geotr
 
-        gcplst_elm=''
+        gcplst_txt=''
         gcps=src_ds.GetGCPs()
         if gcps:
             gcp_lst='\n'.join((gcp_templ % (g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) 
                                 for g in gcps))
             gcp_proj=wkt2proj4(src_ds.GetGCPProjection())
-            gcplst_elm=gcplst_templ % (gcp_proj,gcp_lst)
+            gcplst_txt=gcplst_templ % (gcp_proj,gcp_lst)
+
+        metadt=src_ds.GetMetadata()
+        if metadt:
+            mtd_lst=[xml_txt('MDI',metadt[mdkey],4,key=mdkey) for mdkey in metadt]
+            meta_txt=meta_templ % '\n'.join(mtd_lst)
+        else:
+            meta_txt=''
 
         block_sz=src_ds.GetRasterBand(1).GetBlockSize()
         band_lst=''.join((band_templ % {
@@ -594,26 +602,33 @@ class Pyramid(object):
             'blxsize':    block_sz[0],
             'blysize':    block_sz[1],
             } for band,color in ((1,'Red'),(2,'Green'),(3,'Blue'))))
-        vrt_text=vrt_templ % {
+        vrt_txt=vrt_templ % {
             'xsize':    xsize,
             'ysize':    ysize,
             'srs':      src_srs,
-            'geotr':    geotr_elm,
-            'gcp_list': gcplst_elm,
+            'metadata': meta_txt,
+            'geotr':    geotr_txt,
+            'gcp_list': gcplst_txt,
             'band_list':band_lst,
             }
         with open(src_vrt,'w') as f:
-            f.write(vrt_text)
+            f.write(vrt_txt)
         self.src_path=src_vrt
         self.src_srs=src_srs
 
-        src_ds=gdal.Open(vrt_text,GA_ReadOnly)
+        src_ds=gdal.Open(vrt_txt,GA_ReadOnly)
         return src_ds
 
     def cut_line(self):
+        src_ds=self.src_ds
+        src_proj=wkt2proj4(src_ds.GetProjection())
+        cutline=src_ds.GetMetadataItem('CUTLINE')
+        ld('cutline',cutline)
         if options.cutline:
             cut_file=self.options.cutline
         else: # try to find a file with a cut shape
+            if cutline:
+                return cutline
             for ext in ('.gmt','.shp'):
                 cut_file=os.path.join(self.src_dir,self.base+ext)
                 if os.path.exists(cut_file):
@@ -621,9 +636,6 @@ class Pyramid(object):
             else:
                 cut_file=None
         if cut_file:
-            src_ds=self.src_ds
-            src_proj=wkt2proj4(src_ds.GetProjection())
-
             cut_ds=ogr.Open(cut_file)
             assert cut_ds, ' Invalid cutline file %s' % cut_file
             layer=cut_ds.GetLayer()
