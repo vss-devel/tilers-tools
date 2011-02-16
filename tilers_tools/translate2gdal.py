@@ -63,7 +63,7 @@ if __name__=='__main__':
         "The script translates a map file with into GDAL .vrt, optionally producing .gmt shape file for a cutting polygon.")
     parser.add_option("-d", "--debug", action="store_true", dest="debug")
     parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
-    parser.add_option("-t", "--dest-dir", default=None,
+    parser.add_option("-t", "--dest-dir", default=None,dest="dst_dir",
         help='destination directory (default: current)')
     parser.add_option("-i", "--as-image", action="store_true", 
         help='give an output file name after a image file name (Ozi)')
