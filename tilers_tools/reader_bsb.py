@@ -34,7 +34,7 @@ import locale
 from optparse import OptionParser
 
 from tiler_functions import *
-from reader_base import *
+from reader_backend import *
 
 class BsbKapMap(MapTranslator):
     magic='KNP/'
@@ -127,10 +127,13 @@ class BsbKapMap(MapTranslator):
         return [parm_map[i]+parm_info[i] for i in parm_map
                         if  i in parm_info and check_parm(parm_info[i])]
 
+    def get_proj_id(self):
+        return self.hdr_parm2dict('KNP')['PR']
+
     def get_proj(self):
         knp_info=self.hdr_parm2dict('KNP')
         ld(knp_info)
-        proj_id=knp_info['PR']
+        proj_id=self.get_proj_id()
         try:            
             knp_parm=self.knp_map[proj_id.upper()]
             ld(knp_parm)
@@ -139,7 +142,7 @@ class BsbKapMap(MapTranslator):
         # get projection and parameters
         proj=[knp_parm['PROJ4']]
         if '+proj=utm' in proj[0]: # UTM
-            # GDAL 1.7.2 doesn't seem to make use of lon_0 with UTM, but BSB doesn't use zones
+            # GDAL doesn't seem to make use of lon_0 with UTM, but BSB doesn't use zones
             northing='10000000' if self.refs[0][1][1] < 0 else '0' # Southern hemisphere?
             proj=('+proj=tmerc +k=0.9996 +x_0=500000 +y_0=%s +lon_0=%s' % 
                     (northing,knp_info['PP'])).split(' ')
@@ -154,11 +157,13 @@ class BsbKapMap(MapTranslator):
             except KeyError:    # No such proj in KNQ map
                 pass
             proj.extend(self.assemble_parms(knp_parm,knp_info))
-        return proj,proj_id
+        return proj
+
+    def get_datum_id(self):
+        return self.hdr_parm2dict('KNP')['GD']
 
     def get_datum(self):
-        knp_info=self.hdr_parm2dict('KNP')
-        datum_id=knp_info['GD']
+        datum_id=self.get_datum_id()
         try:
             datum=self.datum_map[datum_id.upper()][0]
         except KeyError: 
@@ -176,15 +181,25 @@ class BsbKapMap(MapTranslator):
                     logging.warning(' Unknown datum %s, trying WGS 84 with DTM shifts' % datum_id)
                 else: # assume DTM is 0,0
                     logging.warning(' Unknown datum %s, trying WGS 84' % datum_id)
-        return datum.split(' '),datum_id
+        return datum.split(' ')
 
     def get_raster(self):
         return self.map_file
+    
+    def get_band_count(self):
+        return 1
+
+    def get_palette(self):
+        plt=[i+['255'] for i in self.hdr_parms2list('RGB')]
+        return plt
 
     def get_size(self):
         bsb_info=self.hdr_parm2dict('BSB') # general BSB parameters
         return map(int,bsb_info['RA'].split(','))
 
+    def get_block_size(self):
+        return self.get_size()[0],1
+        
     def get_name(self):
         bsb_info=self.hdr_parm2dict('BSB') # general BSB parameters
         bsb_name=bsb_info['NA']

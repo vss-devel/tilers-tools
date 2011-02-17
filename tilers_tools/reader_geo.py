@@ -34,7 +34,7 @@ import locale
 from optparse import OptionParser
 
 from tiler_functions import *
-from reader_base import *
+from reader_backend import *
 
 class GeoNosMap(MapTranslator):
     magic='[MainChart]'

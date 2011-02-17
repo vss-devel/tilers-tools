@@ -410,6 +410,7 @@ class Pyramid(object):
         src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
         temp_vrt=os.path.join(self.dest,self.base+'.tmp.vrt') # auxilary VRT file
         self.src_ds=self.get_src_ds(src_vrt)
+        src_ds=self.src_ds
 
         # calculate zoom range
         pf('%s -> %s '%(self.src,self.dest),end='')
@@ -423,7 +424,7 @@ class Pyramid(object):
         shifted_srs=self.shift_srs(zoom)
 
         # get origin and corners at the target SRS
-        t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
+        t_ds=gdal.AutoCreateWarpedVRT(src_ds,None,proj4wkt(shifted_srs))
 #        dst_drv = gdal.GetDriverByName('VRT')
 #        dst_drv.CreateCopy(os.path.join(self.dest,self.base+'.tmp_warp.vrt'),t_ds,0)
 
@@ -460,6 +461,29 @@ class Pyramid(object):
         ld('Lower Right',self.extent,lr_c)
         ld('coord_offset',self.coord_offset,'ul_c+c_off',map(operator.add,ul_c,self.coord_offset))
 
+        src_proj=wkt2proj4(src_ds.GetProjection())
+        src_geotr=src_ds.GetGeoTransform()
+        if src_geotr and src_geotr != (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
+            ok,src_igeotr=gdal.InvGeoTransform(src_geotr)
+            assert ok
+            src_transform='%s\n%s' % (warp_src_geotr % src_geotr,warp_src_igeotr % src_igeotr)
+        else:
+            gcps=src_ds.GetGCPs()
+            assert gcps, ' Neither geotransform, nor gpcs are in the source file %s' % self.src
+
+            gcp_lst=[(g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) for g in gcps]
+            gcp_proj=wkt2proj4(src_ds.GetGCPProjection())
+            if gcp_proj != src_proj:
+                gcp2src=srs2srs(gcp_proj,src_proj)
+                coords=gcp2src.TransformPoints([g[3:6] for g in gcp_lst])
+                gcp_lst=[tuple(p[:3]+c) for p,c in zip(gcp_lst,coords)]
+
+            gcp_txt='\n'.join((gcp_templ % g for g in gcp_lst))
+            #src_transform=warp_src_gcp_transformer % (0,gcp_txt)
+            src_transform=warp_src_tps_transformer % gcp_txt
+
+        dst_transform='%s\n%s' % (warp_dst_geotr % geotr,warp_dst_igeotr % igeotr)
+
         def w_option(name,value):
             return '    <Option name="%s">%s</Option>' % (name,value)
             
@@ -480,7 +504,7 @@ class Pyramid(object):
             nodata=options.no_data.split(',')
             warp_options.append(w_option('UNIFIED_SRC_NODATA','YES'))
 
-        src_bands=self.src_ds.RasterCount
+        src_bands=src_ds.RasterCount
         assert src_bands in (3,4)
         vrt_bands=[]
         wo_BandList=[]
@@ -492,20 +516,7 @@ class Pyramid(object):
         if src_bands < 4:
             vrt_bands.append(warp_band % (i+1,warp_band_color % 'Alpha'))
 
-        dst_transform='%s\n%s' % (warp_dst_geotr % geotr,warp_dst_igeotr % igeotr)
-        src_geotr=self.src_ds.GetGeoTransform()
-        if src_geotr and src_geotr != (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
-            ok,src_igeotr=gdal.InvGeoTransform(src_geotr)
-            assert ok
-            src_transform='%s\n%s' % (warp_src_geotr % src_geotr,warp_src_igeotr % src_igeotr)
-        else:
-            gcps=self.src_ds.GetGCPs()
-            assert gcps, ' Neither geotransform, nor gpcs are in the source file %s' % self.src
-            gcp_lst='\n'.join((gcp_templ % (g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) for g in gcps))
-            #src_transform=warp_src_gcp_transformer % (0,gcp_lst)
-            src_transform=warp_src_tps_transformer % gcp_lst
-
-        block_sz=self.src_ds.GetRasterBand(1).GetBlockSize()
+        block_sz=src_ds.GetRasterBand(1).GetBlockSize()
 
         vrt_text=warp_vrt % {
             'xsize':            xsize,
@@ -518,7 +529,7 @@ class Pyramid(object):
             'wo_ResampleAlg':   self.base_resampling,
             'wo_src_path':      self.src_path,
             'warp_options':     '\n'.join(warp_options),
-            'wo_src_srs':       self.src_srs,
+            'wo_src_srs':       src_proj,
             'wo_dst_srs':       self.proj,
             'wo_src_transform': src_transform,
             'wo_dst_transform': dst_transform,
@@ -568,7 +579,6 @@ class Pyramid(object):
         # convert to rgb VRT
         assert src_bands == 1
         xsize,ysize=(src_ds.RasterXSize,src_ds.RasterYSize)
-        src_srs=wkt2proj4(src_ds.GetProjection())
 
         src_geotr=src_ds.GetGeoTransform()
         ld('src geotr',src_geotr)
@@ -605,7 +615,7 @@ class Pyramid(object):
         vrt_txt=vrt_templ % {
             'xsize':    xsize,
             'ysize':    ysize,
-            'srs':      src_srs,
+            'srs':      wkt2proj4(src_ds.GetProjection()),
             'metadata': meta_txt,
             'geotr':    geotr_txt,
             'gcp_list': gcplst_txt,
@@ -614,7 +624,6 @@ class Pyramid(object):
         with open(src_vrt,'w') as f:
             f.write(vrt_txt)
         self.src_path=src_vrt
-        self.src_srs=src_srs
 
         src_ds=gdal.Open(vrt_txt,GA_ReadOnly)
         return src_ds

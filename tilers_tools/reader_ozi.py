@@ -34,7 +34,7 @@ import locale
 from optparse import OptionParser
 
 from tiler_functions import *
-from reader_base import *
+from reader_backend import *
 
 class OziMap(MapTranslator):
     magic='OziExplorer Map Data File'
@@ -82,16 +82,17 @@ class OziMap(MapTranslator):
         'get a list of geo refs in tuples'
         points=[i for i in self.hdr_parms('Point') if i[2] != ''] # Get a list of geo refs
         if points[0][14] != '': # refs are cartesian
-            refs=RefPoints(self,[
-                (i[0],                                  # id
+            refs=RefPoints(self,[(
+                i[0],                                   # id
                 (int(i[2]),int(i[3])),                  # pixel
-                (),                                     # lat/long
                 (float(i[14]),float(i[15])),            # cartesian coords
                 ) for i in points],
+                cartesian=True,
                 extra=(points[0][16],points[0][13]) # hemisphere, utm zone
                 )
         else:
-            refs=RefPoints(self,[(i[0],                 # id
+            refs=RefPoints(self,[(
+                i[0],                                   # id
                 (int(i[2]),int(i[3])),                  # pixel
                 (dms2dec(*i[9:12]), dms2dec(*i[6:9])),  # lat/long
                 ) for i in points])
@@ -102,7 +103,7 @@ class OziMap(MapTranslator):
         ply_pix=[(int(i[2]),int(i[3])) for i in self.hdr_parms('MMPXY')]    # Moving Map border pixels
         ply_ll=[(float(i[2]),float(i[3])) for i in self.hdr_parms('MMPLL')] # Moving Map border lat,lon
         ids=[i[0] for i in self.hdr_parms('MMPXY')]    # Moving Map border pixels
-        plys=RefPoints(self,ids=ids,pixels=ply_pix,lonlat=ply_ll)
+        plys=RefPoints(self,ids=ids,pixels=ply_pix,coords=ply_ll)
         return plys
 
     def get_dtm(self):
@@ -110,8 +111,11 @@ class OziMap(MapTranslator):
         dtm=[float(s)/3600 for s in self.header[4][2:4]]
         return dtm if dtm != [0,0] else None
 
+    def get_proj_id(self):
+        return self.hdr_parms('Map Projection')[0][1]
+    
     def get_proj(self):
-        proj_id=self.hdr_parms('Map Projection')[0][1]
+        proj_id=self.get_proj_id()
         parm_lst=self.hdr_parms('Projection Setup')[0]
         try:
             proj=self.proj_map[proj_id][0:1]
@@ -135,10 +139,13 @@ class OziMap(MapTranslator):
                     proj.append('+zone=%d' % zone)
                     if lat < 0: 
                         proj.append('+south')
-        return proj,proj_id
+        return proj
+
+    def get_datum_id(self):
+        return self.header[4][0]
 
     def get_datum(self):
-        datum_id=self.header[4][0]
+        datum_id=self.get_datum_id()
         try:
             datum_def=self.datum_map[datum_id]
             if datum_def[5]: # PROJ4 datum defined ?
@@ -155,7 +162,7 @@ class OziMap(MapTranslator):
                     datum.append('+rf=%s',ellps_def[1])                        
         except KeyError: 
             raise Exception("*** Unsupported datum (%s)" % datum_id)
-        return datum,datum_id
+        return datum
 
     try_encodings=(locale.getpreferredencoding(),'utf_8','cp1251','cp1252')
 

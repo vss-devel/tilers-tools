@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-01-27 10:28:47 
+# 2011-02-17 11:31:10 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -35,6 +35,7 @@ import logging
 from subprocess import *
 import itertools
 import re
+import shutil
 #from optparse import OptionParser
 
 try:
@@ -113,11 +114,11 @@ def dest_path(src,dest_dir,ext='',template='%s'):
     ld(base,dest)
     return dest
     
-def re_sub_file(fname, substitutions):
-    'stream edit file using reg exp substitution list supplied'
+def re_sub_file(fname, subs_list):
+    'stream edit file using reg exp substitution list'
     with open(fname+'.new', 'w') as out:
-        for l in open(fname, 'r'):
-            for (pattern,repl) in substitutions:
+        for l in open(fname, 'rU'):
+            for (pattern,repl) in subs_list:
                 l=re.sub(pattern,repl,string=l)
             out.write(l)
     shutil.move(fname+'.new',fname)

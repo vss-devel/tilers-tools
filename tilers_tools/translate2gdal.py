@@ -76,16 +76,12 @@ if __name__=='__main__':
     parser.add_option("--force-dtm", action="store_true", 
         help='force using BSB datum shift to WGS84 instead of native BSB datum')
     parser.add_option("--dtm-shift",dest="dtm_shift",default=None,metavar="SHIFT_LAT,SHIFT_LON",
-        help='override DTM: BSB northing, easting (in seconds!)')
+        help='define northing, easting (in seconds!)')
     parser.add_option("--srs", default=None,
         help='override full chart with PROJ.4 definition of the spatial reference system')
     parser.add_option("--datum", default=None,
         help="override chart's datum (PROJ.4 definition)")
     parser.add_option("--proj", default=None,
-        help="override chart's projection (BSB definition)")
-    parser.add_option("--bsb-datum", default=None,dest="datum_id",
-        help="override chart's datum (BSB definition)")
-    parser.add_option("--bsb-proj", default=None,dest="proj_id",
         help="override chart's projection (BSB definition)")
     parser.add_option("--last-column-bug", action="store_true", 
         help='some BSB files are missing value for last column, here is a workaround')
