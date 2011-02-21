@@ -133,16 +133,15 @@ class RefPoints(object):
 #        return latlon        
         srs_tr=srs2srs(self.geo_srs(),self.owner.srs)
         coords=srs_tr.TransformPoints(latlon)
-        return coords
-        
+        return coords      
 
     def over_180(self):
         if not self._cartesian: # refs are lat/long
-            leftmost=min(self._coords,key=lambda r: r[0])
-            rightmost=max(self._coords,key=lambda r: r[0])
+            leftmost=min(zip(self._pixels,self._coords),key=lambda r: r[0][0])
+            rightmost=max(zip(self._pixels,self._coords),key=lambda r: r[0][0])
             ld('leftmost',leftmost,'rightmost',rightmost)
-            if leftmost[0] > rightmost[0]:
-                return leftmost[0]
+            if leftmost[1][0] > rightmost[1][0]:
+                return leftmost[1][0]
         return None
         
 class MapTranslator(object):
@@ -170,7 +169,7 @@ class MapTranslator(object):
             data_csv=csv.reader(data_f,'strip')
             for row in data_csv:
                 row=[s.decode('utf-8') for s in row]
-                ld(row)
+                #ld(row)
                 try:
                     dct,unpack=csv_map[row[0]]
                     unpack(dct,row)
@@ -207,7 +206,7 @@ class MapTranslator(object):
 
         # setup a central meridian artificialy to allow charts crossing meridian 180
         leftmost=self.refs.over_180()
-        if leftmost and '+lon_0=' not in proj:
+        if leftmost and '+lon_0=' not in proj4[0]:
             proj4.append(' +lon_0=%i' % int(leftmost))
         
         # evaluate chart's datum
@@ -221,7 +220,7 @@ class MapTranslator(object):
         else:
             datum=self.get_datum()
             proj4.extend(datum)
-        proj4.extend(['+wktext','+nodefs'])
+        proj4.extend(['+nodefs']) # '+wktext',
         ld(proj4)
         return ' '.join(proj4).encode('utf-8'),dtm
 
@@ -257,8 +256,8 @@ class MapTranslator(object):
             #double line = 0.0, char info = "", char id = ""
             gcps=[gdal.GCP(c[0],c[1],0,p[0],p[1],'',i) for i,p,c in self.refs]
             dst_ds.SetGCPs(gcps,self.refs.srs())
-#            dst_geotr=gdal.GCPsToGeoTransform(gcps)
-#            dst_ds.SetGeoTransform(dst_geotr)
+            dst_geotr=gdal.GCPsToGeoTransform(gcps)
+            dst_ds.SetGeoTransform(dst_geotr)
             poly,gmt_data=self.cut_poly(dst_ds)
             if poly:
                 dst_ds.SetMetadataItem('CUTLINE',poly)
@@ -266,7 +265,10 @@ class MapTranslator(object):
                 dst_ds.SetMetadataItem('DESCRIPTION',self.name.encode('utf-8'))
 
             del dst_ds # close dataset
-            re_sub_file(dst_file, [('^.*<GeoTransform>.*\n','')])
+            re_sub_file(dst_file, [
+                    ('^.*<GeoTransform>.*\n',''),
+                    ('^.*<SRS>.*\n','')
+                    ])
         finally:
             os.chdir(cdir)
 

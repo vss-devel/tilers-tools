@@ -370,9 +370,9 @@ band_templ='''  <VRTRasterBand dataType="Byte" band="%(band)d">
     </ComplexSource>
   </VRTRasterBand>
 '''
+srs_templ='  <SRS>%s</SRS>\n'
 vrt_templ='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d">
-  <SRS>%(srs)s</SRS>
-%(metadata)s%(geotr)s%(gcp_list)s%(band_list)s</VRTDataset>
+%(metadata)s%(srs)s%(geotr)s%(gcp_list)s%(band_list)s</VRTDataset>
 '''
     
 #############################
@@ -383,6 +383,7 @@ vrt_templ='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d">
 
 class Pyramid(object):
     def __init__(self,src,dest,zoom_parm,tile_fmt,tile_size,tiles_prefix,resampling,base_resampling):
+        gdal.UseExceptions()
         self.tiles_prefix=tiles_prefix
         self.init_tiles()
         self.src=src
@@ -413,7 +414,7 @@ class Pyramid(object):
         src_ds=self.src_ds
 
         # calculate zoom range
-        pf('%s -> %s '%(self.src,self.dest),end='')
+        pf('\n%s -> %s '%(self.src,self.dest),end='')
         self.zoom_range=self.calc_zoom(zoom_parm,temp_vrt)
              
         # reproject to base zoom
@@ -434,7 +435,7 @@ class Pyramid(object):
         self.extent=gdal.ApplyGeoTransform(t_geotr,t_ds.RasterXSize,t_ds.RasterYSize)
 
         tr_srs=srs2srs(shifted_srs,self.proj)
-        shift_x=tr_srs.TransformPoint(0,0)[0]
+        shift_x,y,z=tr_srs.TransformPoint(0,0)
         ld('new_srs',shifted_srs,'shift_x',shift_x,'coord_offset',self.coord_offset)
         if shift_x < 0:
             shift_x+=self.zoom0_tile_dim[0]*2
@@ -463,6 +464,7 @@ class Pyramid(object):
 
         src_proj=wkt2proj4(src_ds.GetProjection())
         src_geotr=src_ds.GetGeoTransform()
+        gcp_proj=None
         if src_geotr and src_geotr != (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
             ok,src_igeotr=gdal.InvGeoTransform(src_geotr)
             assert ok
@@ -472,8 +474,10 @@ class Pyramid(object):
             assert gcps, ' Neither geotransform, nor gpcs are in the source file %s' % self.src
 
             gcp_lst=[(g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) for g in gcps]
+            ld('src_proj',src_ds.GetProjection())
+            ld('gcp_proj',src_ds.GetGCPProjection())
             gcp_proj=wkt2proj4(src_ds.GetGCPProjection())
-            if gcp_proj != src_proj:
+            if src_proj and gcp_proj != src_proj:
                 gcp2src=srs2srs(gcp_proj,src_proj)
                 coords=gcp2src.TransformPoints([g[3:6] for g in gcp_lst])
                 gcp_lst=[tuple(p[:3]+c) for p,c in zip(gcp_lst,coords)]
@@ -524,12 +528,12 @@ class Pyramid(object):
             'srs':              self.proj,
             'geotr':            geotr_templ % geotr,
             'band_list':        '\n'.join(vrt_bands),
-            'blxsize':          block_sz[0],
-            'blysize':          block_sz[1],
+            'blxsize':          self.tile_sz[0],
+            'blysize':          self.tile_sz[1],
             'wo_ResampleAlg':   self.base_resampling,
             'wo_src_path':      self.src_path,
             'warp_options':     '\n'.join(warp_options),
-            'wo_src_srs':       src_proj,
+            'wo_src_srs':       gcp_proj if gcp_proj else src_proj,
             'wo_dst_srs':       self.proj,
             'wo_src_transform': src_transform,
             'wo_dst_transform': dst_transform,
@@ -580,6 +584,7 @@ class Pyramid(object):
         assert src_bands == 1
         xsize,ysize=(src_ds.RasterXSize,src_ds.RasterYSize)
 
+        srs_proj=wkt2proj4(src_ds.GetProjection())
         src_geotr=src_ds.GetGeoTransform()
         ld('src geotr',src_geotr)
         if not src_geotr or src_geotr == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
@@ -615,8 +620,8 @@ class Pyramid(object):
         vrt_txt=vrt_templ % {
             'xsize':    xsize,
             'ysize':    ysize,
-            'srs':      wkt2proj4(src_ds.GetProjection()),
             'metadata': meta_txt,
+            'srs':      (srs_templ % srs_proj) if srs_proj else '',
             'geotr':    geotr_txt,
             'gcp_list': gcplst_txt,
             'band_list':band_lst,
@@ -627,6 +632,63 @@ class Pyramid(object):
 
         src_ds=gdal.Open(vrt_txt,GA_ReadOnly)
         return src_ds
+
+    def shift_srs(self,zoom=None):
+        'change prime meridian to allow charts crossing 180 meridian'
+        t_ds=self.src_ds
+#        tr_pix_ll=gdal.Transformer(t_ds,None,['METHOD=GCP_TPS','DST_SRS='+proj4wkt(self.latlong)])
+        tr_pix_ll=gdal.Transformer(t_ds,None,['DST_SRS='+proj4wkt(self.latlong)])
+        ll,ok=tr_pix_ll.TransformPoints(0,[(0,0,0),(t_ds.RasterXSize,t_ds.RasterYSize,0)])
+        assert ok
+        ul,lr=ll
+        ld('ul',ul,'lr',lr)
+        if ul[0] < lr[0]:
+            return self.proj
+
+        left_lon=int(math.floor(ul[0]))
+        tr_srs=srs2srs(self.latlong,self.proj)
+        left_xy=tr_srs.TransformPoint(left_lon,0)
+        if zoom is not None: # adjust to a tile boundary
+            left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
+
+        tr_srs=srs2srs(self.proj,self.latlong)
+        new_pm=int(math.floor(
+                tr_srs.TransformPoint(*left_xy)[0]
+                ))#-180
+        ld('left_xy',left_xy,'new_pm',new_pm)
+        return '%s +lon_0=%d' % (self.proj,new_pm)
+
+    def calc_zoom(self,zoom_parm,temp_vrt):
+        'determite zoom levels to generate'
+        res=None
+        if not zoom_parm: # calculate "automatic" zoom levels
+            # check raster parameters to find default zoom range
+            # modify target srs to allow charts crossing meridian 180
+            ld('"automatic" zoom levels')
+            shifted_srs=self.shift_srs()
+
+            t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
+            geotr=t_ds.GetGeoTransform()
+            res=(geotr[1], -geotr[5])
+            max_zoom=max(self.res2zoom_xy(res))
+
+            # calculate min_zoom
+            ul_c=(geotr[0], geotr[3])
+            lr_c=gdal.ApplyGeoTransform(geotr,t_ds.RasterXSize,t_ds.RasterYSize)
+            wh=(lr_c[0]-ul_c[0],ul_c[1]-lr_c[1])
+            ld(ul_c,lr_c,wh)
+            min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_sz[i]for i in (0,1)]))
+            zoom_parm='%d-%d'%(min_zoom,max_zoom)
+        zchunks=[map(int,z.split('-')) for z in zoom_parm.split(',')]
+        zrange=[]
+        for z in zchunks:
+            if len(z) == 1:
+                zrange+=z
+            else:
+                zrange+=range(min(z),max(z)+1)
+        zoom_range=list(reversed(sorted(set(zrange))))
+        ld(('res',res,'zoom_range',zoom_range,'z0 (0,0)',self.coord2pix(0,(0,0))))
+        return zoom_range
 
     def cut_line(self):
         src_ds=self.src_ds
@@ -676,61 +738,6 @@ class Pyramid(object):
                     mpoly.append(','.join(['%r %r' % (p[0],p[1]) for p in p_pix]))
             cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly])
         return cutline
-
-    def shift_srs(self,zoom=None):
-        'change prime meridian to allow charts crossing 180 meridian'
-        t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(self.latlong))
-        tr_pix_ll=gdal.Transformer(t_ds,None,[])
-        ok,ul=tr_pix_ll.TransformPoint(0,0,0)
-        ok,lr=tr_pix_ll.TransformPoint(t_ds.RasterXSize,t_ds.RasterYSize,0)
-        ld('ul',ul,'lr',lr)
-        if ul[0] < lr[0]:
-            return self.proj
-
-        left_lon=int(math.floor(ul[0]))
-        tr_srs=srs2srs(self.latlong,self.proj)
-        left_xy=tr_srs.TransformPoint(left_lon,0)
-        if zoom is not None: # adjust to a tile boundary
-            left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
-
-        tr_srs=srs2srs(self.proj,self.latlong)
-        new_pm=int(math.floor(
-                tr_srs.TransformPoint(*left_xy)[0]
-                ))#-180
-        ld('left_xy',left_xy,'new_pm',new_pm)
-        return '%s +lon_0=%d' % (self.proj,new_pm)
-
-    def calc_zoom(self,zoom_parm,temp_vrt):
-        'determite zoom levels to generate'
-        res=None
-        if not zoom_parm: # calculate "automatic" zoom levels
-            # check raster parameters to find default zoom range
-            # modify target srs to allow charts crossing meridian 180
-            ld('"automatic" zoom levels')
-            shifted_srs=self.shift_srs()
-
-            t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
-            geotr=t_ds.GetGeoTransform()
-            res=(geotr[1], -geotr[5])
-            max_zoom=max(self.res2zoom_xy(res))
-
-            # calculate min_zoom
-            ul_c=(geotr[0], geotr[3])
-            lr_c=gdal.ApplyGeoTransform(geotr,t_ds.RasterXSize,t_ds.RasterYSize)
-            wh=(lr_c[0]-ul_c[0],ul_c[1]-lr_c[1])
-            ld(ul_c,lr_c,wh)
-            min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_sz[i]for i in (0,1)]))
-            zoom_parm='%d-%d'%(min_zoom,max_zoom)
-        zchunks=[map(int,z.split('-')) for z in zoom_parm.split(',')]
-        zrange=[]
-        for z in zchunks:
-            if len(z) == 1:
-                zrange+=z
-            else:
-                zrange+=range(min(z),max(z)+1)
-        zoom_range=list(reversed(sorted(set(zrange))))
-        ld(('res',res,'zoom_range',zoom_range,'z0 (0,0)',self.coord2pix(0,(0,0))))
-        return zoom_range
 
     #############################
     #
@@ -980,7 +987,7 @@ class PlateCarree(Pyramid):
 
     def make_kml(self,tile,children=[]): #
         if not tile: # create top level kml
-            self.write_kml('doc',os.path.basename(self.base),self.kml_child_links(children))
+            self.write_kml(os.path.basename(self.base),os.path.basename(self.base),self.kml_child_links(children))
             return
         # fill in kml templates
         rel_path=self.tile_path(tile)
