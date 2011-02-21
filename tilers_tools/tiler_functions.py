@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-17 11:31:10 
+# 2011-02-21 17:38:50 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -37,6 +37,18 @@ import itertools
 import re
 import shutil
 #from optparse import OptionParser
+
+try:
+    from osgeo import gdal
+    from osgeo import osr
+    from osgeo import ogr
+    from osgeo.gdalconst import *
+#    gdal.TermProgress = gdal.TermProgress_nocb
+except ImportError:
+    import gdal
+    import osr
+    import ogr
+    from gdalconst import *
 
 try:
     import multiprocessing # available in python 2.6 and above
@@ -122,4 +134,39 @@ def re_sub_file(fname, subs_list):
                 l=re.sub(pattern,repl,string=l)
             out.write(l)
     shutil.move(fname+'.new',fname)
+
+#############################
+#
+# GDAL utility functions
+#
+#############################
+
+def wkt2proj4(wkt):
+    srs = osr.SpatialReference()
+    srs.ImportFromWkt(wkt)
+    return srs.ExportToProj4()
+
+def proj4wkt(proj4):
+    srs = osr.SpatialReference()
+    srs.ImportFromProj4(proj4)
+    return srs.ExportToWkt()
+
+class MyTransformer(gdal.Transformer):
+    def __init__(self,src_ds=None,dst_ds=None,**options):
+        for key in ('SRC_SRS','DST_SRS'):
+            try:
+                srs=options[key]
+                if srs.startswith('+'):
+                    options[key]=proj4wkt(srs)
+            except: pass
+        opt_lst=['%s=%s' % (key,options[key]) for key in options]
+        super(MyTransformer, self).__init__(src_ds,dst_ds,opt_lst)
+
+    def transform(self,points,inv=False):
+        transformed,ok=self.TransformPoints(inv,points)
+        assert ok
+        return transformed
+
+    def transform_pt(self,point,inv=False):
+        return self.transform([point],inv=inv)[0]
 

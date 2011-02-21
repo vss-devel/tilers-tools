@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-16 17:05:10  
+# 2011-02-21 17:38:22 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -236,48 +236,33 @@ def BaseImg(img_fname,tile_ul,tile_lr):
         raise Exception('Invalid base image')
 
     return img_cls(img_fname,tile_ul,tile_lr)
-    
+
 resampling_map={
-    'nearest': Image.NEAREST,
+    'near':     Image.NEAREST,
+    'nearest':  Image.NEAREST,
     'bilinear': Image.BILINEAR,
-    'bicubic': Image.BICUBIC,
-    'antialias': Image.ANTIALIAS,
+    'bicubic':  Image.BICUBIC,
+    'antialias':Image.ANTIALIAS,
     }
 def resampling_lst(): return resampling_map.keys()
     
 base_resampling_map={
     'near':         'NearestNeighbour', 
+    'nearest':      'NearestNeighbour', 
     'bilinear':     'Bilinear',
     'cubic':        'Cubic',
     'cubicspline':  'CubicSpline',
     'lanczos':      'Lanczos',
     }
-
 def base_resampling_lst(): return base_resampling_map.keys()
 
-#############################
-#
-# GDAL utility functions
-#
-#############################
-
-def srs2srs(proj4_src,proj4_dst):
-    srs_src = osr.SpatialReference()
-    srs_src.ImportFromProj4(proj4_src)
-    srs_dst = osr.SpatialReference()
-    srs_dst.ImportFromProj4(proj4_dst)
-    return osr.CoordinateTransformation(srs_src,srs_dst)
-
-def wkt2proj4(wkt):
-    srs = osr.SpatialReference()
-    srs.ImportFromWkt(wkt)
-    return srs.ExportToProj4()
-
-def proj4wkt(proj4):
-    srs = osr.SpatialReference()
-    srs.ImportFromProj4(proj4)
-    return srs.ExportToWkt()
-
+profile_map={
+    'draft':    ('nearest','nearest'),
+    'release':  ('antialias','bilinear'),
+    }
+def profile_lst(): return profile_map.keys()
+    
+    
 #############################
 #
 # templates for VRT XML
@@ -382,23 +367,24 @@ vrt_templ='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d">
 #############################
 
 class Pyramid(object):
-    def __init__(self,src,dest,zoom_parm,tile_fmt,tile_size,tiles_prefix,resampling,base_resampling):
+    def __init__(self,src,dest,options):
         gdal.UseExceptions()
-        self.tiles_prefix=tiles_prefix
-        self.init_tiles()
         self.src=src
-        self.src_path=self.src        
-        self.tile_ext='.'+tile_fmt.lower()
-        self.tile_sz=tile_size
+        self.dest=dest
+        self.options=options
+        self.src_path=self.src
+        self.tiles_prefix=options.tiles_prefix
+        self.init_proj()
+        self.tile_ext='.'+options.tile_format.lower()
+        self.tile_sz=tuple(map(int,options.tile_size.split(',')))
         self.src_dir,src_f=os.path.split(src)
         self.base=os.path.splitext(src_f)[0]
-        self.dest=dest
         if os.path.isdir(self.dest):
             shutil.rmtree(self.dest,ignore_errors=True)
         os.makedirs(self.dest)
-        self.base_resampling=base_resampling_map[base_resampling]
-        self.resampling=resampling_map[resampling]
-        self.init_map(zoom_parm)
+        self.base_resampling=base_resampling_map[options.base_resampling]
+        self.resampling=resampling_map[options.overview_resampling]
+        self.init_map(options.zoom)
 
     #############################
     #
@@ -407,11 +393,10 @@ class Pyramid(object):
     #############################
 
     def init_map(self,zoom_parm):
-#        options=self.options
+        options=self.options
         src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
         temp_vrt=os.path.join(self.dest,self.base+'.tmp.vrt') # auxilary VRT file
         self.src_ds=self.get_src_ds(src_vrt)
-        src_ds=self.src_ds
 
         # calculate zoom range
         pf('\n%s -> %s '%(self.src,self.dest),end='')
@@ -425,17 +410,12 @@ class Pyramid(object):
         shifted_srs=self.shift_srs(zoom)
 
         # get origin and corners at the target SRS
-        t_ds=gdal.AutoCreateWarpedVRT(src_ds,None,proj4wkt(shifted_srs))
-#        dst_drv = gdal.GetDriverByName('VRT')
-#        dst_drv.CreateCopy(os.path.join(self.dest,self.base+'.tmp_warp.vrt'),t_ds,0)
+        t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
+        tr=MyTransformer(t_ds)
+        self.origin,self.extent=tr.transform([(0,0),(t_ds.RasterXSize,t_ds.RasterYSize)])
 
-        t_geotr=t_ds.GetGeoTransform()
-        t_res=(t_geotr[1], -t_geotr[5])
-        self.origin=(t_geotr[0], t_geotr[3])
-        self.extent=gdal.ApplyGeoTransform(t_geotr,t_ds.RasterXSize,t_ds.RasterYSize)
-
-        tr_srs=srs2srs(shifted_srs,self.proj)
-        shift_x,y,z=tr_srs.TransformPoint(0,0)
+        tr_srs=MyTransformer(SRC_SRS=shifted_srs,DST_SRS=self.proj)
+        shift_x,y,z=tr_srs.transform_pt((0,0))
         ld('new_srs',shifted_srs,'shift_x',shift_x,'coord_offset',self.coord_offset)
         if shift_x < 0:
             shift_x+=self.zoom0_tile_dim[0]*2
@@ -462,24 +442,24 @@ class Pyramid(object):
         ld('Lower Right',self.extent,lr_c)
         ld('coord_offset',self.coord_offset,'ul_c+c_off',map(operator.add,ul_c,self.coord_offset))
 
-        src_proj=wkt2proj4(src_ds.GetProjection())
-        src_geotr=src_ds.GetGeoTransform()
+        src_proj=wkt2proj4(self.src_ds.GetProjection())
+        src_geotr=self.src_ds.GetGeoTransform()
         gcp_proj=None
         if src_geotr and src_geotr != (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
             ok,src_igeotr=gdal.InvGeoTransform(src_geotr)
             assert ok
             src_transform='%s\n%s' % (warp_src_geotr % src_geotr,warp_src_igeotr % src_igeotr)
         else:
-            gcps=src_ds.GetGCPs()
+            gcps=self.src_ds.GetGCPs()
             assert gcps, ' Neither geotransform, nor gpcs are in the source file %s' % self.src
 
             gcp_lst=[(g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) for g in gcps]
-            ld('src_proj',src_ds.GetProjection())
-            ld('gcp_proj',src_ds.GetGCPProjection())
-            gcp_proj=wkt2proj4(src_ds.GetGCPProjection())
+            ld('src_proj',self.src_ds.GetProjection())
+            ld('gcp_proj',self.src_ds.GetGCPProjection())
+            gcp_proj=wkt2proj4(self.src_ds.GetGCPProjection())
             if src_proj and gcp_proj != src_proj:
-                gcp2src=srs2srs(gcp_proj,src_proj)
-                coords=gcp2src.TransformPoints([g[3:6] for g in gcp_lst])
+                gcp2src=MyTransformer(SRC_SRS=gcp_proj,DST_SRS=srs_proj)
+                coords=gcp2src.transform([g[3:6] for g in gcp_lst])
                 gcp_lst=[tuple(p[:3]+c) for p,c in zip(gcp_lst,coords)]
 
             gcp_txt='\n'.join((gcp_templ % g for g in gcp_lst))
@@ -508,7 +488,7 @@ class Pyramid(object):
             nodata=options.no_data.split(',')
             warp_options.append(w_option('UNIFIED_SRC_NODATA','YES'))
 
-        src_bands=src_ds.RasterCount
+        src_bands=self.src_ds.RasterCount
         assert src_bands in (3,4)
         vrt_bands=[]
         wo_BandList=[]
@@ -520,7 +500,7 @@ class Pyramid(object):
         if src_bands < 4:
             vrt_bands.append(warp_band % (i+1,warp_band_color % 'Alpha'))
 
-        block_sz=src_ds.GetRasterBand(1).GetBlockSize()
+        block_sz=self.src_ds.GetRasterBand(1).GetBlockSize()
 
         vrt_text=warp_vrt % {
             'xsize':            xsize,
@@ -558,6 +538,8 @@ class Pyramid(object):
             'BLOCKYSIZE=%i' % self.tile_sz[1],
             ])#, gdal.TermProgress)
         del dst_ds
+        del t_ds
+        del self.src_ds
         pf('.',end='')
 
         # create base_image raster
@@ -637,23 +619,22 @@ class Pyramid(object):
         'change prime meridian to allow charts crossing 180 meridian'
         t_ds=self.src_ds
 #        tr_pix_ll=gdal.Transformer(t_ds,None,['METHOD=GCP_TPS','DST_SRS='+proj4wkt(self.latlong)])
-        tr_pix_ll=gdal.Transformer(t_ds,None,['DST_SRS='+proj4wkt(self.latlong)])
-        ll,ok=tr_pix_ll.TransformPoints(0,[(0,0,0),(t_ds.RasterXSize,t_ds.RasterYSize,0)])
-        assert ok
+        tr_pix_ll=MyTransformer(t_ds,DST_SRS=self.latlong)
+        ll=tr_pix_ll.transform([(0,0,0),(t_ds.RasterXSize,t_ds.RasterYSize,0)])
         ul,lr=ll
         ld('ul',ul,'lr',lr)
         if ul[0] < lr[0]:
             return self.proj
 
         left_lon=int(math.floor(ul[0]))
-        tr_srs=srs2srs(self.latlong,self.proj)
-        left_xy=tr_srs.TransformPoint(left_lon,0)
+        tr_srs=MyTransformer(SRC_SRS=self.latlong,DST_SRS=self.proj)
+        left_xy=tr_srs.transform_pt((left_lon,0))
         if zoom is not None: # adjust to a tile boundary
             left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
 
-        tr_srs=srs2srs(self.proj,self.latlong)
+#        tr_srs=get_transformer(SRC_SRS=self.proj,DST_SRS=self.latlong)
         new_pm=int(math.floor(
-                tr_srs.TransformPoint(*left_xy)[0]
+                tr_srs.transform_pt(left_xy,inv=True)[0]
                 ))#-180
         ld('left_xy',left_xy,'new_pm',new_pm)
         return '%s +lon_0=%d' % (self.proj,new_pm)
@@ -723,18 +704,17 @@ class Pyramid(object):
                 'POLYGON': (geom,),
                 }[gname]
             mpoly=[]
-            srs_tr=srs2srs(poly_proj,src_proj)
+            srs_tr=MyTransformer(SRC_SRS=poly_proj,DST_SRS=src_proj)
             if poly_proj == src_proj:
-                srs_tr.TransformPoints=lambda x:x
-            pix_tr=gdal.Transformer(src_ds,None,[])
+                srs_tr.transform=lambda x:x
+            pix_tr=MyTransformer(src_ds)
             for pl in poly_iter:
                 assert pl.GetGeometryName() == 'POLYGON'
                 for ln in (pl.GetGeometryRef(j) for j in range(pl.GetGeometryCount())):
                     assert ln.GetGeometryName() == 'LINEARRING'
                     points=[ln.GetPoint(n) for n in range(ln.GetPointCount())]
-                    p_src=srs_tr.TransformPoints(points)
-                    p_pix,ok=pix_tr.TransformPoints(True,p_src)
-                    assert all(ok)
+                    p_src=srs_tr.transform(points)
+                    p_pix=pix_tr.transform_pt(p_src,inv=True)
                     mpoly.append(','.join(['%r %r' % (p[0],p[1]) for p in p_pix]))
             cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly])
         return cutline
@@ -801,10 +781,10 @@ class Pyramid(object):
 
     def coords2latlong(self, coords): # redefined in PlateCarree
         try:
-            self.tr_proj2latlong
+            self.proj2latlong
         except: # first time call
-            self.tr_proj2latlong=srs2srs(self.proj,self.latlong)
-        return [i[:2] for i in self.tr_proj2latlong.TransformPoints(coords)]
+            self.proj2latlong=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.latlong)
+        return [i[:2] for i in self.proj2latlong.transform(coords)]
 
     def boxes2latlong(self,box_lst):
         out=self.coords2latlong(flatten(box_lst))
@@ -943,9 +923,9 @@ class PlateCarree(Pyramid):
     proj='+proj=eqc +datum=WGS84 +ellps=WGS84' # Equirectangular (aka plate carrée, aka Simple Cylindrical)
     latlong='+proj=latlong +datum=WGS84'
 
-    def init_tiles(self):
-        tr=srs2srs(self.latlong,self.proj)
-        semi_circ,semi_meridian,boo=tr.TransformPoint(180,90)
+    def init_proj(self):
+        tr=MyTransformer(SRC_SRS=self.latlong,DST_SRS=self.proj)
+        semi_circ,semi_meridian,z=tr.transform_pt((180,90))
         self.zoom0_tiles=[2,1] # tiles at zoom 0
         self.zoom0_tile_dim=[semi_circ,semi_meridian*2] # dimentions of a tile at zoom 0
         self.coord_offset=[semi_circ,semi_meridian]
@@ -1079,10 +1059,10 @@ class Gmaps(Pyramid):
     proj='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext' # Google Maps Global Mercator
     latlong='+proj=latlong +a=6378137 +b=6378137  +nadgrids=@null +wktext'
     
-    def init_tiles(self):
+    def init_proj(self):
         # Half Equator length in meters
-        tr=srs2srs(self.latlong,self.proj)
-        semi_circ,foo,boo=tr.TransformPoint(180,0)
+        tr=MyTransformer(SRC_SRS=self.latlong,DST_SRS=self.proj)
+        semi_circ,y,z=tr.transform_pt((180,0))
         ld(semi_circ)
         self.zoom0_tiles=[1,1] # tiles at zoom 0
         self.zoom0_tile_dim=[semi_circ*2,semi_circ*2]  # dimentions of a tile at zoom 0
@@ -1253,9 +1233,6 @@ def formats_lst(tty=False):
     print('\nOutput formats and compatibility:\n')
     [print('%10s - %s' % (c.format,c.__doc__)) for c in format_map]
     print()
-    
-def gdal_tiler(format_class,src,dest,zoom,tile_fmt,tile_size,tiles_prefix,resampling,base_resampling):
-    format_class(src,dest,zoom,tile_fmt,tile_size,tiles_prefix,resampling,base_resampling).walk_pyramid()
 
 def proc_src(src):
     for cls in format_map:
@@ -1265,9 +1242,7 @@ def proc_src(src):
         raise Exception("Invalid format: %s" % format)
 
     dest=dest_path(src,options.dest_dir,cls.defaul_ext)
-    gdal_tiler(cls,src,dest,options.zoom,options.tile_format,
-        eval(options.tile_size),options.tiles_prefix,
-        options.resampling,options.base_resampling)
+    cls(src,dest,options).walk_pyramid()
 
 def main(argv):
     
@@ -1281,12 +1256,15 @@ def main(argv):
         help='list output formats')
     parser.add_option("-z", "--zoom", default=None,metavar="ZOOM_LIST",
         help='list of zoom ranges to generate')
-    parser.add_option('-r','--resampling', default='antialias',metavar="METHOD1",
+    parser.add_option('-r','--overview-resampling', default='nearest',metavar="METHOD1",
         choices=resampling_lst(),
-        help='tile resampling method (default: antialias)')
-    parser.add_option('--base-resampling', default='bilinear',metavar="METHOD2",
+        help='overview tiles resampling method (default: nearest)')
+    parser.add_option('--base-resampling', default='nearest',metavar="METHOD2",
         choices=base_resampling_lst(),
-        help='base image resampling method (default: bilinear)')
+        help='base image resampling method (default: nearest)')
+    parser.add_option('-p','--profile', default='draft',
+        choices=profile_lst(),
+        help='resampling profile (default: draft)')
     parser.add_option("-c", "--cut", action="store_true", 
         help='cut the raster as per cutline provided')
     parser.add_option("--cutline", default=None, metavar="DATASOURCE",
@@ -1299,7 +1277,7 @@ def main(argv):
         help='prefix for tile URLs at googlemaps.hml')
     parser.add_option("--tile-format", default='png',metavar="FMT",
         help='tile image format (default: PNG)')
-    parser.add_option("-p", "--to-palette", action="store_true", 
+    parser.add_option("--to-palette", action="store_true", 
         help='convert tiles to paletted format (8 bit/pixel)')
     parser.add_option("--tile-size", default='256,256',metavar="SIZE_X,SIZE_Y",
         help='tile size (default: 256,256)')
@@ -1322,6 +1300,9 @@ def main(argv):
     if options.list_formats:
         formats_lst(tty=True)
         sys.exit(0)
+
+    if options.profile != 'draft':
+        options.overview_resampling,options.base_resampling=profile_map[options.profile]
 
     if not args:
         parser.error('No input file(s) specified')

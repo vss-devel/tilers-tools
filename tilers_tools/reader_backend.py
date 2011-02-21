@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-16 18:11:18 
+# 2011-02-21 17:38:11 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -64,13 +64,6 @@ class Opt(object):
     def __getattr__(self, name):
         return self.dict.setdefault(name,None)
 
-def srs2srs(proj4_src,proj4_dst):
-    srs_src = osr.SpatialReference()
-    srs_src.ImportFromProj4(proj4_src)
-    srs_dst = osr.SpatialReference()
-    srs_dst.ImportFromProj4(proj4_dst)
-    return osr.CoordinateTransformation(srs_src,srs_dst)
-
 class RefPoints(object):
     'source geo-reference points and polygons'
     def __init__(self,owner,ref_lst=None,ids=None,pixels=None,coords=None,cartesian=False,extra=None):
@@ -113,14 +106,13 @@ class RefPoints(object):
     def pixels(self,dataset=None):
         if self._pixels:
             return self._pixels
-#        srs_tr=srs2srs(self.srs(),self.owner.srs)
-#        p_dst=srs_tr.TransformPoints(self.coords())
+#        srs_tr=MyTransformer(SRC_SRS=self.srs(),DST_SRS=self.owner.srs)
+#        p_dst=srs_tr.transform(self.coords())
         p_dst=self.coords()
         ld(p_dst)
-        pix_tr=gdal.Transformer(dataset,None,['METHOD=GCP_TPS'])
-        p_pix,ok=pix_tr.TransformPoints(True,p_dst)
+        pix_tr=MyTransformer(dataset,METHOD='GCP_TPS')
+        p_pix=pix_tr.transform(p_dst,inv=True)
         ld(p_pix)
-        assert all(ok)
         return [(p[0],p[1]) for p in p_pix]
 
     def coords(self):
@@ -131,8 +123,8 @@ class RefPoints(object):
             dtm=[0,0]
         latlon=[(lon+dtm[0],lat+dtm[1]) for lon,lat in self._coords]
 #        return latlon        
-        srs_tr=srs2srs(self.geo_srs(),self.owner.srs)
-        coords=srs_tr.TransformPoints(latlon)
+        srs_tr=MyTransformer(SRC_SRS=self.geo_srs(),DST_SRS=self.owner.srs)
+        coords=srs_tr.transform(latlon)
         return coords      
 
     def over_180(self):
