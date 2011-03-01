@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-08 17:40:11 
+# 2011-03-01 16:32:36 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -100,17 +100,23 @@ class GeoNosMap(MapTranslator):
             (float(i[2]),float(i[1]))               # lat/long
             ) for i in self.hdr_parms2list('Vertex')])
         return plys
+
+    def get_proj_id(self):
+        return self.hdr_parms('Projection')[0]
         
     def get_proj(self):
-        proj_id=self.hdr_parms('Projection')[0]
+        proj_id=self.get_proj_id()
         try:
             proj=[self.proj_map[proj_id][0]]
         except KeyError: 
             raise Exception("*** Unsupported projection (%s)" % proj_id)
-        return proj,proj_id
+        return proj
+
+    def get_datum_id(self):
+        return self.hdr_parms('Datum')[0]
 
     def get_datum(self):
-        datum_id=self.hdr_parms('Datum')[0]
+        datum_id=self.get_datum_id()
         try:
             datum=self.datum_map[datum_id][0]
         except KeyError: 
@@ -120,7 +126,7 @@ class GeoNosMap(MapTranslator):
                 logging.warning(' Unknown datum %s, trying WGS 84 with DTM shifts' % datum_id)
             else: # assume DTM is 0,0
                 logging.warning(' Unknown datum %s, trying WGS 84' % datum_id)
-        return datum.split(' '),datum_id
+        return datum.split(' ')
 
     def get_raster(self):
         name_patt=self.hdr_parms('Bitmap')[0].lower()
