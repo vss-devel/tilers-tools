@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-21 17:38:22 
+# 2011-03-01 14:51:28 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -255,13 +255,6 @@ base_resampling_map={
     'lanczos':      'Lanczos',
     }
 def base_resampling_lst(): return base_resampling_map.keys()
-
-profile_map={
-    'draft':    ('nearest','nearest'),
-    'release':  ('antialias','bilinear'),
-    }
-def profile_lst(): return profile_map.keys()
-    
     
 #############################
 #
@@ -1243,6 +1236,13 @@ def proc_src(src):
 
     dest=dest_path(src,options.dest_dir,cls.defaul_ext)
     cls(src,dest,options).walk_pyramid()
+    
+profile_map={
+    'none':     None,
+    'draft':    ('nearest','nearest'),
+    'release':  ('antialias','bilinear'),
+    }
+def profile_lst(): return profile_map.keys()
 
 def main(argv):
     
@@ -1262,7 +1262,7 @@ def main(argv):
     parser.add_option('--base-resampling', default='nearest',metavar="METHOD2",
         choices=base_resampling_lst(),
         help='base image resampling method (default: nearest)')
-    parser.add_option('-p','--profile', default='draft',
+    parser.add_option('-p','--profile', default='none',
         choices=profile_lst(),
         help='resampling profile (default: draft)')
     parser.add_option("-c", "--cut", action="store_true", 
@@ -1301,7 +1301,7 @@ def main(argv):
         formats_lst(tty=True)
         sys.exit(0)
 
-    if options.profile != 'draft':
+    if options.profile != 'none':
         options.overview_resampling,options.base_resampling=profile_map[options.profile]
 
     if not args:
