@@ -47,10 +47,10 @@ class BsbKapMap(MapTranslator):
         self.knp_map={}
         self.knq_map={}
         csv_map={
-            'datum': (self.datum_map,self.ini_lst),
-            'guess': (self.guess_map,self.ini_lst),
-            'knp': (self.knp_map,self.ini_map),
-            'knq': (self.knq_map,self.ini_map),
+            'datum':        (self.datum_map,self.ini_lst),
+            'datum_guess':  (self.guess_map,self.ini_lst),
+            'proj_knp':     (self.knp_map,self.ini_map),
+            'proj_knq':     (self.knq_map,self.ini_map),
             }
         self.load_csv(self.data_file,csv_map)
             
@@ -124,7 +124,7 @@ class BsbKapMap(MapTranslator):
         
     def assemble_parms(self,parm_map,parm_info):    
         check_parm=lambda s: (s not in ['NOT_APPLICABLE','UNKNOWN']) and s.replace('0','').replace('.','')
-        return [parm_map[i]+parm_info[i] for i in parm_map
+        return ['+%s=%s' % (parm_map[i],parm_info[i]) for i in parm_map
                         if  i in parm_info and check_parm(parm_info[i])]
 
     def get_proj_id(self):

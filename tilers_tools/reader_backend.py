@@ -176,10 +176,7 @@ class MapTranslator(object):
         dct[row[1]]=row[2:]
 
     def ini_map(self,dct,row):
-        vlst=row[2:]
-        keys=vlst[0::2]
-        vals=vlst[1::2]
-        dct[row[1]]=dict(zip(keys,vals))
+        dct[row[1]]=dict((i.split(':',1) for i in row[2:] if ':' in i))
 
     def get_srs(self):
         'returns srs for the map, and DTM shifts if any'
