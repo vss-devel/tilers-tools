@@ -72,7 +72,7 @@ class BsbKapMap(MapTranslator):
         return header
 
     def hdr_parms(self, patt): 
-        'filter header for params starting with "patt/", if knd is empty then return comment lines'
+        'filter header for params starting with "patt/"'
         if patt != '!': 
             patt += '/'
         return [i[len(patt):] for i in self.header if i.startswith(patt)]

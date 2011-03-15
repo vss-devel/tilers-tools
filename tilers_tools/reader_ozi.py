@@ -83,12 +83,12 @@ class OziMap(MapTranslator):
         points=[i for i in self.hdr_parms('Point') if i[2] != ''] # Get a list of geo refs
         if points[0][14] != '': # refs are cartesian
             refs=RefPoints(self,[(
-                i[0],                                   # id
-                (int(i[2]),int(i[3])),                  # pixel
-                (float(i[14]),float(i[15])),            # cartesian coords
-                ) for i in points],
+                    i[0],                                   # id
+                    (int(i[2]),int(i[3])),                  # pixel
+                    (float(i[14]),float(i[15])),            # cartesian coords
+                    ) for i in points],
                 cartesian=True,
-                extra=(points[0][16],points[0][13]) # hemisphere, utm zone
+                extra=[(i[13],i[16]) for i in points]   # zone, hemisphere
                 )
         else:
             refs=RefPoints(self,[(

@@ -67,6 +67,7 @@ class Opt(object):
 class RefPoints(object):
     'source geo-reference points and polygons'
     def __init__(self,owner,ref_lst=None,ids=None,pixels=None,coords=None,cartesian=False,extra=None):
+        ld('RefPoints',ref_lst,ids,pixels,coords,cartesian,extra)
         self.owner=owner
         self._ids=ids
         self._pixels=pixels

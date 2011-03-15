@@ -31,9 +31,8 @@ proj_knp,POLYCONIC,                      PROJ4:+proj=poly,PP:lon_0,
 proj_knp,SWEDISH GRID,                   "PROJ4:+proj=tmerc +lon_0=15.808277777778 +x_0=1500000 +y_0=0",
 
 # KNQ/ extra projection parameters for BSB v. 3.xx
-proj_knq,TRANSVERSE MERCATOR,            P1:lon_0,P2:k,P3:lat_0=",
+proj_knq,TRANSVERSE MERCATOR,            P1:lon_0,P2:k,P3:lat_0,
 # P3 - guess
-proj_knq,LAMBERT CONFORMAL CONIC,        P1:lon_0,P2:lat_1,P3:lat_2=",
-proj_knq,POLYCONIC,                      P1:lon_0,P2:lat_0=",
+proj_knq,LAMBERT CONFORMAL CONIC,        P1:lon_0,P2:lat_1,P3:lat_2,
+proj_knq,POLYCONIC,                      P1:lon_0,P2:lat_0,
 # P2 - guess
-
