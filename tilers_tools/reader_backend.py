@@ -23,7 +23,7 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 #  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #  DEALINGS IN THE SOFTWARE.
-#******************************************************************************
+###############################################################################
 
 from __future__ import with_statement
 
@@ -64,8 +64,12 @@ class Opt(object):
     def __getattr__(self, name):
         return self.dict.setdefault(name,None)
 
+###############################################################################
+
 class RefPoints(object):
     'source geo-reference points and polygons'
+
+###############################################################################
     def __init__(self,owner,ref_lst=None,ids=None,pixels=None,coords=None,cartesian=False,extra=None):
         ld('RefPoints',ref_lst,ids,pixels,coords,cartesian,extra)
         self.owner=owner
@@ -101,24 +105,27 @@ class RefPoints(object):
         return srs_geo.ExportToProj4()
 
     def __iter__(self):
-        for i in zip(self._ids,self.pixels(),self.coords()):
+        for i in zip(self._ids,self.pixels(),self.proj_coords()):
             yield i
     
     def pixels(self,dataset=None):
         if self._pixels:
             return self._pixels
 #        srs_tr=MyTransformer(SRC_SRS=self.srs(),DST_SRS=self.owner.srs)
-#        p_dst=srs_tr.transform(self.coords())
-        p_dst=self.coords()
+#        p_dst=srs_tr.transform(self.proj_coords())
+        p_dst=self.proj_coords()
         ld(p_dst)
         pix_tr=MyTransformer(dataset,METHOD='GCP_TPS')
         p_pix=pix_tr.transform(p_dst,inv=True)
         ld(p_pix)
         return [(p[0],p[1]) for p in p_pix]
 
-    def coords(self):
+    def grid2coord(self): # to re-implemented by children if applicable
+        return self._cartesian
+        
+    def proj_coords(self):
         if self._cartesian:
-            return self._coords
+            return self.grid2coord()
         dtm=self.owner.dtm
         if not dtm:
             dtm=[0,0]
@@ -136,9 +143,12 @@ class RefPoints(object):
             if leftmost[1][0] > rightmost[1][0]:
                 return leftmost[1][0]
         return None
-        
+
+###############################################################################
+
 class MapTranslator(object):
-        
+
+###############################################################################
     def __init__(self,src_file,options=None):
         self.options=options
         gdal.UseExceptions()
@@ -149,7 +159,9 @@ class MapTranslator(object):
         self.img_file=self.get_raster()
         self.name=self.get_name()
         logging.info(' %s : %s (%s)' % (self.map_file,self.name,self.img_file))
-
+        
+        self.native_datum=self.get_datum_id()
+        self.native_proj=self.get_proj_id()
         self.refs=self.get_refs()           # fetch reference points
         self.srs,self.dtm=self.get_srs()    # estimate SRS
 
@@ -184,7 +196,7 @@ class MapTranslator(object):
         options=self.options
         dtm=None
         proj4=[]
-        logging.info(' %s, %s' % (self.get_datum_id(),self.get_proj_id()))
+        logging.info(' %s, %s' % (self.native_datum,self.native_proj))
         if options.srs:
             return(self.options.srs,None)
         
@@ -293,9 +305,10 @@ class MapTranslator(object):
             return '',''
 
         # Create cutline
-        poly_shape=self.gmt_templ % (self.refs.srs(),'\n'.join(['%r %r' % (i[0],i[1]) for i in plys.coords()]))
+        poly_shape=self.gmt_templ % (self.refs.srs(),'\n'.join(['%r %r' % (i[0],i[1]) for i in plys.proj_coords()]))
         poly_wkt='MULTIPOLYGON(((%s)))' % ','.join(['%r %r' % tuple(i) for i in pix_lst]) # Create cutline
         return poly_wkt,poly_shape
 
 # MapTranslator
+###############################################################################
 

@@ -23,7 +23,7 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 #  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #  DEALINGS IN THE SOFTWARE.
-#******************************************************************************
+###############################################################################
 
 from __future__ import with_statement
 
@@ -36,7 +36,33 @@ from optparse import OptionParser
 from tiler_functions import *
 from reader_backend import *
 
+###############################################################################
+
+class OziRefPoints(RefPoints):
+
+###############################################################################
+    def utm2coord(self): 
+        return self._cartesian
+
+    def bng2coord(self): 
+        return self._cartesian
+
+    grid_map={
+        '(UTM) Universal Transverse Mercator': self.utm2coord,
+        '(BNG) British National Grid': self.bng2coord,
+    }
+
+    def grid2coord(self):
+        try:
+            return self.grid_map[self.native_proj]()
+        except IndexError:
+            return self._cartesian
+
+###############################################################################
+
 class OziMap(MapTranslator):
+
+###############################################################################
     magic='OziExplorer Map Data File'
     data_file='reader_ozi_data.csv'
 
@@ -82,7 +108,7 @@ class OziMap(MapTranslator):
         'get a list of geo refs in tuples'
         points=[i for i in self.hdr_parms('Point') if i[2] != ''] # Get a list of geo refs
         if points[0][14] != '': # refs are cartesian
-            refs=RefPoints(self,[(
+            refs=OziRefPoints(self,[(
                     i[0],                                   # id
                     (int(i[2]),int(i[3])),                  # pixel
                     (float(i[14]),float(i[15])),            # cartesian coords
@@ -208,6 +234,7 @@ class OziMap(MapTranslator):
         return ozi_name
                 
 # OziMap
+###############################################################################
 
 if __name__=='__main__':
 

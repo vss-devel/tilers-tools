@@ -149,6 +149,19 @@ ellps,WGS 84,6378137,298.25722356,"+ellps=WGS84"
 proj,Latitude/Longitude,"+proj=latlong",
 proj,Mercator,"+proj=merc",
 proj,Transverse Mercator,"+proj=tmerc",
+proj,Lambert Conformal Conic,"+proj=lcc",
+proj,(A)Lambert Azimuthual Equal Area,"+proj=laea",       # not tested
+proj,(EQC) Equidistant Conic,"+proj=eqdc",
+proj,Sinusoidal,"+proj=sinu",       # not tested
+proj,Polyconic (American),"+proj=poly",
+proj,Albers Equal Area,"+proj=aea",        # not tested
+proj,Van Der Grinten,"+proj=vandg",      # not tested
+proj,Vertical Near-Sided Perspective,"+proj=nsper",      # not tested
+proj,(WIV) Wagner IV,"+proj=wag4",       # not tested
+proj,Bonne,"+proj=bonne",      # not tested
+proj,(MT0) Montana State Plane Zone 2500,"+init=esri:102300",# not tested
+proj,(VICGRID) Victoria Australia,"+init=epsg:3110",  # not tested
+proj,(VG94) VICGRID94 Victoria Australia,"+init=epsg:3111",  # not tested
 proj,(UTM) Universal Transverse Mercator,"+proj=utm",
 proj,(BNG) British National Grid,"+init=epsg:27700", # not tested
 proj,(IG) Irish Grid,"+init=epsg:29902", # not tested
@@ -161,19 +174,7 @@ proj,(I) France Zone I,"+init=epsg:27571", # not tested
 proj,(II) France Zone II,"+init=epsg:27572", # not tested
 proj,(III) France Zone III,"+init=epsg:27573", # not tested
 proj,(IV) France Zone IV,"+init=epsg:27574", # not tested
-proj,Lambert Conformal Conic,"+proj=lcc",
-proj,(A)Lambert Azimuthual Equal Area,"+proj=laea",       # not tested
-proj,(EQC) Equidistant Conic,"+proj=eqdc",
-proj,Sinusoidal,"+proj=sinu",       # not tested
-proj,Polyconic (American),"+proj=poly",
-proj,Albers Equal Area,"+proj=aea",        # not tested
-proj,Van Der Grinten,"+proj=vandg",      # not tested
-proj,Vertical Near-Sided Perspective,"+proj=nsper",      # not tested
-proj,(WIV) Wagner IV,"+proj=wag4",       # not tested
-proj,Bonne,"+proj=bonne",      # not tested
-proj,(MT0) Montana State Plane Zone 2500,"+init=esri:102300",# not tested
 proj,(ITA1) Italy Grid Zone 1,"+init=epsg:26591 +towgs84=-85.88,-28.85,+49.67,-1.003,-2.383,-1.808,-27.82", # http://mpa.itc.it/markus/shortcourse/notes2.html # not tested
 proj,(ITA2) Italy Grid Zone 2,"+init=epsg:26592 +towgs84=-85.88,-28.85,+49.67,-1.003,-2.383,-1.808,-27.82", # not tested
 proj,(VICMAP-TM) Victoria Aust.(pseudo AMG),"+proj=tmerc +lat_0=145 +x_0=500000 +y_0=10000000",# http://www.gpsoz.com.au/VicRoadsInfo.htm # not tested
-proj,(VICGRID) Victoria Australia,"+init=epsg:3110",  # not tested
-proj,(VG94) VICGRID94 Victoria Australia,"+init=epsg:3111",  # not tested
+
