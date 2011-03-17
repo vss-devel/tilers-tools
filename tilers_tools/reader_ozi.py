@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-08 17:38:41 
+# 2011-03-17 18:03:00 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -45,7 +45,6 @@ class OziRefPoints(RefPoints):
         return self._cartesian
 
     def bng_ofs(self,square,scale,relative_sq=None):
-        ld(square,scale,relative_sq)
         sq_idx='ABCDEFGHJKLMNOPQRSTUVWXYZ'.find(square) # 'I' skipped
         assert sq_idx >= 0
         ofs = [(sq_idx % 5)*scale, (4 - (sq_idx // 5))*scale]
@@ -65,7 +64,6 @@ class OziRefPoints(RefPoints):
                         self.bng_ofs(zone[0],5*100000,'S'),
                         self.bng_ofs(zone[1],100000)
                         ])
-            ld(grid_coord,coord)
             res.append(coord)
         return res
 

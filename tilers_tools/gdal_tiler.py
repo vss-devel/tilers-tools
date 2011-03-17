@@ -391,8 +391,9 @@ class Pyramid(object):
         temp_vrt=os.path.join(self.dest,self.base+'.tmp.vrt') # auxilary VRT file
         self.src_ds=self.get_src_ds(src_vrt)
 
-        # calculate zoom range
         pf('\n%s -> %s '%(self.src,self.dest),end='')
+
+        # calculate zoom range
         self.zoom_range=self.calc_zoom(zoom_parm,temp_vrt)
              
         # reproject to base zoom

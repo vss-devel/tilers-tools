@@ -291,7 +291,7 @@ def list_formats():
             cl.__doc__
             )
 
-def tiles-convert(in_fmt,src,out_fmt,dest,append):
+def tiles_convert(in_fmt,src,out_fmt,dest,append):
     for in_class in tile_formats:
         if in_class.input and in_fmt == in_class.format:
             break
@@ -338,6 +338,6 @@ if __name__=='__main__':
     except:
         dest=None
 
-    tiles-convert(options.in_fmt,src,options.out_fmt,dest,options.append)
+    tiles_convert(options.in_fmt,src,options.out_fmt,dest,options.append)
     pf('')
 
