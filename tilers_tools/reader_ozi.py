@@ -44,17 +44,39 @@ class OziRefPoints(RefPoints):
     def utm2coord(self): 
         return self._cartesian
 
+    def bng_ofs(self,square,scale,relative_sq=None):
+        ld(square,scale,relative_sq)
+        sq_idx='ABCDEFGHJKLMNOPQRSTUVWXYZ'.find(square) # 'I' skipped
+        assert sq_idx >= 0
+        ofs = [(sq_idx % 5)*scale, (4 - (sq_idx // 5))*scale]
+        if relative_sq:
+            rel_ofs=self.bng_ofs(relative_sq,scale)
+            ofs[0]-=rel_ofs[0]
+            ofs[1]-=rel_ofs[1]
+        return ofs
+
     def bng2coord(self): 
-        return self._cartesian
+        res=[]
+        for grid_coord,zone_hs in zip(self._coords,self._extra):
+            zone,hs=zone_hs
+            assert len(zone) == 2
+            coord=reduce(lambda x,y: (x[0]+y[0],x[1]+y[1]),[
+                        grid_coord,
+                        self.bng_ofs(zone[0],5*100000,'S'),
+                        self.bng_ofs(zone[1],100000)
+                        ])
+            ld(grid_coord,coord)
+            res.append(coord)
+        return res
 
     grid_map={
-        '(UTM) Universal Transverse Mercator': self.utm2coord,
-        '(BNG) British National Grid': self.bng2coord,
+        '(UTM) Universal Transverse Mercator': utm2coord,
+        '(BNG) British National Grid': bng2coord,
     }
 
     def grid2coord(self):
         try:
-            return self.grid_map[self.native_proj]()
+            return self.grid_map[self.owner.native_proj](self)
         except IndexError:
             return self._cartesian
 
