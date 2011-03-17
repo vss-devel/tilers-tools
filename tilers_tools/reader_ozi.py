@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-03-17 18:03:00 
+# 2011-03-17 18:56:11 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -114,9 +114,10 @@ class OziMap(MapTranslator):
     def get_header(self): 
         'read map header'
         with open(self.map_file, 'rU') as f:
-            hdr=[[i.strip() for i in l.split(',')] for l in f]
-        if not (hdr and hdr[0][0].startswith('OziExplorer Map Data File')): 
+            lines=f.readlines()
+        if not (lines and lines[0].startswith('OziExplorer Map Data File')): 
             raise Exception(" Invalid file: %s" % self.map_file)
+        hdr=[[l.strip()] for l in lines[:3]] + [[i.strip() for i in l.split(',')] for l in lines[3:]]
         ld(hdr)
         return hdr
 
