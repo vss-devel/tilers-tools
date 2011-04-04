@@ -163,9 +163,11 @@ proj,(MT0) Montana State Plane Zone 2500,"+init=esri:102300",# not tested
 proj,(VICGRID) Victoria Australia,"+init=epsg:3110",  # not tested
 proj,(VG94) VICGRID94 Victoria Australia,"+init=epsg:3111",  # not tested
 proj,(UTM) Universal Transverse Mercator,"+proj=utm",
-proj,(BNG) British National Grid,"+init=epsg:27700", # not tested
+proj,(BNG) British National Grid,"+init=epsg:27700",
 proj,(IG) Irish Grid,"+init=epsg:29902", # not tested
-proj,(NZG) New Zealand Grid,"+init=epsg:27200", # not tested
+#proj,(NZG) New Zealand Grid,"+init=epsg:27200", # not tested
+# http://osgeo-org.1803224.n2.nabble.com/New-Zealand-grid-tp2062137p2062142.html
+proj,(NZG) New Zealand Grid,"+proj=nzmg +lat_0=-41.0000000000 +lon_0=173.0000000000 +x_0=2510000.0000000000 +y_0=6023150.0000000000 +a=6378388 +rf=297 +nadgrids=nzgd2kgrid0005.gsb +wktext +no_defs", # not tested
 proj,(NZTM2) New Zealand TM 2000,"+init=epsg:2193", # not tested
 # http://www.fig.net/pub/fig2006/papers/ps05_03/ps05_03_04_engberg_lilje_0670.pdf
 proj,(SG) Swedish Grid,"+proj=tmerc +lon_0=15.808277777778 +x_0=1500000 +y_0=0", # http://en.wikipedia.org/wiki/Swedish_grid

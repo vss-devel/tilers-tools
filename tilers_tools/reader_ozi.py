@@ -38,46 +38,59 @@ from reader_backend import *
 
 ###############################################################################
 
+# Helper functions for class OziRefPoints
+
+###############################################################################
+
+def bng_ofs(square_id,scale,relative_sq=None):
+    'converts British/Irish Grid square letter to offset pair in squares: V -> (0,0)'
+    sq_idx='ABCDEFGHJKLMNOPQRSTUVWXYZ'.find(square_id) # 'I' skipped
+    assert sq_idx >= 0
+    ofs = [(sq_idx % 5)*scale, (4 - (sq_idx // 5))*scale]
+    if relative_sq:
+        rel_ofs=bng_ofs(relative_sq,scale)
+        ofs[0]-=rel_ofs[0]
+        ofs[1]-=rel_ofs[1]
+    return ofs
+
+def bng2coord(grid_coord,zone,hs):
+    '(BNG) British National Grid'
+    assert len(zone) == 2
+    return reduce(lambda x,y: (x[0]+y[0],x[1]+y[1]),[
+                grid_coord,
+                bng_ofs(zone[0],5*100000,'S'),
+                bng_ofs(zone[1],100000)
+                ])
+
+def ig2coord(grid_coord,zone,hs):
+    '(IG) Irish Grid'
+    assert len(zone) == 1
+    return reduce(lambda x,y: (x[0]+y[0],x[1]+y[1]),[
+                grid_coord,
+                bng_ofs(zone,100000)
+                ])
+
+grid_map={
+    '(BNG) British National Grid': bng2coord,
+    '(IG) Irish Grid': ig2coord,
+}
+
+###############################################################################
+
 class OziRefPoints(RefPoints):
 
 ###############################################################################
-    def utm2coord(self): 
-        return self._cartesian
-
-    def bng_ofs(self,square_id,scale,relative_sq=None):
-        'converts British/Irish Grid letter to relative offset pair'
-        sq_idx='ABCDEFGHJKLMNOPQRSTUVWXYZ'.find(square_id) # 'I' skipped
-        assert sq_idx >= 0
-        ofs = [(sq_idx % 5)*scale, (4 - (sq_idx // 5))*scale]
-        if relative_sq:
-            rel_ofs=self.bng_ofs(relative_sq,scale)
-            ofs[0]-=rel_ofs[0]
-            ofs[1]-=rel_ofs[1]
-        return ofs
-
-    def bng2coord(self): 
-        res=[]
-        for grid_coord,zone_hs in zip(self._coords,self._extra):
-            zone,hs=zone_hs
-            assert len(zone) == 2
-            coord=reduce(lambda x,y: (x[0]+y[0],x[1]+y[1]),[
-                        grid_coord,
-                        self.bng_ofs(zone[0],5*100000,'S'),
-                        self.bng_ofs(zone[1],100000)
-                        ])
-            res.append(coord)
-        return res
-
-    grid_map={
-        '(UTM) Universal Transverse Mercator': utm2coord,
-        '(BNG) British National Grid': bng2coord,
-    }
 
     def grid2coord(self):
         try:
-            return self.grid_map[self.owner.native_proj](self)
+            conv2cartesian=grid_map[self.owner.native_proj]
         except IndexError:
             return self._cartesian
+        res=[]
+        for grid_coord,zone_hs in zip(self._coords,self._extra):
+            zone,hs=zone_hs
+            res.append(conv2cartesian(grid_coord,zone,hs))
+        return res        
 
 ###############################################################################
 
