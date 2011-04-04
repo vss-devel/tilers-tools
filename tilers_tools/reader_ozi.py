@@ -44,8 +44,9 @@ class OziRefPoints(RefPoints):
     def utm2coord(self): 
         return self._cartesian
 
-    def bng_ofs(self,square,scale,relative_sq=None):
-        sq_idx='ABCDEFGHJKLMNOPQRSTUVWXYZ'.find(square) # 'I' skipped
+    def bng_ofs(self,square_id,scale,relative_sq=None):
+        'converts British/Irish Grid letter to relative offset pair'
+        sq_idx='ABCDEFGHJKLMNOPQRSTUVWXYZ'.find(square_id) # 'I' skipped
         assert sq_idx >= 0
         ofs = [(sq_idx % 5)*scale, (4 - (sq_idx // 5))*scale]
         if relative_sq:
