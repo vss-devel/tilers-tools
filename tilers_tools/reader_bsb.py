@@ -92,8 +92,9 @@ class BsbKapMap(MapTranslator):
         
     def get_dtm(self):
         'get DTM northing, easting'
-        dtm_parm=options.dtm_shift
-        if dtm_parm is None:
+        if self.options.dtm_shift is not None:
+            dtm_parm=self.options.dtm_shift.split(',')
+        else:
             try:
                 dtm_parm=self.hdr_parms2list('DTM')[0]
                 ld('DTM',dtm_parm)
