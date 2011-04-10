@@ -41,9 +41,10 @@ class KeyboardInterruptError(Exception):
     pass
 
 def modify_htmls(src_dir, dest_dir):
-    'adjusting googlemaps.html and openlayers.html'
+    'adjusts destination gmaps.html and returns tile style (gmaps,TMS)'
     googlemaps='gmaps.html'
     #openlayers='openlayers.html'
+
     if not os.path.exists(os.path.join(dest_dir,googlemaps)):
         try:
             shutil.copy(os.path.join(src_dir,googlemaps),dest_dir)
@@ -59,20 +60,25 @@ def modify_htmls(src_dir, dest_dir):
             os.chdir(cwd)
         zoom_min=dzooms[0]
         zoom_max=dzooms[-1]
+
         # get src bounds
         s=[ i for i in open(os.path.join(src_dir,googlemaps))
             if 'var mapBounds = new G.LatLngBounds' in i][0]
-        s_bounds=eval(re.sub('[^-,.0-9]*','',s)) # leave only numbers there
+        num_str=re.sub('[^-,.0-9]*','',re.sub('\.Lat*','',s)) # leave only numbers there
+        s_bounds=map(float,num_str.split(','))
+
         # get dest bounds
         s=[ i for i in open(os.path.join(dest_dir,googlemaps))
             if 'var mapBounds = new G.LatLngBounds' in i][0]
-        d_bounds=list(eval(re.sub('[^-,.0-9]*','',s))) # leave only numbers there
+        num_str=re.sub('[^-,.0-9]*','',re.sub('\.Lat*','',s)) # leave only numbers there
+        d_bounds=map(float,num_str.split(','))
         ld((s_bounds,d_bounds))
         if s_bounds[0] < d_bounds[0]: d_bounds[0]=s_bounds[0]
         if s_bounds[1] < d_bounds[1]: d_bounds[1]=s_bounds[1]
         if s_bounds[2] > d_bounds[2]: d_bounds[2]=s_bounds[2]
         if s_bounds[3] > d_bounds[3]: d_bounds[3]=s_bounds[3]
         ld(d_bounds)
+
         # write back modified googlemaps.html
         chart_name=os.path.split(dest_dir)[1]
         subs=[("(var mapBounds = new G.LatLngBounds).*;",
@@ -82,12 +88,13 @@ def modify_htmls(src_dir, dest_dir):
             ('<title>.*</title>','<title>%s</title>' % chart_name),
             ('<h1>.*</h1>','<h1>%s</h1>' % chart_name)]
         re_sub_file(os.path.join(dest_dir,googlemaps), subs)
-#        # write back modified openlayers.html
-#        subs[0]=("(var mapBounds = new OpenLayers.Bounds).*;", 
-#                "\\1( %f, %f, %f, %f);" % (d_bounds[1],d_bounds[0],d_bounds[3],d_bounds[2]))
-#        try:
-#            re_sub_file(os.path.join(dest_dir,openlayers), subs)
-#        except: pass
+
+        # check if it's TMS type
+        s=[ i for i in open(os.path.join(src_dir,googlemaps))
+            if 'var tms_tiles' in i][0]
+        tms_type= 'true' in s
+
+        return tms_type
 
 def transparency(img):
     'estimate transparency of an image'
@@ -129,8 +136,16 @@ class MergeSet:
         (z,y,x)=map(int,(z,y,x))
         if z < self.max_zoom:
             return
-        tiles_map=[(  0,128,128,256), (128,128,256,256),
-                   (  0,  0,128,128), (128,  0,256,128)]
+        if self.tms_type:
+            tiles_map=[
+                (  0,128,128,256), (128,128,256,256),
+                (  0,  0,128,128), (128,  0,256,128),
+                ]
+        else:
+            tiles_map=[
+                (  0,  0,128,128), (128,  0,256,128),
+                (  0,128,128,256), (128,128,256,256),
+                ]
         tiles_in=[(x*2,y*2), (x*2+1,y*2),
                   (x*2,y*2+1),(x*2+1,y*2+1)]
         for (src_xy,out_loc) in zip(tiles_in,tiles_map):
@@ -140,7 +155,6 @@ class MergeSet:
                 if transparency(dest_raster) == 1: # lower tile is fully opaque
                     continue
                 pf('#',end='')
-                ld((tile,out_loc,dest_path,(a_min,a_max)))
                 if not src_raster: # check if opening was deferred
                     src_raster=Image.open(src_path).convert("RGBA")
                 out_raster=src_raster.crop(out_loc).resize((256,256),Image.BILINEAR)
@@ -178,7 +192,7 @@ class MergeSet:
                     src_raster=Image.open(src_path).convert("RGBA")
                 dst_raster=Image.composite(src_raster,Image.open(dest_tile),src_raster)
                 dst_raster.save(dest_tile)
-            if options.cast_shadow and a_max != 0:
+            if options.cast_shadow and transp != 0:
                 self.cast_shadow(tile,src_path,src_raster)
         except KeyboardInterrupt: # http://jessenoller.com/2009/01/08/multiprocessingpool-and-keyboardinterrupt/
             print 'got KeyboardInterrupt'
@@ -194,9 +208,9 @@ class MergeSet:
         pf('')
 
     def merge_dirs(self):
+        self.tms_type=modify_htmls(self.src, self.dest)
         res=parallel_map(self,self.src_lst)
         self.upd_stat(res)
-        modify_htmls(self.src, self.dest)
 
 # MergeSet end
 
@@ -234,12 +248,17 @@ if __name__=='__main__':
         except:
             raise Exception("No source(s) or/and destination specified")
 
-    if options.nothreads:
+    if options.nothreads or options.debug:
         set_nothreads()
 
     if options.remove_dest: 
         shutil.rmtree(dest_dir,ignore_errors=True)
         
+    if not os.path.exists(dest_dir):
+        try:
+            os.makedirs(dest_dir)
+        except os.error: pass
+
     for src in src_dirs:
         if not (src.startswith("#") or src.strip() == ''): # ignore sources with names starting with "#" 
             MergeSet(src, dest_dir)
