@@ -196,7 +196,7 @@ class MergeSet:
     def merge_dirs(self):
         res=parallel_map(self,self.src_lst)
         self.upd_stat(res)
-        modify_htmls(self.src, self.dest)    
+        modify_htmls(self.src, self.dest)
 
 # MergeSet end
 
@@ -214,7 +214,7 @@ if __name__=='__main__':
         help='source pyramid "casts shadow" into destination lower level if the latter partially filled')
     parser.add_option("-q", "--quiet", action="store_true")
     parser.add_option("-d", "--debug", action="store_true")
-    parser.add_option("--no-threads", action="store_true",
+    parser.add_option("--nothreads", action="store_true",
         help="do not use multiprocessing")
 
     (options, args) = parser.parse_args()
@@ -234,9 +234,13 @@ if __name__=='__main__':
         except:
             raise Exception("No source(s) or/and destination specified")
 
+    if options.nothreads:
+        set_nothreads()
+
     if options.remove_dest: 
         shutil.rmtree(dest_dir,ignore_errors=True)
-
+        
     for src in src_dirs:
         if not (src.startswith("#") or src.strip() == ''): # ignore sources with names starting with "#" 
             MergeSet(src, dest_dir)
+

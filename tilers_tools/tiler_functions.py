@@ -57,9 +57,13 @@ try:
         pass
 except:
     multiprocessing=None
+    
+def set_nothreads():
+    global multiprocessing
+    multiprocessing=None
 
 def parallel_map(func,iterable):
-    if not multiprocessing or len(iterable) < 2:
+    if multiprocessing is None or len(iterable) < 2:
         return map(func,iterable)
     else:
         # map in parallel
