@@ -1,1 +1,1 @@
-translate2gdal.py
+convert2gdal.py
