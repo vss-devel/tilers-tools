@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-03-01 14:51:28 
+# 2011-04-10 13:18:21 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -372,8 +372,15 @@ class Pyramid(object):
         self.tile_sz=tuple(map(int,options.tile_size.split(',')))
         self.src_dir,src_f=os.path.split(src)
         self.base=os.path.splitext(src_f)[0]
+
+        pf('\n%s -> %s '%(self.src,self.dest),end='')
+
         if os.path.isdir(self.dest):
-            shutil.rmtree(self.dest,ignore_errors=True)
+            if options.noclobber and os.path.exists(os.path.join(self.dest,'merge-cache')):
+                self.dest=None
+                return
+            else:
+                shutil.rmtree(self.dest,ignore_errors=True)
         os.makedirs(self.dest)
         self.base_resampling=base_resampling_map[options.base_resampling]
         self.resampling=resampling_map[options.overview_resampling]
@@ -390,9 +397,6 @@ class Pyramid(object):
         src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
         temp_vrt=os.path.join(self.dest,self.base+'.tmp.vrt') # auxilary VRT file
         self.src_ds=self.get_src_ds(src_vrt)
-
-        pf('\n%s -> %s '%(self.src,self.dest),end='')
-
         # calculate zoom range
         self.zoom_range=self.calc_zoom(zoom_parm,temp_vrt)
              
@@ -825,6 +829,9 @@ class Pyramid(object):
     #############################
 
     def walk_pyramid(self):
+        if self.options.noclobber and self.dest is None:
+            pf('*** Pyramid already exists: skipping',end='')
+            return
         self.make_googlemaps()
         tiles=[]
         for zoom in self.zoom_range:
@@ -837,7 +844,6 @@ class Pyramid(object):
         top_tiles=filter(None,map(self.proc_tile,zoom_tiles))
         # write top kml
         self.make_kml(None,[ch for img,ch,opacities in top_tiles])
-        pf('')
         
         # cache back tiles opacity
         file_opacities=[(self.tile_path(tile),opc)
@@ -1284,6 +1290,8 @@ def main(argv):
         help='tile size (default: 256,256)')
     parser.add_option("-t", "--dest-dir", dest="dest_dir", default=None,
         help='destination directory (default: source)')
+    parser.add_option("--noclobber", action="store_true", 
+        help='skip processing if the target pyramy already exists')
     parser.add_option("-q", "--quiet", action="store_const", 
         const=0, default=1, dest="verbose")
     parser.add_option("-d", "--debug", action="store_const", 
@@ -1313,6 +1321,7 @@ def main(argv):
         raise Exception("No sources specified")
 
     parallel_map(proc_src,sources)
+    pf('')
 
 # main()
 
