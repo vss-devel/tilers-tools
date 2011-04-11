@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-10 13:18:21 
+# 2011-04-11 13:25:13 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -1241,7 +1241,8 @@ def proc_src(src):
     else:
         raise Exception("Invalid format: %s" % format)
 
-    dest=dest_path(src,options.dest_dir,cls.defaul_ext)
+    ext= cls.defaul_ext if options.strip_dest_ext is None else ''
+    dest=dest_path(src,options.dest_dir,ext)
     cls(src,dest,options).walk_pyramid()
     
 profile_map={
@@ -1292,6 +1293,8 @@ def main(argv):
         help='destination directory (default: source)')
     parser.add_option("--noclobber", action="store_true", 
         help='skip processing if the target pyramy already exists')
+    parser.add_option("-s", "--strip-dest-ext", action="store_true",
+        help='do not add a default extension suffix from a destination directory')
     parser.add_option("-q", "--quiet", action="store_const", 
         const=0, default=1, dest="verbose")
     parser.add_option("-d", "--debug", action="store_const", 

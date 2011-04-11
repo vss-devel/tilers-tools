@@ -105,8 +105,10 @@ def transparency(img):
 class MergeSet:
     def __init__(self,src_dir,dest_dir):
         (self.src,self.dest)=(src_dir,dest_dir)
-        if options.no_src_ext:
+        if options.strip_src_ext:
             self.src=os.path.splitext(src)[0]
+        if options.add_src_ext is not None:
+            self.src+=options.add_src_ext
         pf(self.src+' ',end='')
         try:
             cwd=os.getcwd()
@@ -222,8 +224,10 @@ if __name__=='__main__':
         help='delete destination directory before merging')
     parser.add_option("-l", "--src-list", default=None,
         help='read source directories list from a file; if no destination is provided then name destination after list file without a suffix')
-    parser.add_option("-x", "--no-src-ext", action="store_true",
+    parser.add_option("-s", "--strip-src-ext", action="store_true",
         help='strip extension suffix from a source parameter')
+    parser.add_option("-x", "--add-src-ext", default=None,
+        help='add extension suffix to a source parameter')
     parser.add_option("--cast-shadow", action="store_true",
         help='source pyramid "casts shadow" into destination lower level if the latter partially filled')
     parser.add_option("-q", "--quiet", action="store_true")
