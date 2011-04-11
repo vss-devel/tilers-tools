@@ -156,6 +156,6 @@ class GeoNosMap(MapTranslator):
 
 if __name__=='__main__':
 
-    print('\nPlease use translate2gdal.py\n')
+    print('\nPlease use convert2gdal.py\n')
     sys.exit(1)
 

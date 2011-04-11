@@ -162,7 +162,7 @@ proj,Bonne,"+proj=bonne",      # not tested
 proj,(MT0) Montana State Plane Zone 2500,"+init=esri:102300",# not tested
 proj,(VICGRID) Victoria Australia,"+init=epsg:3110",  # not tested
 proj,(VG94) VICGRID94 Victoria Australia,"+init=epsg:3111",  # not tested
-proj,(UTM) Universal Transverse Mercator,"+proj=utm",
+proj,(UTM) Universal Transverse Mercator,"+proj=tmerc +k=0.9996",
 proj,(BNG) British National Grid,"+init=epsg:27700",
 proj,(IG) Irish Grid,"+init=epsg:29902", # not tested
 #proj,(NZG) New Zealand Grid,"+init=epsg:27200", # not tested

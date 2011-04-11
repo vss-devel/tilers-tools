@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-03-17 18:56:11 
+# 2011-04-11 11:37:29 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -70,9 +70,14 @@ def ig2coord(grid_coord,zone,hs):
                 bng_ofs(zone,100000)
                 ])
 
+def utm2coord(grid_coord,zone,hs):
+    '(UTM) Universal Transverse Mercator'
+    return (grid_coord[0] - 500000, grid_coord[1] - (0 if hs.upper() == 'N' else 10000000))    
+    
 grid_map={
     '(BNG) British National Grid': bng2coord,
     '(IG) Irish Grid': ig2coord,
+    '(UTM) Universal Transverse Mercator': utm2coord,
 }
 
 ###############################################################################
@@ -80,16 +85,19 @@ grid_map={
 class OziRefPoints(RefPoints):
 
 ###############################################################################
+    def __init__(self,owner,ref_lst):
+        ld(ref_lst)
+        super(OziRefPoints,self).__init__(owner,ref_lst)
+        self.cartesian,self.zone,self.hemisphere=self.transposed[3:6]
 
     def grid2coord(self):
         try:
             conv2cartesian=grid_map[self.owner.native_proj]
         except IndexError:
-            return self._cartesian
+            return self.cartesian
         res=[]
-        for grid_coord,zone_hs in zip(self._coords,self._extra):
-            zone,hs=zone_hs
-            res.append(conv2cartesian(grid_coord,zone,hs))
+        for grid_data in zip(self.cartesian,self.zone,self.hemisphere):
+            res.append(conv2cartesian(*grid_data))
         return res        
 
 ###############################################################################
@@ -144,12 +152,12 @@ class OziMap(MapTranslator):
         points=[i for i in self.hdr_parms('Point') if i[2] != ''] # Get a list of geo refs
         if points[0][14] != '': # refs are cartesian
             refs=OziRefPoints(self,[(
-                    i[0],                                   # id
-                    (int(i[2]),int(i[3])),                  # pixel
-                    (float(i[14]),float(i[15])),            # cartesian coords
+                    i[0],                               # id
+                    (int(i[2]),int(i[3])),              # pixel
+                    (0,0),                              # latlong
+                    (float(i[14]),float(i[15])),        # cartesian coords
+                    i[13],i[16],                        # zone, hemisphere
                     ) for i in points],
-                cartesian=True,
-                extra=[(i[13],i[16]) for i in points]   # zone, hemisphere
                 )
         else:
             refs=RefPoints(self,[(
@@ -164,7 +172,7 @@ class OziMap(MapTranslator):
         ply_pix=[(int(i[2]),int(i[3])) for i in self.hdr_parms('MMPXY')]    # Moving Map border pixels
         ply_ll=[(float(i[2]),float(i[3])) for i in self.hdr_parms('MMPLL')] # Moving Map border lat,lon
         ids=[i[0] for i in self.hdr_parms('MMPXY')]    # Moving Map border pixels
-        plys=RefPoints(self,ids=ids,pixels=ply_pix,coords=ply_ll)
+        plys=RefPoints(self,ids=ids,pixels=ply_pix,latlong=ply_ll)
         return plys
 
     def get_dtm(self):
@@ -184,22 +192,13 @@ class OziMap(MapTranslator):
             raise Exception("*** Unsupported projection (%s)" % proj_id)
         if '+proj=' in proj[0]: # overwise assume it already has a full data defined
             # get projection parameters
-            proj.extend([ i[0]+i[1] for i in zip(self.proj_parms,parm_lst[1:]) 
-                            if i[1].translate(None,'0.')])
-            if '+proj=utm' in proj[0]:
-                if not refs[0][1]: # refs are cartesian with a zone defined
-                    hemisphere=refs[0][3]
-                    utm_zone=int(refs[0][4])
-                    proj.append('+zone=%i' % utm_zone)
-                    if hemisphere != 'N': 
-                        proj.append('+south')
-                else: # refs are lat/long, then find zone, hemisphere
-                    # doesn't seem to have central meridian for UTM
-                    lon,lat=refs[0][1]
-                    zone=(lon + 3 % 360) // 6 + 30
-                    proj.append('+zone=%d' % zone)
-                    if lat < 0: 
-                        proj.append('+south')
+            if self.native_proj == '(UTM) Universal Transverse Mercator':
+                assert self.refs.zone is not None
+                assert '+proj=tmerc' in proj[0]
+                proj.append('+lon_0=%i' % ((int(self.refs.zone[0]) - 1) * 6 + 3 - 180))
+            else:
+                proj.extend([ i[0]+i[1] for i in zip(self.proj_parms,parm_lst[1:]) 
+                                if i[1].translate(None,'0.')])
         return proj
 
     def get_datum_id(self):
@@ -273,6 +272,6 @@ class OziMap(MapTranslator):
 
 if __name__=='__main__':
 
-    print('\nPlease use translate2gdal.py\n')
+    print('\nPlease use convert2gdal.py\n')
     sys.exit(1)
 

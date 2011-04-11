@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-08 17:39:55 
+# 2011-04-11 10:58:17  
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -111,7 +111,6 @@ class BsbKapMap(MapTranslator):
             (int(i[1]),int(i[2])),                  # pixel
             (float(i[4]),float(i[3]))               # lat/long
             ) for i in self.hdr_parms2list('REF')])
-        ld('refs',refs)
         return refs
 
     def get_plys(self):
@@ -142,22 +141,16 @@ class BsbKapMap(MapTranslator):
             raise Exception(' Unsupported projection %s' % proj_id)
         # get projection and parameters
         proj=[knp_parm['PROJ4']]
-        if '+proj=utm' in proj[0]: # UTM
-            # GDAL doesn't seem to make use of lon_0 with UTM, but BSB doesn't use zones
-            northing='10000000' if self.refs[0][1][1] < 0 else '0' # Southern hemisphere?
-            proj=('+proj=tmerc +k=0.9996 +x_0=500000 +y_0=%s +lon_0=%s' % 
-                    (northing,knp_info['PP'])).split(' ')
-        else:
-            try: # extra projection parameters for BSB 3.xx, put them before KNP parms
-                knq_info=self.hdr_parm2dict('KNQ')
-                ld(knq_info)
-                knq_parm=self.knp_map[proj_id.upper()]
-                proj.extend(self.assemble_parms(knq_parm,knq_info))
-            except IndexError:  # No KNQ
-                pass
-            except KeyError:    # No such proj in KNQ map
-                pass
-            proj.extend(self.assemble_parms(knp_parm,knp_info))
+        try: # extra projection parameters for BSB 3.xx, put them before KNP parms
+            knq_info=self.hdr_parm2dict('KNQ')
+            ld(knq_info)
+            knq_parm=self.knp_map[proj_id.upper()]
+            proj.extend(self.assemble_parms(knq_parm,knq_info))
+        except IndexError:  # No KNQ
+            pass
+        except KeyError:    # No such proj in KNQ map
+            pass
+        proj.extend(self.assemble_parms(knp_parm,knp_info))
         return proj
 
     def get_datum_id(self):
@@ -209,6 +202,6 @@ class BsbKapMap(MapTranslator):
 
 if __name__=='__main__':
 
-    print('\nPlease use translate2gdal.py\n')
+    print('\nPlease use convert2gdal.py\n')
     sys.exit(1)
 

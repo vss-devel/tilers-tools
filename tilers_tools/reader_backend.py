@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-21 17:38:11 
+# 2011-04-11 11:37:43 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -70,32 +70,31 @@ class RefPoints(object):
     'source geo-reference points and polygons'
 
 ###############################################################################
-    def __init__(self,owner,ref_lst=None,ids=None,pixels=None,coords=None,cartesian=False,extra=None):
-        ld('RefPoints',ref_lst,ids,pixels,coords,cartesian,extra)
+    def __init__(self,owner,
+            ref_lst=None,ids=None,pixels=None,latlong=None,cartesian=None):
+        ld('RefPoints',ref_lst,ids,pixels,latlong,cartesian)
         self.owner=owner
-        self._ids=ids
-        self._pixels=pixels
-        self._coords=coords
-        self._cartesian=cartesian
-        self._extra=extra
+        self.ids=ids
+        self.pixels=pixels
+        self.latlong=latlong
+        self.cartesian=cartesian
         if ref_lst:
-            transposed=[i if any(i) else None for i in zip(*ref_lst)]
-            self._ids,self._pixels,self._coords=transposed
+            self.transposed=[i if any(i) else None for i in zip(*ref_lst)]
+            self.ids,self.pixels,self.latlong=self.transposed[:3]
 
-        items=len(filter(None,(self._pixels,self._coords))[0])
-        if not self._ids:
-            self._ids=map(str,range(1,items+1))
+        items=len(filter(None,(self.pixels,self.latlong))[0])
+        if not self.ids:
+            self.ids=map(str,range(1,items+1))
 
-        if items == 2:
+        if items == 2 and all(self.pixels,self.latlong):
             logging.warning(' Only 2 reference points: assuming the chart is north alligned')
-            for i in (self._pixels,self._coords):
-                if i is not None:
-                    i.append((i[0][0],i[1][1]))
-            self._ids.append('3')
-        self._ids=[s.encode('utf-8') for s in self._ids]
+            for i in (self.pixels,self.latlong):
+                i.append((i[0][0],i[1][1]))
+            self.ids.append('3')
+        self.ids=[s.encode('utf-8') for s in self.ids]
 
     def srs(self):
-        return self.owner.srs #if self._cartesian else self.geo_srs()
+        return self.owner.srs #if self.cartesian else self.geo_srs()
 
     def geo_srs(self):
         srs_proj = osr.SpatialReference()
@@ -105,14 +104,12 @@ class RefPoints(object):
         return srs_geo.ExportToProj4()
 
     def __iter__(self):
-        for i in zip(self._ids,self.pixels(),self.proj_coords()):
+        for i in zip(self.ids,self.pix_coords(),self.proj_coords()):
             yield i
     
-    def pixels(self,dataset=None):
-        if self._pixels:
-            return self._pixels
-#        srs_tr=MyTransformer(SRC_SRS=self.srs(),DST_SRS=self.owner.srs)
-#        p_dst=srs_tr.transform(self.proj_coords())
+    def pix_coords(self,dataset=None):
+        if self.pixels:
+            return self.pixels
         p_dst=self.proj_coords()
         ld(p_dst)
         pix_tr=MyTransformer(dataset,METHOD='GCP_TPS')
@@ -121,24 +118,23 @@ class RefPoints(object):
         return [(p[0],p[1]) for p in p_pix]
 
     def grid2coord(self): # to re-implemented by children if applicable
-        return self._cartesian
+        return self.cartesian
         
     def proj_coords(self):
-        if self._cartesian:
+        if self.cartesian:
             return self.grid2coord()
         dtm=self.owner.dtm
         if not dtm:
             dtm=[0,0]
-        latlon=[(lon+dtm[0],lat+dtm[1]) for lon,lat in self._coords]
-#        return latlon        
+        latlong=[(lon+dtm[0],lat+dtm[1]) for lon,lat in self.latlong]
         srs_tr=MyTransformer(SRC_SRS=self.geo_srs(),DST_SRS=self.owner.srs)
-        coords=srs_tr.transform(latlon)
-        return coords      
+        coords=srs_tr.transform(latlong)
+        return coords
 
     def over_180(self):
-        if not self._cartesian: # refs are lat/long
-            leftmost=min(zip(self._pixels,self._coords),key=lambda r: r[0][0])
-            rightmost=max(zip(self._pixels,self._coords),key=lambda r: r[0][0])
+        if not self.cartesian: # refs are lat/long
+            leftmost=min(zip(self.pixels,self.latlong),key=lambda r: r[0][0])
+            rightmost=max(zip(self.pixels,self.latlong),key=lambda r: r[0][0])
             ld('leftmost',leftmost,'rightmost',rightmost)
             if leftmost[1][0] > rightmost[1][0]:
                 return leftmost[1][0]
@@ -237,7 +233,9 @@ class MapTranslator(object):
                 name_patt=self.img_file
             base=dst_path(name_patt,self.options.dst_dir)
             if options.long_name:
-                base+=' - '+self.name
+                ld(self.name)
+                base+=' - ' +  "".join([c for c in self.name 
+                                    if c .isalpha() or c.isdigit() or c in '-_.() '])
         dst_dir=os.path.split(base)[0]
         out_format='VRT'
         ext='.'+out_format.lower()
@@ -294,7 +292,7 @@ class MapTranslator(object):
         if not plys:
             return '',''
 
-        pix_lst=plys.pixels(dst_ds)
+        pix_lst=plys.pix_coords(dst_ds)
 
         # check if the raster really needs cutting
         width=dst_ds.RasterXSize
@@ -305,7 +303,8 @@ class MapTranslator(object):
             return '',''
 
         # Create cutline
-        poly_shape=self.gmt_templ % (self.refs.srs(),'\n'.join(['%r %r' % (i[0],i[1]) for i in plys.proj_coords()]))
+        poly_shape=self.gmt_templ % (self.refs.srs(),'\n'.join(
+                                ['%r %r' % (i[0],i[1]) for i in plys.proj_coords()]))
         poly_wkt='MULTIPOLYGON(((%s)))' % ','.join(['%r %r' % tuple(i) for i in pix_lst]) # Create cutline
         return poly_wkt,poly_shape
 
