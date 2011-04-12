@@ -229,7 +229,7 @@ if __name__=='__main__':
     parser.add_option("-x", "--add-src-ext", default=None,
         help='add extension suffix to a source parameter')
     parser.add_option("--cutout", action="store_true",
-        help='source pyramid top "cutouts" onto zoomed in destination higher level')
+        help="transparent areas at the top of the source pyramid are filled in with zoomed in image from the destination's higher level")
     parser.add_option("-q", "--quiet", action="store_true")
     parser.add_option("-d", "--debug", action="store_true")
     parser.add_option("--nothreads", action="store_true",
