@@ -1078,7 +1078,7 @@ class Gmaps(Pyramid):
             maxzoom=    self.zoom_range[0],
             header=     os.path.basename(self.dest), 
             tms_tiles=  'true' if self.defaul_ext == '.tms' else 'false',
-            map_type=   'ROADMAP',
+            map_type=   'SATELLITE', #'ROADMAP',
             tile_ext=   self.tile_ext,
             tile_size=  '%s, %s' % self.tile_sz,
             tiles_root= self.tiles_prefix,

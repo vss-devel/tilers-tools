@@ -219,7 +219,7 @@ class MapTranslator(object):
             datum=self.get_datum()
             proj4.extend(datum)
         proj4.extend(['+nodefs']) # '+wktext',
-        ld(proj4)
+        ld('proj4',proj4)
         return ' '.join(proj4).encode('utf-8'),dtm
 
     def convert(self,dest=None):
