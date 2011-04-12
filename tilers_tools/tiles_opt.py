@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# 2010-10-28 17:18:32 
+# 2011-04-12 11:53:06 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -33,30 +33,23 @@ import optparse
 
 from tiler_functions import *
 
-def find_byext(path, ext):
+def find_by_ext(path, ext):
     return flatten([os.path.join(path, name) for name in files if name.endswith(ext)] 
                     for path, dirs, files in os.walk(src_dir))
-
-def command(params,stdin=None):
-    process=Popen(params,stdin=PIPE, stdout=PIPE, stderr=PIPE, universal_newlines=True)
-    out=process.communicate(stdin)
-    if out[1]: pf(out[1])
-    if process.returncode != 0: raise Exception("*** External program failed: %s" % params[0])
-    return out[0]
 
 class KeyboardInterruptError(Exception): pass
 
 def proc_file(fl):
     try:
         pf('.',end='')
-        command(['nice','pngnq','-fn', options.colors, fl])
+        command(['pngnq','-fn', options.colors, fl])
     except KeyboardInterrupt: # http://jessenoller.com/2009/01/08/multiprocessingpool-and-keyboardinterrupt/
         pf('got KeyboardInterrupt')
         raise KeyboardInterruptError()
 
 if __name__=='__main__':
-    #logging.basicConfig(level=logging.INFO)
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
+    #logging.basicConfig(level=logging.DEBUG)
 
     parser = optparse.OptionParser()
     usage = "usage: %prog [options] arg"
@@ -66,14 +59,17 @@ if __name__=='__main__':
         
     (options, args) = parser.parse_args()
 
-    if not args: args=['./']
+    if not args:
+        parser.error('No input directory(s) specified')
+
     for src_dir in args:
         print src_dir
         # delete rouge *-nq8.png if any
         map(os.remove, find_byext(src_dir, '-nq8.png'))
         # find *.png
         src_lst=filter(lambda fl: not stat.S_ISLNK(os.lstat(fl)[stat.ST_MODE]), # skip symlinks
-                    find_byext(src_dir, '.png'))
+                    find_by_ext(src_dir, '.png'))
+
         parallel_map(proc_file,src_lst)
         pf('')
 
