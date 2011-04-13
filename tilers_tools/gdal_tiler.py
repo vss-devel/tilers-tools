@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-11 13:25:13 
+# 2011-04-13 10:50:28
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -54,12 +54,10 @@ except ImportError:
 from tiler_functions import *
 
 #############################
-#
-# class TiledTiff
-#
-#############################
 
 class TiledTiff(object):
+
+#############################
     def __init__(self,img_fname,tile_first,tile_last):
         self.fname=img_fname
         self.tile_first=tile_first
@@ -78,6 +76,7 @@ class TiledTiff(object):
 
         self.tile_ofs=self.tag_data('TileOffsets')
         self.tile_lengths=self.tag_data('TileByteCounts')
+        self.samples_pp=self.tag_data('SamplesPerPixel')[0]
 
     def __del__(self):
         self.mmap.close()
@@ -95,18 +94,18 @@ class TiledTiff(object):
         idx=tile_x-d_x+(tile_y-d_y)*self.size[0]//tile_sz[0]
         assert idx >= 0 and idx < ntiles, 'tile: %s range: %s' % ((tile_x,tile_y),self.tile_range)
         
-        rgba=[ src[ofs[idx+i*ntiles] : ofs[idx+i*ntiles] + lns[idx+i*ntiles]] 
-                for i in range(4)]
-        if min(rgba[3]) == '\xFF': # fully opaque
+        bands=[ src[ofs[idx+i*ntiles] : ofs[idx+i*ntiles] + lns[idx+i*ntiles]] 
+                for i in range(self.samples_pp)]
+        aplpha=bands[-1]
+        if min(aplpha) == '\xFF': # fully opaque
             opacity=1
-            mode='RGB'
-            bands=rgba[:3]
-        elif max(rgba[3]) == '\x00': # fully transparent
+            bands=bands[:-1]
+            mode='RGB' if self.samples_pp > 2 else 'L'
+        elif max(aplpha) == '\x00': # fully transparent
             return None,0
         else: # semi-transparent
             opacity=-1
-            mode='RGBA'
-            bands=rgba
+            mode='RGBA' if self.samples_pp > 2 else 'LA'
         img=Image.merge(mode,[Image.frombuffer('L',tile_sz,b,'raw','L',0,1) for b in bands])
         return img,opacity
 
@@ -257,9 +256,9 @@ base_resampling_map={
 def base_resampling_lst(): return base_resampling_map.keys()
     
 #############################
-#
+
 # templates for VRT XML
-#
+
 #############################
 
 def xml_txt(elm_name,elm_value=None,elm_indent=0,**attr_dict):
@@ -303,7 +302,7 @@ warp_vrt='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d" subClass
 '''
 warp_band='  <VRTRasterBand dataType="Byte" band="%d" subClass="VRTWarpedRasterBand"%s>'
 warp_band_color='>\n    <ColorInterp>%s</ColorInterp>\n  </VRTRasterBand'
-warp_dst_alpha_band='    <DstAlphaBand>4</DstAlphaBand>\n'
+warp_dst_alpha_band='    <DstAlphaBand>%d</DstAlphaBand>\n'
 warp_cutline='    <Cutline>%s</Cutline>\n'
 warp_dst_geotr= '            <DstGeoTransform> %r, %r, %r, %r, %r, %r</DstGeoTransform>'
 warp_dst_igeotr='            <DstInvGeoTransform> %r, %r, %r, %r, %r, %r</DstInvGeoTransform>'
@@ -354,12 +353,11 @@ vrt_templ='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d">
 '''
     
 #############################
-#
-# class Pyramid
-#
-#############################
 
 class Pyramid(object):
+
+#############################
+
     def __init__(self,src,dest,options):
         gdal.UseExceptions()
         self.src=src
@@ -372,6 +370,7 @@ class Pyramid(object):
         self.tile_sz=tuple(map(int,options.tile_size.split(',')))
         self.src_dir,src_f=os.path.split(src)
         self.base=os.path.splitext(src_f)[0]
+        self.palette=None
 
         pf('\n%s -> %s '%(self.src,self.dest),end='')
 
@@ -387,12 +386,16 @@ class Pyramid(object):
         self.init_map(options.zoom)
 
     #############################
-    #
+    
     # initialize geo-parameters and generate base zoom level
-    #
+    
+    #############################
+
     #############################
 
     def init_map(self,zoom_parm):
+
+    #############################
         options=self.options
         src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
         temp_vrt=os.path.join(self.dest,self.base+'.tmp.vrt') # auxilary VRT file
@@ -402,7 +405,7 @@ class Pyramid(object):
              
         # reproject to base zoom
         zoom=self.zoom_range[0]
-        #
+        
         # extend the raster to cover full tiles
         ld("extend the raster")
         shifted_srs=self.shift_srs(zoom)
@@ -473,7 +476,7 @@ class Pyramid(object):
         warp_options.append(w_option('INIT_DEST','0'))
 
         if options.cut:
-            cut_wkt=self.cut_line()
+            cut_wkt=self.get_cutline()
         else:
             cut_wkt=None
         if cut_wkt:
@@ -487,16 +490,16 @@ class Pyramid(object):
             warp_options.append(w_option('UNIFIED_SRC_NODATA','YES'))
 
         src_bands=self.src_ds.RasterCount
-        assert src_bands in (3,4)
+        assert src_bands in (1,3,4)
         vrt_bands=[]
         wo_BandList=[]
         for i in range(1,src_bands+1):
-            vrt_bands.append(warp_band % (i,'/'))
+            vrt_bands.append(warp_band % (i,'/' if src_bands != 1 else warp_band_color % 'Gray'))
             wo_BandList.append(warp_band_mapping % (i,i,
                 (warp_band_mapping_nodata % (nodata[i],0)) if nodata else '/'))
 
         if src_bands < 4:
-            vrt_bands.append(warp_band % (i+1,warp_band_color % 'Alpha'))
+            vrt_bands.append(warp_band % (src_bands+1,warp_band_color % 'Alpha'))
 
         block_sz=self.src_ds.GetRasterBand(1).GetBlockSize()
 
@@ -516,7 +519,7 @@ class Pyramid(object):
             'wo_src_transform': src_transform,
             'wo_dst_transform': dst_transform,
             'wo_BandList':      '\n'.join(wo_BandList),
-            'wo_DstAlphaBand':  warp_dst_alpha_band if src_bands < 4 else '',
+            'wo_DstAlphaBand':  warp_dst_alpha_band % (src_bands+1) if src_bands < 4 else '',
             'wo_Cutline':       (warp_cutline % cut_wkt) if cut_wkt else '',
             }
 
@@ -549,14 +552,29 @@ class Pyramid(object):
                 os.remove(src_vrt)
             except: pass
 
+    #############################
+
     def get_src_ds(self,src_vrt):
         'get src dataset, convert to RGB(A) if required'
+    #############################
         if os.path.exists(self.src):
             self.src_path=os.path.abspath(self.src)
 
         # check for source raster type
         src_ds=gdal.Open(self.src_path,GA_ReadOnly)
         src_bands=src_ds.RasterCount
+        
+        if self.base_resampling == 'NearestNeighbour' and src_bands == 1:
+            band=src_ds.GetRasterBand(1)
+            if band.GetColorInterpretation() == GCI_PaletteIndex:
+                color_table=band.GetColorTable()
+                ncolors=color_table.GetCount()
+                if ncolors < 256:
+                    self.palette=([color_table.GetColorEntry(i) for i in range(ncolors)]
+                        +[(0,0,0,0)])
+                    ld('self.palette',self.palette)
+                    return src_ds
+
         if src_bands >= 3:
             return src_ds
 
@@ -580,9 +598,9 @@ class Pyramid(object):
             gcp_proj=wkt2proj4(src_ds.GetGCPProjection())
             gcplst_txt=gcplst_templ % (gcp_proj,gcp_lst)
 
-        metadt=src_ds.GetMetadata()
-        if metadt:
-            mtd_lst=[xml_txt('MDI',metadt[mdkey],4,key=mdkey) for mdkey in metadt]
+        metadata=src_ds.GetMetadata()
+        if metadata:
+            mtd_lst=[xml_txt('MDI',metadata[mdkey],4,key=mdkey) for mdkey in metadata]
             meta_txt=meta_templ % '\n'.join(mtd_lst)
         else:
             meta_txt=''
@@ -613,10 +631,12 @@ class Pyramid(object):
         src_ds=gdal.Open(vrt_txt,GA_ReadOnly)
         return src_ds
 
+    #############################
+
     def shift_srs(self,zoom=None):
         'change prime meridian to allow charts crossing 180 meridian'
+    #############################
         t_ds=self.src_ds
-#        tr_pix_ll=gdal.Transformer(t_ds,None,['METHOD=GCP_TPS','DST_SRS='+proj4wkt(self.latlong)])
         tr_pix_ll=MyTransformer(t_ds,DST_SRS=self.latlong)
         ll=tr_pix_ll.transform([(0,0,0),(t_ds.RasterXSize,t_ds.RasterYSize,0)])
         ul,lr=ll
@@ -630,15 +650,17 @@ class Pyramid(object):
         if zoom is not None: # adjust to a tile boundary
             left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
 
-#        tr_srs=get_transformer(SRC_SRS=self.proj,DST_SRS=self.latlong)
         new_pm=int(math.floor(
                 tr_srs.transform_pt(left_xy,inv=True)[0]
                 ))#-180
         ld('left_xy',left_xy,'new_pm',new_pm)
         return '%s +lon_0=%d' % (self.proj,new_pm)
 
+    #############################
+
     def calc_zoom(self,zoom_parm,temp_vrt):
         'determite zoom levels to generate'
+    #############################
         res=None
         if not zoom_parm: # calculate "automatic" zoom levels
             # check raster parameters to find default zoom range
@@ -669,7 +691,11 @@ class Pyramid(object):
         ld(('res',res,'zoom_range',zoom_range,'z0 (0,0)',self.coord2pix(0,(0,0))))
         return zoom_range
 
-    def cut_line(self):
+    #############################
+
+    def get_cutline(self):
+
+    #############################
         src_ds=self.src_ds
         src_proj=wkt2proj4(src_ds.GetProjection())
         cutline=src_ds.GetMetadataItem('CUTLINE')
@@ -718,9 +744,9 @@ class Pyramid(object):
         return cutline
 
     #############################
-    #
-    # utility finctions
-    #
+    
+    # utility functions
+    
     #############################
 
     def zoom2res(self,zoom):
@@ -823,12 +849,16 @@ class Pyramid(object):
             return False
 
     #############################
-    #
+    
     # generate pyramid
-    #
+    
+    #############################
+
     #############################
 
     def walk_pyramid(self):
+
+    #############################
         if self.options.noclobber and self.dest is None:
             pf('*** Pyramid already exists: skipping',end='')
             return
@@ -853,7 +883,11 @@ class Pyramid(object):
         except:
             logging.warning("opacity cache save failed")
 
+    #############################
+
     def proc_tile(self,tile):
+
+    #############################
         #ld(tile)
         ch_opacities=[]
         ch_tiles=[]
@@ -864,36 +898,52 @@ class Pyramid(object):
             opacity=0
             cz=self.zoom_range[self.zoom_range.index(zoom)-1] # child's zoom
             dz=int(2**(cz-zoom))
-            children=dict(flatten([[((cz,x*dz+dx,y*dz+dy),(dx*self.tile_sz[0]//dz,dy*self.tile_sz[1]//dz))
+            children_ofs=dict(flatten(
+                [[((cz,x*dz+dx,y*dz+dy),(dx*self.tile_sz[0]//dz,dy*self.tile_sz[1]//dz))
                                for dx in range(dz)]
                                    for dy in range(dz)]))
-            ch_tiles=filter(None,map(self.proc_tile,self.all_tiles & set(children)))
+            ch_tiles=filter(None,map(self.proc_tile,self.all_tiles & set(children_ofs)))
             if ch_tiles:
                 if len(ch_tiles) == 4 and all([opacities[0][1]==1 for img,ch,opacities in ch_tiles]):
-                    mode="RGB"
+                    mode='RGB' if self.palette is None else 'L'
                     opacity=1
                 else:
-                    mode="RGBA"
+                    mode='RGBA' if self.palette is None else 'LA'
                     opacity=-1
-                tile_img=Image.new(mode,self.tile_sz,(0,0,0,0))
+                #ld('mode,sz',mode,self.tile_sz)
+                tile_img=Image.new(mode,self.tile_sz)
                 for img,ch,opacities in ch_tiles:
-                    #ld((tile,dz,ch,children[ch]))
-                    img=img.resize([i//dz for i in img.size],self.resampling)
-                    mask=img if img.mode =='RGBA' else None
-                    tile_img.paste(img,children[ch],mask)
+                    #ld((tile,dz,ch,children_ofs[ch]))
+                    ch_img=img.resize([i//dz for i in img.size],self.resampling)
+                    ch_mask=ch_img.split()[-1] if 'A' in ch_img.mode else None
+                    tile_img.paste(ch_img,children_ofs[ch],ch_mask)
                     ch_opacities+=opacities
         if opacity:
+            if self.palette is not None:
+                if 'A' in tile_img.mode:
+                    transparent_color=len(self.palette)-1
+                    transparent_layer=Image.new('L',self.tile_sz,transparent_color)
+                    data_layer,mask=tile_img.split()
+                    tile_img=Image.composite(data_layer,transparent_layer,mask)
+#                    ld(data_layer,mask)
+#                tile_img=im.convert('P')
+                tile_img.putpalette(flatten([(c[0],c[1],c[2],c[3]) for c in self.palette]))
+#                   ld(tile_img)
             self.write_tile(tile,tile_img)
             self.make_kml(tile,[ch for img,ch,opacities in ch_tiles])
             return tile_img,tile,[(tile,opacity)]+ch_opacities
 
+    #############################
+
     def write_tile(self,tile,img):
+
+    #############################
         rel_path=self.tile_path(tile)
         full_path=os.path.join(self.dest,rel_path)
         try:
             os.makedirs(os.path.dirname(full_path))
         except: pass
-        if options.to_palette and self.tile_ext == '.png':
+        if options.to_paletted and self.tile_ext == '.png':
             try:
                 img=img.convert('P', palette=Image.ADAPTIVE, colors=255)
             except ValueError:
@@ -910,8 +960,11 @@ class Pyramid(object):
 
 # Pyramid        
 
+#############################
+
 class PlateCarree(Pyramid):
     'Google Earth (plate carrée), Google tile numbering'
+#############################
     format='earth'
     defaul_ext='.earth'
 
@@ -988,8 +1041,11 @@ class PlateCarree(Pyramid):
             
 # PlateCarree
 
+#############################
+
 class PlateCarreeTMS(PlateCarree):
     'Google Earth (plate carrée), TMS tile numbering'
+#############################
     format='earth-tms'
     defaul_ext='.earth-tms'
 
@@ -1049,8 +1105,11 @@ kml_link_templ='''
             </Link>
         </NetworkLink>'''
 
+#############################
+
 class Gmaps(Pyramid):
     'Google Maps (Global Mercator), native tile numbering'
+#############################
     format='gmaps'
     defaul_ext='.gmaps'
 
@@ -1087,8 +1146,11 @@ class Gmaps(Pyramid):
 
 # GMaps
 
+#############################
+
 class GMercatorTMS(Gmaps):
     'Google Maps (Global Mercator), TMS tile numbering'
+#############################
     defaul_ext='.tms'
     format='tms'
 
@@ -1252,7 +1314,11 @@ profile_map={
     }
 def profile_lst(): return profile_map.keys()
 
+#############################
+
 def main(argv):
+
+#############################
     
     usage = "usage: %prog <options>... input_file..."
     parser = OptionParser(usage=usage,
@@ -1285,7 +1351,7 @@ def main(argv):
         help='prefix for tile URLs at googlemaps.hml')
     parser.add_option("--tile-format", default='png',metavar="FMT",
         help='tile image format (default: PNG)')
-    parser.add_option("--to-palette", action="store_true", 
+    parser.add_option("--to-paletted", action="store_true", 
         help='convert tiles to paletted format (8 bit/pixel)')
     parser.add_option("--tile-size", default='256,256',metavar="SIZE_X,SIZE_Y",
         help='tile size (default: 256,256)')
