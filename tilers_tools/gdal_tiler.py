@@ -58,10 +58,11 @@ from tiler_functions import *
 class TiledTiff(object):
 
 #############################
-    def __init__(self,img_fname,tile_first,tile_last):
+    def __init__(self,img_fname,tile_first,tile_last,transparency=None):
         self.fname=img_fname
         self.tile_first=tile_first
         self.tile_last=tile_last
+        self.transparency=transparency
         self.file=open(img_fname,'r+b')
         self.mmap=mmap.mmap(self.file.fileno(),0,access=mmap.ACCESS_READ)
 
@@ -77,7 +78,7 @@ class TiledTiff(object):
         self.tile_ofs=self.tag_data('TileOffsets')
         self.tile_lengths=self.tag_data('TileByteCounts')
         self.samples_pp=self.tag_data('SamplesPerPixel')[0]
-        
+
     def __del__(self):
         self.mmap.close()
         self.file.close()
@@ -93,20 +94,32 @@ class TiledTiff(object):
         d_x,d_y=self.tile_first
         idx=tile_x-d_x+(tile_y-d_y)*self.size[0]//tile_sz[0]
         assert idx >= 0 and idx < ntiles, 'tile: %s range: %s' % ((tile_x,tile_y),self.tile_range)
-
-        bands=[ src[ofs[idx+i*ntiles] : ofs[idx+i*ntiles] + lns[idx+i*ntiles]]
+        
+        bands=[ src[ofs[idx+i*ntiles] : ofs[idx+i*ntiles] + lns[idx+i*ntiles]] 
                 for i in range(self.samples_pp)]
-        aplpha=bands[-1]
-        if min(aplpha) == '\xFF': # fully opaque
+        if self.samples_pp == 1:
             opacity=1
-            bands=bands[:-1]
-            mode='RGB'
-        elif max(aplpha) == '\x00': # fully transparent
-            return None,0
-        else: # semi-transparent
-            opacity=-1
-            mode='RGBA'
-        img=Image.merge(mode,[Image.frombuffer('L',tile_sz,b,'raw','L',0,1) for b in bands])
+            mode='L'
+            if self.transparency is not None:
+                if chr(self.transparency) in bands[0]:
+                    colorset=set(bands[0])
+                    if len(colorset) == 1:  # fully transparent
+                        return None,0
+                    else:                   # semi-transparent
+                        opacity=-1
+            img=Image.frombuffer('L',tile_sz,bands[0],'raw','L',0,1)
+        else:
+            aplpha=bands[-1]
+            if min(aplpha) == '\xFF':       # fully opaque
+                opacity=1
+                bands=bands[:-1]
+                mode='RGB' if self.samples_pp > 2 else 'L'
+            elif max(aplpha) == '\x00':     # fully transparent
+                return None,0
+            else:                           # semi-transparent
+                opacity=-1
+                mode='RGBA' if self.samples_pp > 2 else 'LA'
+            img=Image.merge(mode,[Image.frombuffer('L',tile_sz,b,'raw','L',0,1) for b in bands])
         return img,opacity
 
     def unpack(self,fmt,start,len,src=None):
@@ -223,7 +236,7 @@ img_type_map=(
     BigTiffBE,
     )
 
-def BaseImg(img_fname,tile_ul,tile_lr):
+def BaseImg(img_fname,tile_ul,tile_lr,transparency_color=None):
     f=open(img_fname,'r+b')
     magic=f.read(4)
     f.close()
@@ -234,7 +247,7 @@ def BaseImg(img_fname,tile_ul,tile_lr):
     else:
         raise Exception('Invalid base image')
 
-    return img_cls(img_fname,tile_ul,tile_lr)
+    return img_cls(img_fname,tile_ul,tile_lr,transparency_color)
 
 resampling_map={
     'near':     Image.NEAREST,
@@ -312,6 +325,8 @@ warp_band_mapping='      <BandMapping src="%d" dst="%d"%s>'
 warp_band_mapping_nodata='''>
         <SrcNoDataReal>%d</SrcNoDataReal>
         <SrcNoDataImag>%d</SrcNoDataImag>
+        <DstNoDataReal>%d</DstNoDataReal>
+        <DstNoDataImag>%d</DstNoDataImag>
       </BandMapping'''
 warp_src_gcp_transformer='''            <SrcGCPTransformer>
               <GCPTransformer>
@@ -370,6 +385,7 @@ class Pyramid(object):
         self.tile_sz=tuple(map(int,options.tile_size.split(',')))
         self.src_dir,src_f=os.path.split(src)
         self.base=os.path.splitext(src_f)[0]
+        self.palette=None
 
         pf('\n%s -> %s '%(self.src,self.dest),end='')
 
@@ -468,11 +484,11 @@ class Pyramid(object):
 
         dst_transform='%s\n%s' % (warp_dst_geotr % geotr,warp_dst_igeotr % igeotr)
 
-        def w_option(name,value):
+        def w_option(name,value): # helper for making wark options
             return '    <Option name="%s">%s</Option>' % (name,value)
             
         warp_options=[]
-        warp_options.append(w_option('INIT_DEST','0'))
+        warp_options.append(w_option('INIT_DEST','NO_DATA'))
 
         if options.cut:
             cut_wkt=self.get_cutline()
@@ -483,21 +499,34 @@ class Pyramid(object):
             if options.blend_dist:
                 warp_options.append(w_option('CUTLINE_BLEND_DIST',options.blend_dist))
 
+        src_bands=self.src_ds.RasterCount
+        ld('src_bands',src_bands)
+        assert src_bands in (1,3,4)
+
         nodata=None
+        self.transparency=None
         if options.no_data:
             nodata=options.no_data.split(',')
-            warp_options.append(w_option('UNIFIED_SRC_NODATA','YES'))
-
-        src_bands=self.src_ds.RasterCount
-        assert src_bands in (3,4)
+            if src_bands > 1:
+                warp_options.append(w_option('UNIFIED_SRC_NODATA','YES'))
+        elif self.palette is not None:
+            self.transparency=len(self.palette)/3-1  # the last color added is for transparency
+            nodata=[self.transparency]
+        ld('nodata',nodata)
+        
         vrt_bands=[]
         wo_BandList=[]
         for i in range(1,src_bands+1):
-            vrt_bands.append(warp_band % (i,'/' if src_bands != 1 else warp_band_color % 'Gray'))
-            wo_BandList.append(warp_band_mapping % (i,i,
-                (warp_band_mapping_nodata % (nodata[i],0)) if nodata else '/'))
+#            vrt_bands.append(warp_band % (i,'/' if src_bands != 1 else warp_band_color % 'Gray'))
+            vrt_bands.append(warp_band % (i,'/'))
+            band_mapping_info='/'
+            if nodata is not None:
+                src_nodata=nodata[i-1]
+                dst_nodata=src_nodata if self.palette is not None else 0
+                band_mapping_info=warp_band_mapping_nodata % (src_nodata,0,dst_nodata,0)
+            wo_BandList.append(warp_band_mapping % (i,i,band_mapping_info))
 
-        if src_bands < 4:
+        if src_bands < 4 and self.palette is None:
             vrt_bands.append(warp_band % (src_bands+1,warp_band_color % 'Alpha'))
 
         block_sz=self.src_ds.GetRasterBand(1).GetBlockSize()
@@ -518,7 +547,7 @@ class Pyramid(object):
             'wo_src_transform': src_transform,
             'wo_dst_transform': dst_transform,
             'wo_BandList':      '\n'.join(wo_BandList),
-            'wo_DstAlphaBand':  warp_dst_alpha_band % (src_bands+1) if src_bands < 4 else '',
+            'wo_DstAlphaBand':  warp_dst_alpha_band % (src_bands+1) if src_bands < 4  and self.palette is None else '',
             'wo_Cutline':       (warp_cutline % cut_wkt) if cut_wkt else '',
             }
 
@@ -543,7 +572,7 @@ class Pyramid(object):
         pf('.',end='')
 
         # create base_image raster
-        self.base_img=BaseImg(temp_tif,tile_ul[1:],tile_lr[1:])
+        self.base_img=BaseImg(temp_tif,tile_ul[1:],tile_lr[1:],self.transparency)
 
         if options.verbose < 2:
             try:
@@ -563,6 +592,19 @@ class Pyramid(object):
         src_ds=gdal.Open(self.src_path,GA_ReadOnly)
         src_bands=src_ds.RasterCount
         
+        if self.base_resampling == 'NearestNeighbour' and src_bands == 1:
+            band=src_ds.GetRasterBand(1)
+            if band.GetColorInterpretation() == GCI_PaletteIndex:
+                color_table=band.GetColorTable()
+                ncolors=color_table.GetCount()
+                palette=[color_table.GetColorEntry(i) for i in range(ncolors)]
+                r,g,b,a=zip(*palette)
+                if ncolors < 256 and min(a) == 255 :
+                    self.palette=flatten(zip(r,g,b)) # PIL doesn't support RGBA palettes
+                    self.palette+=[0,0,0]            # the last color added is for transparency
+                    ld('self.palette',self.palette)
+                    return src_ds
+
         if src_bands >= 3:
             return src_ds
 
@@ -858,7 +900,7 @@ class Pyramid(object):
                                            for y in range(tile_ul[2],tile_lr[2]+1)])
             tiles.extend(zoom_tiles)
         ld('min_zoom',zoom,'tile_ul',tile_ul,'tile_lr',tile_lr,'zoom_tiles',zoom_tiles)
-        self.all_tiles=set(tiles)
+        self.all_tiles=frozenset(tiles)
         top_tiles=filter(None,map(self.proc_tile,zoom_tiles))
         # write top kml
         self.make_kml(None,[ch for img,ch,opacities in top_tiles])
@@ -882,37 +924,44 @@ class Pyramid(object):
         zoom,x,y=tile
         if zoom==self.zoom_range[0]: # crop from the base image
             tile_img,opacity=self.base_img.tile(*tile[1:])
-        else: # mosaic from children
+        else: # merge children
             opacity=0
             cz=self.zoom_range[self.zoom_range.index(zoom)-1] # child's zoom
             dz=int(2**(cz-zoom))
+
             children_ofs=dict(flatten(
-                        [[((cz,x*dz+dx,y*dz+dy),(dx*self.tile_sz[0]//dz,dy*self.tile_sz[1]//dz))
+                [[((cz,x*dz+dx,y*dz+dy),(dx*self.tile_sz[0]//dz,dy*self.tile_sz[1]//dz))
                                for dx in range(dz)]
                                    for dy in range(dz)]))
+
             ch_tiles=filter(None,map(self.proc_tile,self.all_tiles & set(children_ofs)))
             if ch_tiles:
                 if len(ch_tiles) == 4 and all([opacities[0][1]==1 for img,ch,opacities in ch_tiles]):
-                    mode="RGB"
                     opacity=1
+                    mode='RGB' if ch_tiles[0][0].mode == 'RGB' else 'L'
                 else:
-                    mode="RGBA"
                     opacity=-1
-                tile_img=Image.new(mode,self.tile_sz)
-                for img,ch,opacities in ch_tiles:
-                    #ld((tile,dz,ch,children_ofs[ch]))
+                    if self.palette is not None:
+                        mode='L'
+                    else:
+                        mode='LA' if 'L' in ch_tiles[0][0].mode else 'RGBA'
+                if self.transparency is not None:
+                    tile_img=Image.new(mode,self.tile_sz,self.transparency)
+                else:
+                    tile_img=Image.new(mode,self.tile_sz)
+                for img,ch,opacity_lst in ch_tiles:
                     ch_img=img.resize([i//dz for i in img.size],self.resampling)
-                    ch_mask=ch_img if ch_img.mode =='RGBA' else None
+                    ch_mask=ch_img.split()[-1] if 'A' in ch_img.mode else None
                     tile_img.paste(ch_img,children_ofs[ch],ch_mask)
-                    ch_opacities+=opacities
-        if opacity:
+                    ch_opacities.extend(opacity_lst)
+        if opacity != 0:
             self.write_tile(tile,tile_img)
             self.make_kml(tile,[ch for img,ch,opacities in ch_tiles])
             return tile_img,tile,[(tile,opacity)]+ch_opacities
 
     #############################
 
-    def write_tile(self,tile,img):
+    def write_tile(self,tile,tile_img):
 
     #############################
         rel_path=self.tile_path(tile)
@@ -920,13 +969,21 @@ class Pyramid(object):
         try:
             os.makedirs(os.path.dirname(full_path))
         except: pass
-        if options.to_paletted and self.tile_ext == '.png':
+        if self.palette is not None:
+            tile_img=tile_img.copy()
+            tile_img.putpalette(self.palette)
+        elif options.to_paletted and self.tile_ext == '.png':
             try:
-                img=img.convert('P', palette=Image.ADAPTIVE, colors=255)
+                tile_img=tile_img.convert('P', palette=Image.ADAPTIVE, colors=255)
             except ValueError:
-                #ld('img.mode',img.mode)
+                #ld('tile_img.mode',tile_img.mode)
                 pass
-        img.save(full_path)
+
+        if self.transparency is not None:
+            tile_img.save(full_path,transparency=self.transparency)
+        else:
+            tile_img.save(full_path)
+        
         self.counter()
 
     def make_kml(self,tile,children=[]): # 'virtual'
