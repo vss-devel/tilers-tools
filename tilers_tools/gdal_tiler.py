@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-13 10:50:28
+# 2011-04-17 15:59:46 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -236,7 +236,12 @@ img_type_map=(
     BigTiffBE,
     )
 
+#############################
+
 def BaseImg(img_fname,tile_ul,tile_lr,transparency_color=None):
+
+#############################
+
     f=open(img_fname,'r+b')
     magic=f.read(4)
     f.close()
@@ -248,25 +253,6 @@ def BaseImg(img_fname,tile_ul,tile_lr,transparency_color=None):
         raise Exception('Invalid base image')
 
     return img_cls(img_fname,tile_ul,tile_lr,transparency_color)
-
-resampling_map={
-    'near':     Image.NEAREST,
-    'nearest':  Image.NEAREST,
-    'bilinear': Image.BILINEAR,
-    'bicubic':  Image.BICUBIC,
-    'antialias':Image.ANTIALIAS,
-    }
-def resampling_lst(): return resampling_map.keys()
-    
-base_resampling_map={
-    'near':         'NearestNeighbour', 
-    'nearest':      'NearestNeighbour', 
-    'bilinear':     'Bilinear',
-    'cubic':        'Cubic',
-    'cubicspline':  'CubicSpline',
-    'lanczos':      'Lanczos',
-    }
-def base_resampling_lst(): return base_resampling_map.keys()
     
 #############################
 
@@ -322,11 +308,13 @@ warp_dst_igeotr='            <DstInvGeoTransform> %r, %r, %r, %r, %r, %r</DstInv
 warp_src_geotr= '            <SrcGeoTransform> %r, %r, %r, %r, %r, %r</SrcGeoTransform>'
 warp_src_igeotr='            <SrcInvGeoTransform> %r, %r, %r, %r, %r, %r</SrcInvGeoTransform>'
 warp_band_mapping='      <BandMapping src="%d" dst="%d"%s>'
-warp_band_mapping_nodata='''>
+warp_band_src_nodata='''
         <SrcNoDataReal>%d</SrcNoDataReal>
-        <SrcNoDataImag>%d</SrcNoDataImag>
+        <SrcNoDataImag>%d</SrcNoDataImag>'''
+warp_band_dst_nodata='''
         <DstNoDataReal>%d</DstNoDataReal>
-        <DstNoDataImag>%d</DstNoDataImag>
+        <DstNoDataImag>%d</DstNoDataImag>'''
+warp_band_mapping_nodata='''>%s%s
       </BandMapping'''
 warp_src_gcp_transformer='''            <SrcGCPTransformer>
               <GCPTransformer>
@@ -366,6 +354,25 @@ srs_templ='  <SRS>%s</SRS>\n'
 vrt_templ='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d">
 %(metadata)s%(srs)s%(geotr)s%(gcp_list)s%(band_list)s</VRTDataset>
 '''
+
+resampling_map={
+    'near':     Image.NEAREST,
+    'nearest':  Image.NEAREST,
+    'bilinear': Image.BILINEAR,
+    'bicubic':  Image.BICUBIC,
+    'antialias':Image.ANTIALIAS,
+    }
+def resampling_lst(): return resampling_map.keys()
+    
+base_resampling_map={
+    'near':         'NearestNeighbour', 
+    'nearest':      'NearestNeighbour', 
+    'bilinear':     'Bilinear',
+    'cubic':        'Cubic',
+    'cubicspline':  'CubicSpline',
+    'lanczos':      'Lanczos',
+    }
+def base_resampling_lst(): return base_resampling_map.keys()
     
 #############################
 
@@ -503,28 +510,29 @@ class Pyramid(object):
         ld('src_bands',src_bands)
         assert src_bands in (1,3,4)
 
-        nodata=None
-        self.transparency=None
+        src_nodata=None
         if options.no_data:
-            nodata=options.no_data.split(',')
+            src_nodata=options.no_data.split(',')
             if src_bands > 1:
                 warp_options.append(w_option('UNIFIED_SRC_NODATA','YES'))
-        elif self.palette is not None:
+        dst_nodata=None
+        self.transparency=None
+        if self.palette is not None:
             self.transparency=len(self.palette)/3-1  # the last color added is for transparency
-            nodata=[self.transparency]
-        ld('nodata',nodata)
+            dst_nodata=[self.transparency]
+        ld('nodata',src_nodata,dst_nodata)
         
         vrt_bands=[]
         wo_BandList=[]
-        for i in range(1,src_bands+1):
-#            vrt_bands.append(warp_band % (i,'/' if src_bands != 1 else warp_band_color % 'Gray'))
-            vrt_bands.append(warp_band % (i,'/'))
-            band_mapping_info='/'
-            if nodata is not None:
-                src_nodata=nodata[i-1]
-                dst_nodata=src_nodata if self.palette is not None else 0
-                band_mapping_info=warp_band_mapping_nodata % (src_nodata,0,dst_nodata,0)
-            wo_BandList.append(warp_band_mapping % (i,i,band_mapping_info))
+        for i in range(src_bands):
+            vrt_bands.append(warp_band % (i+1,'/'))
+            if src_nodata or dst_nodata:
+                band_mapping_info=warp_band_mapping_nodata % (
+                        warp_band_src_nodata % (src_nodata[i],0) if src_nodata else '',
+                        warp_band_dst_nodata % (dst_nodata[i],0) if dst_nodata else '')
+            else:
+                band_mapping_info='/'
+            wo_BandList.append(warp_band_mapping % (i+1,i+1,band_mapping_info))
 
         if src_bands < 4 and self.palette is None:
             vrt_bands.append(warp_band % (src_bands+1,warp_band_color % 'Alpha'))
@@ -592,7 +600,7 @@ class Pyramid(object):
         src_ds=gdal.Open(self.src_path,GA_ReadOnly)
         src_bands=src_ds.RasterCount
         
-        if self.base_resampling == 'NearestNeighbour' and src_bands == 1:
+        if src_bands == 1 and self.base_resampling == 'NearestNeighbour' and self.resampling == Image.NEAREST:
             band=src_ds.GetRasterBand(1)
             if band.GetColorInterpretation() == GCI_PaletteIndex:
                 color_table=band.GetColorTable()
@@ -922,8 +930,10 @@ class Pyramid(object):
         ch_opacities=[]
         ch_tiles=[]
         zoom,x,y=tile
-        if zoom==self.zoom_range[0]: # crop from the base image
+        if zoom==self.zoom_range[0]: # get from the base image
             tile_img,opacity=self.base_img.tile(*tile[1:])
+            if tile_img and self.palette:
+                tile_img.putpalette(self.palette)
         else: # merge children
             opacity=0
             cz=self.zoom_range[self.zoom_range.index(zoom)-1] # child's zoom
@@ -935,26 +945,35 @@ class Pyramid(object):
                                    for dy in range(dz)]))
 
             ch_tiles=filter(None,map(self.proc_tile,self.all_tiles & set(children_ofs)))
-            if ch_tiles:
-                if len(ch_tiles) == 4 and all([opacities[0][1]==1 for img,ch,opacities in ch_tiles]):
-                    opacity=1
-                    mode='RGB' if ch_tiles[0][0].mode == 'RGB' else 'L'
-                else:
-                    opacity=-1
-                    if self.palette is not None:
-                        mode='L'
+            if len(ch_tiles) == 4 and all([opacities[0][1]==1 for img,ch,opacities in ch_tiles]):
+                opacity=1
+                mode_opacity=''
+            else:
+                opacity=-1
+                mode_opacity='A'
+
+            tile_img=None
+            for img,ch,opacity_lst in ch_tiles:
+                ch_img=img.resize([i//dz for i in img.size],self.resampling)
+                ch_mask=ch_img.split()[-1] if 'A' in ch_img.mode else None
+                
+                if tile_img is None:
+                    if 'P' in ch_img.mode:
+                        tile_mode='P'
                     else:
-                        mode='LA' if 'L' in ch_tiles[0][0].mode else 'RGBA'
-                if self.transparency is not None:
-                    tile_img=Image.new(mode,self.tile_sz,self.transparency)
-                else:
-                    tile_img=Image.new(mode,self.tile_sz)
-                for img,ch,opacity_lst in ch_tiles:
-                    ch_img=img.resize([i//dz for i in img.size],self.resampling)
-                    ch_mask=ch_img.split()[-1] if 'A' in ch_img.mode else None
-                    tile_img.paste(ch_img,children_ofs[ch],ch_mask)
-                    ch_opacities.extend(opacity_lst)
-        if opacity != 0:
+                        tile_mode=('L' if 'L' in ch_img.mode else 'RGB')+mode_opacity
+                    
+                    if self.transparency is not None:
+                        tile_img=Image.new(tile_mode,self.tile_sz,self.transparency)
+                    else:
+                        tile_img=Image.new(tile_mode,self.tile_sz)
+                    if self.palette is not None:
+                        tile_img.putpalette(self.palette)
+
+                tile_img.paste(ch_img,children_ofs[ch],ch_mask)
+                ch_opacities.extend(opacity_lst)
+
+        if tile_img is not None and opacity != 0:
             self.write_tile(tile,tile_img)
             self.make_kml(tile,[ch for img,ch,opacities in ch_tiles])
             return tile_img,tile,[(tile,opacity)]+ch_opacities
@@ -969,10 +988,8 @@ class Pyramid(object):
         try:
             os.makedirs(os.path.dirname(full_path))
         except: pass
-        if self.palette is not None:
-            tile_img=tile_img.copy()
-            tile_img.putpalette(self.palette)
-        elif options.to_paletted and self.tile_ext == '.png':
+
+        if options.to_paletted and self.tile_ext == '.png':
             try:
                 tile_img=tile_img.convert('P', palette=Image.ADAPTIVE, colors=255)
             except ValueError:
