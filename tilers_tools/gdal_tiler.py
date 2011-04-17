@@ -1267,24 +1267,23 @@ google_templ='''<!DOCTYPE html>
         }
 
     function opacity_str(opacity){
-        s=String(Math.round(opacity*100));
-        while (s.length < 3) s='+'+s;
-        return '<+++'+s+'%%+++>';
+        var s = String(Math.round(opacity*100));
+        while (s.length < 3) s = '+' + s;
+        return '<++' + s + '%%+++>';
         }
 
     function opacity_control(map,overlay_index) {
-        controlDiv=document.createElement('DIV');
+        var controlDiv=document.createElement('DIV');
         // Set CSS styles for the DIV containing the control
-        // Setting padding to 5 px will offset the control
-        // from the edge of the map
-        controlDiv.style.padding = '5px';
+        // Setting padding will offset the control from the edge of the map
+        controlDiv.style.padding = '7px';
         controlDiv.id = 'op-control-div';
 
         // Set CSS for the control border
         var controlUI = document.createElement('DIV');
         controlUI.style.backgroundColor = 'white';
         controlUI.style.borderStyle = 'solid';
-        controlUI.style.borderWidth = '2px';
+        controlUI.style.borderWidth = '1px';
         controlUI.style.cursor = 'pointer';
         controlUI.style.textAlign = 'center';
         controlUI.title = 'Click to set opacity of the overlay';
@@ -1293,8 +1292,8 @@ google_templ='''<!DOCTYPE html>
 
         // Set CSS for the control interior
         var controlText = document.createElement('DIV');
-        controlText.style.fontFamily = 'Arial,sans-serif';
-        controlText.style.fontile_sz = '10px';
+        controlText.style.fontFamily = 'monospace';
+        controlText.style.fontSize = '10px';
         controlText.style.paddingLeft = '4px';
         controlText.style.paddingRight = '4px';
         controlText.innerHTML = opacity_str(opacity);
