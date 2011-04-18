@@ -82,8 +82,6 @@ class TiledTiff(object):
     def __del__(self):
         self.mmap.close()
         self.file.close()
-        if options.verbose < 2:
-            os.remove(self.fname)
                 
     def tile(self,tile_x,tile_y):
         tile_sz=self.tile_sz
@@ -393,6 +391,8 @@ class Pyramid(object):
         self.src_dir,src_f=os.path.split(src)
         self.base=os.path.splitext(src_f)[0]
         self.palette=None
+        self.transparency=None
+        self.temp_files=[]
 
         pf('\n%s -> %s '%(self.src,self.dest),end='')
 
@@ -407,6 +407,13 @@ class Pyramid(object):
         self.resampling=resampling_map[options.overview_resampling]
         self.init_map(options.zoom)
 
+    def __del__(self):
+        if options.verbose < 2:
+            try:
+                for f in self.temp_files:
+                    os.remove(f)
+            except: pass
+
     #############################
     
     # initialize geo-parameters and generate base zoom level
@@ -419,11 +426,9 @@ class Pyramid(object):
 
     #############################
         options=self.options
-        src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
-        temp_vrt=os.path.join(self.dest,self.base+'.tmp.vrt') # auxilary VRT file
-        self.src_ds=self.get_src_ds(src_vrt)
+        self.get_src_ds()
         # calculate zoom range
-        self.zoom_range=self.calc_zoom(zoom_parm,temp_vrt)
+        self.zoom_range=self.calc_zoom(zoom_parm)
              
         # reproject to base zoom
         zoom=self.zoom_range[0]
@@ -511,14 +516,12 @@ class Pyramid(object):
         assert src_bands in (1,3,4)
 
         src_nodata=None
-        if options.no_data:
-            src_nodata=options.no_data.split(',')
+        if options.src_nodata:
+            src_nodata=options.src_nodata.split(',')
             if src_bands > 1:
                 warp_options.append(w_option('UNIFIED_SRC_NODATA','YES'))
         dst_nodata=None
-        self.transparency=None
         if self.palette is not None:
-            self.transparency=len(self.palette)/3-1  # the last color added is for transparency
             dst_nodata=[self.transparency]
         ld('nodata',src_nodata,dst_nodata)
         
@@ -559,6 +562,8 @@ class Pyramid(object):
             'wo_Cutline':       (warp_cutline % cut_wkt) if cut_wkt else '',
             }
 
+        temp_vrt=os.path.join(self.dest,self.base+'.tmp.vrt') # auxilary VRT file
+        self.temp_files.append(temp_vrt)
         with open(temp_vrt,'w') as f:
             f.write(vrt_text)
 
@@ -566,9 +571,10 @@ class Pyramid(object):
         # create Gtiff
         pf('...',end='')
         dst_drv = gdal.GetDriverByName('Gtiff')
-        temp_tif=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % zoom) # img for the base zoom
+        temp_tiff=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % zoom) # img for the base zoom
+        self.temp_files.append(temp_tiff)
             
-        dst_ds = dst_drv.CreateCopy(temp_tif,t_ds,0,[
+        dst_ds = dst_drv.CreateCopy(temp_tiff,t_ds,0,[
 			'TILED=YES',
             'INTERLEAVE=BAND',
             'BLOCKXSIZE=%i' % self.tile_sz[0],
@@ -580,17 +586,11 @@ class Pyramid(object):
         pf('.',end='')
 
         # create base_image raster
-        self.base_img=BaseImg(temp_tif,tile_ul[1:],tile_lr[1:],self.transparency)
-
-        if options.verbose < 2:
-            try:
-                os.remove(temp_vrt)
-                os.remove(src_vrt)
-            except: pass
+        self.base_img=BaseImg(temp_tiff,tile_ul[1:],tile_lr[1:],self.transparency)
 
     #############################
 
-    def get_src_ds(self,src_vrt):
+    def get_src_ds(self):
         'get src dataset, convert to RGB(A) if required'
     #############################
         if os.path.exists(self.src):
@@ -600,21 +600,31 @@ class Pyramid(object):
         src_ds=gdal.Open(self.src_path,GA_ReadOnly)
         src_bands=src_ds.RasterCount
         
-        if src_bands == 1 and self.base_resampling == 'NearestNeighbour' and self.resampling == Image.NEAREST:
-            band=src_ds.GetRasterBand(1)
-            if band.GetColorInterpretation() == GCI_PaletteIndex:
-                color_table=band.GetColorTable()
-                ncolors=color_table.GetCount()
-                palette=[color_table.GetColorEntry(i) for i in range(ncolors)]
-                r,g,b,a=zip(*palette)
-                if ncolors < 256 and min(a) == 255 :
-                    self.palette=flatten(zip(r,g,b)) # PIL doesn't support RGBA palettes
-                    self.palette+=[0,0,0]            # the last color added is for transparency
-                    ld('self.palette',self.palette)
-                    return src_ds
+        band1=src_ds.GetRasterBand(1)
+        if (src_bands == 1 and band1.GetColorInterpretation() == GCI_PaletteIndex and 
+                self.base_resampling == 'NearestNeighbour' and self.resampling == Image.NEAREST):
+            color_table=band1.GetColorTable()
+            ncolors=color_table.GetCount()
+            palette=[color_table.GetColorEntry(i) for i in range(ncolors)]
+            r,g,b,a=zip(*palette)
+            pil_palette=flatten(zip(r,g,b))             # PIL doesn't support RGBA palettes
+            if self.options.dst_nodata is not None:
+                self.transparency=int(self.options.dst_nodata.split(',')[0])
+            elif min(a) == 0:
+                self.transparency=a.index(0)
+            elif ncolors < 256:
+                pil_palette+=[0,0,0]                   # the last color added is for transparency
+                self.transparency=len(pil_palette)/3-1
+                
+            if self.transparency is not None:
+                self.palette=pil_palette
+                ld('self.palette',self.palette)
+                self.src_ds=src_ds
+                return 
 
         if src_bands >= 3:
-            return src_ds
+            self.src_ds=src_ds
+            return 
 
         # convert to rgb VRT
         assert src_bands == 1
@@ -662,12 +672,15 @@ class Pyramid(object):
             'gcp_list': gcplst_txt,
             'band_list':band_lst,
             }
+
+        src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
+        self.temp_files.append(src_vrt)
+        self.src_path=src_vrt
         with open(src_vrt,'w') as f:
             f.write(vrt_txt)
-        self.src_path=src_vrt
 
-        src_ds=gdal.Open(vrt_txt,GA_ReadOnly)
-        return src_ds
+        self.src_ds=gdal.Open(vrt_txt,GA_ReadOnly)
+        return 
 
     #############################
 
@@ -696,7 +709,7 @@ class Pyramid(object):
 
     #############################
 
-    def calc_zoom(self,zoom_parm,temp_vrt):
+    def calc_zoom(self,zoom_parm):
         'determite zoom levels to generate'
     #############################
         res=None
@@ -1395,8 +1408,10 @@ def main(argv):
         help='cutline data: OGR datasource')
     parser.add_option("--cutline-blend", dest="blend_dist",default=None,metavar="N",
         help='CUTLINE_BLEND_DIST in pixels')
-    parser.add_option("--no-data", dest="no_data", metavar='N[,N]...',
-        help='Nodata masking values for input bands')
+    parser.add_option("--src-nodata", dest="src_nodata", metavar='N[,N]...',
+        help='Nodata values for input bands')
+    parser.add_option("--dst-nodata", dest="dst_nodata", metavar='N',
+        help='assign nodata value for output paletted band')
     parser.add_option("--tiles-prefix", default='',metavar="URL",
         help='prefix for tile URLs at googlemaps.hml')
     parser.add_option("--tile-format", default='png',metavar="FMT",
