@@ -103,7 +103,7 @@ datum,Qornoq,85,International 1924,164,138,-189,,
 datum,Reunion,86,International 1924,94,-948,-1262,,
 datum,Rijksdriehoeksmeting,212,Bessel 1841,593,26,478,,
 datum,Rome 1940,87,International 1924,-225,-65,9,,
-datum,RT 90,112,Bessel 1841,498,-36,568,,
+datum,RT 90,112,Bessel 1841,498,-36,568,"+towgs84=414.0978567149,41.3381489658,603.0627177516,-0.8550434314,2.1413465185,-7.0227209516,0 +ellps=bessel"
 datum,S42,213,Krassovsky 1940,28,-121,-77,,
 datum,Santo (DOS),88,International 1924,170,42,84,,
 datum,Sao Braz,89,International 1924,-203,141,53,,
@@ -169,8 +169,8 @@ proj,(IG) Irish Grid,"+init=epsg:29902", # not tested
 # http://osgeo-org.1803224.n2.nabble.com/New-Zealand-grid-tp2062137p2062142.html
 proj,(NZG) New Zealand Grid,"+proj=nzmg +lat_0=-41.0000000000 +lon_0=173.0000000000 +x_0=2510000.0000000000 +y_0=6023150.0000000000 +a=6378388 +rf=297 +nadgrids=nzgd2kgrid0005.gsb +wktext +no_defs", # not tested
 proj,(NZTM2) New Zealand TM 2000,"+init=epsg:2193", # not tested
-# http://www.fig.net/pub/fig2006/papers/ps05_03/ps05_03_04_engberg_lilje_0670.pdf
-proj,(SG) Swedish Grid,"+proj=tmerc +lon_0=15.808277777778 +x_0=1500000 +y_0=0", # http://en.wikipedia.org/wiki/Swedish_grid
+# http://en.wikipedia.org/wiki/Swedish_grid
+proj,(SG) Swedish Grid,"+proj=tmerc +lon_0=15.808277777778 +x_0=1500000 +y_0=0", 
 proj,(SUI) Swiss Grid,"+init=epsg:21781", # not tested
 proj,(I) France Zone I,"+init=epsg:27571", # not tested
 proj,(II) France Zone II,"+init=epsg:27572", # not tested
