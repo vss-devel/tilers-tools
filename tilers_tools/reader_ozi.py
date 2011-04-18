@@ -93,7 +93,7 @@ class OziRefPoints(RefPoints):
     def grid2coord(self):
         try:
             conv2cartesian=grid_map[self.owner.native_proj]
-        except IndexError:
+        except KeyError:
             return self.cartesian
         res=[]
         for grid_data in zip(self.cartesian,self.zone,self.hemisphere):
