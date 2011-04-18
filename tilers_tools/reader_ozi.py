@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-11 11:37:29 
+# 2011-04-18 15:38:45 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -53,7 +53,7 @@ def bng_ofs(square_id,scale,relative_sq=None):
         ofs[1]-=rel_ofs[1]
     return ofs
 
-def bng2coord(grid_coord,zone,hs):
+def bng2coord(grid_coord,zone,hemisphere):
     '(BNG) British National Grid'
     assert len(zone) == 2
     return reduce(lambda x,y: (x[0]+y[0],x[1]+y[1]),[
@@ -62,7 +62,7 @@ def bng2coord(grid_coord,zone,hs):
                 bng_ofs(zone[1],100000)
                 ])
 
-def ig2coord(grid_coord,zone,hs):
+def ig2coord(grid_coord,zone,hemisphere):
     '(IG) Irish Grid'
     assert len(zone) == 1
     return reduce(lambda x,y: (x[0]+y[0],x[1]+y[1]),[
@@ -70,9 +70,10 @@ def ig2coord(grid_coord,zone,hs):
                 bng_ofs(zone,100000)
                 ])
 
-def utm2coord(grid_coord,zone,hs):
+def utm2coord(grid_coord,zone,hemisphere):
     '(UTM) Universal Transverse Mercator'
-    return (grid_coord[0] - 500000, grid_coord[1] - (0 if hs.upper() == 'N' else 10000000))    
+    return (grid_coord[0] - 500000, 
+            grid_coord[1] - (0 if hemisphere.upper() == 'N' else 10000000))    
     
 grid_map={
     '(BNG) British National Grid': bng2coord,
@@ -193,9 +194,12 @@ class OziMap(MapTranslator):
         if '+proj=' in proj[0]: # overwise assume it already has a full data defined
             # get projection parameters
             if self.native_proj == '(UTM) Universal Transverse Mercator':
-                assert self.refs.zone is not None
                 assert '+proj=tmerc' in proj[0]
-                proj.append('+lon_0=%i' % ((int(self.refs.zone[0]) - 1) * 6 + 3 - 180))
+                if self.refs.cartesian:
+                    zone=int(self.refs.zone[0])
+                else:
+                    zone=(self.refs.latlong[0][0]+180) // 6 + 1
+                proj.append('+lon_0=%i' % ((zone - 1) * 6 + 3 - 180))
             else:
                 proj.extend([ i[0]+i[1] for i in zip(self.proj_parms,parm_lst[1:]) 
                                 if i[1].translate(None,'0.')])
