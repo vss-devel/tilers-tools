@@ -1411,7 +1411,7 @@ def main(argv):
     parser.add_option("--src-nodata", dest="src_nodata", metavar='N[,N]...',
         help='Nodata values for input bands')
     parser.add_option("--dst-nodata", dest="dst_nodata", metavar='N',
-        help='assign nodata value for output paletted band')
+        help='Assign nodata value for output paletted band')
     parser.add_option("--tiles-prefix", default='',metavar="URL",
         help='prefix for tile URLs at googlemaps.hml')
     parser.add_option("--tile-format", default='png',metavar="FMT",
@@ -1423,7 +1423,7 @@ def main(argv):
     parser.add_option("-t", "--dest-dir", dest="dest_dir", default=None,
         help='destination directory (default: source)')
     parser.add_option("--noclobber", action="store_true", 
-        help='skip processing if the target pyramy already exists')
+        help='skip processing if the target pyramyd already exists')
     parser.add_option("-s", "--strip-dest-ext", action="store_true",
         help='do not add a default extension suffix from a destination directory')
     parser.add_option("-q", "--quiet", action="store_const", 
