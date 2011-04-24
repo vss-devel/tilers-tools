@@ -78,11 +78,11 @@ if __name__=='__main__':
     parser.add_option("--dtm-shift",dest="dtm_shift",default=None,metavar="SHIFT_LAT,SHIFT_LON",
         help='define northing, easting (in seconds!)')
     parser.add_option("--srs", default=None,
-        help='override full chart with PROJ.4 definition of the spatial reference system')
+        help="override source's spatial reference system with PROJ.4 definition")
     parser.add_option("--datum", default=None,
-        help="override chart's datum (PROJ.4 definition)")
+        help="override chart's datum only (PROJ.4 definition)")
     parser.add_option("--proj", default=None,
-        help="override chart's projection (BSB definition)")
+        help="override chart's projection only (BSB definition)")
 #    parser.add_option("--last-column-bug", action="store_true", 
 #        help='some BSB files are missing value for last column, here is a workaround')
 #    parser.add_option("--broken-raster", action="store_true", 

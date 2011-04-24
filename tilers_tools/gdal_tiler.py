@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-17 15:59:46 
+# 2011-04-24 15:56:09 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -56,7 +56,7 @@ from tiler_functions import *
 #############################
 
 class TiledTiff(object):
-
+    '''Tile feeder for a base zoom level'''
 #############################
     def __init__(self,img_fname,tile_first,tile_last,transparency=None):
         self.fname=img_fname
@@ -240,10 +240,9 @@ def BaseImg(img_fname,tile_ul,tile_lr,transparency_color=None):
 
 #############################
 
-    f=open(img_fname,'r+b')
-    magic=f.read(4)
-    f.close()
-    ld(magic)
+    with open(img_fname,'r+b') as f:
+        magic=f.read(4)
+    ld('tiff magic',magic)
     for img_cls in img_type_map:
         if magic == img_cls.signature:
             break
@@ -340,7 +339,7 @@ band_templ='''  <VRTRasterBand dataType="Byte" band="%(band)d">
     <ColorInterp>%(color)s</ColorInterp>
     <ComplexSource>
       <SourceFilename relativeToVRT="0">%(src)s</SourceFilename>
-      <SourceBand>1</SourceBand>
+      <SourceBand>%(srcband)d</SourceBand>
       <SourceProperties RasterXSize="%(xsize)d" RasterYSize="%(ysize)d" DataType="Byte" BlockXSize="%(blxsize)d" BlockYSize="%(blysize)d"/>
       <SrcRect xOff="0" yOff="0" xSize="%(xsize)d" ySize="%(ysize)d"/>
       <DstRect xOff="0" yOff="0" xSize="%(xsize)d" ySize="%(ysize)d"/>
@@ -375,7 +374,7 @@ def base_resampling_lst(): return base_resampling_map.keys()
 #############################
 
 class Pyramid(object):
-
+    '''Pyramid creator'''
 #############################
 
     def __init__(self,src,dest,options):
@@ -442,6 +441,7 @@ class Pyramid(object):
         tr=MyTransformer(t_ds)
         self.origin,self.extent=tr.transform([(0,0),(t_ds.RasterXSize,t_ds.RasterYSize)])
 
+        # shift SRS to avoid crossing 180 meridian
         tr_srs=MyTransformer(SRC_SRS=shifted_srs,DST_SRS=self.proj)
         shift_x,y,z=tr_srs.transform_pt((0,0))
         ld('new_srs',shifted_srs,'shift_x',shift_x,'coord_offset',self.coord_offset)
@@ -450,7 +450,7 @@ class Pyramid(object):
         self.coord_offset[0]+=shift_x
         self.shift_x=shift_x
         self.proj=shifted_srs
-
+        
         # adjust raster extents to tile boundaries
         tile_ul,tile_lr=self.corner_tiles(zoom)
         ld('tile_ul',tile_ul,'tile_lr',tile_lr)
@@ -458,21 +458,22 @@ class Pyramid(object):
         lr_c=self.tile2coord_box(tile_lr)[1]
         ul_pix=self.tile_corners(tile_ul)[0]
         lr_pix=self.tile_corners(tile_lr)[1]
-        xsize=lr_pix[0]-ul_pix[0]
-        ysize=lr_pix[1]-ul_pix[1]
-        res=self.zoom2res(zoom)
-        geotr=( ul_c[0], res[0],     0.0,
-                ul_c[1],    0.0, -res[1] )
-        ok,igeotr=gdal.InvGeoTransform(geotr)
-        assert ok
+        
+        # base zoom level raster size
+        dst_xsize=lr_pix[0]-ul_pix[0] 
+        dst_ysize=lr_pix[1]-ul_pix[1]
         
         ld('Upper Left ',self.origin,ul_c)
         ld('Lower Right',self.extent,lr_c)
         ld('coord_offset',self.coord_offset,'ul_c+c_off',map(operator.add,ul_c,self.coord_offset))
 
-        src_proj=wkt2proj4(self.src_ds.GetProjection())
+        # create VRT for base image warp
+
+        # generate warp transform
         src_geotr=self.src_ds.GetGeoTransform()
+        src_proj=wkt2proj4(self.src_ds.GetProjection())
         gcp_proj=None
+
         if src_geotr and src_geotr != (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
             ok,src_igeotr=gdal.InvGeoTransform(src_geotr)
             assert ok
@@ -486,7 +487,7 @@ class Pyramid(object):
             ld('gcp_proj',self.src_ds.GetGCPProjection())
             gcp_proj=wkt2proj4(self.src_ds.GetGCPProjection())
             if src_proj and gcp_proj != src_proj:
-                gcp2src=MyTransformer(SRC_SRS=gcp_proj,DST_SRS=srs_proj)
+                gcp2src=MyTransformer(SRC_SRS=gcp_proj,DST_SRS=src_proj)
                 coords=gcp2src.transform([g[3:6] for g in gcp_lst])
                 gcp_lst=[tuple(p[:3]+c) for p,c in zip(gcp_lst,coords)]
 
@@ -494,14 +495,21 @@ class Pyramid(object):
             #src_transform=warp_src_gcp_transformer % (0,gcp_txt)
             src_transform=warp_src_tps_transformer % gcp_txt
 
-        dst_transform='%s\n%s' % (warp_dst_geotr % geotr,warp_dst_igeotr % igeotr)
+        res=self.zoom2res(zoom) 
+        dst_geotr=( ul_c[0], res[0],     0.0,
+                ul_c[1],    0.0, -res[1] )
+        ok,dst_igeotr=gdal.InvGeoTransform(dst_geotr)
+        assert ok
+        dst_transform='%s\n%s' % (warp_dst_geotr % dst_geotr,warp_dst_igeotr % dst_igeotr)
 
-        def w_option(name,value): # helper for making wark options
-            return '    <Option name="%s">%s</Option>' % (name,value)
-            
+        # generate warp options
         warp_options=[]
+        def w_option(name,value): # warp options template
+            return '    <Option name="%s">%s</Option>' % (name,value)
+
         warp_options.append(w_option('INIT_DEST','NO_DATA'))
 
+        # generate cut line
         if options.cut:
             cut_wkt=self.get_cutline()
         else:
@@ -513,8 +521,8 @@ class Pyramid(object):
 
         src_bands=self.src_ds.RasterCount
         ld('src_bands',src_bands)
-        assert src_bands in (1,3,4)
 
+        # process nodata info
         src_nodata=None
         if options.src_nodata:
             src_nodata=options.src_nodata.split(',')
@@ -525,6 +533,7 @@ class Pyramid(object):
             dst_nodata=[self.transparency]
         ld('nodata',src_nodata,dst_nodata)
         
+        # src raster bands mapping
         vrt_bands=[]
         wo_BandList=[]
         for i in range(src_bands):
@@ -543,13 +552,13 @@ class Pyramid(object):
         block_sz=self.src_ds.GetRasterBand(1).GetBlockSize()
 
         vrt_text=warp_vrt % {
-            'xsize':            xsize,
-            'ysize':            ysize,
+            'xsize':            dst_xsize,
+            'ysize':            dst_ysize,
             'srs':              self.proj,
-            'geotr':            geotr_templ % geotr,
+            'geotr':            geotr_templ % dst_geotr,
             'band_list':        '\n'.join(vrt_bands),
-            'blxsize':          self.tile_sz[0],
-            'blysize':          self.tile_sz[1],
+            'blxsize':          block_sz[0],
+            'blysize':          block_sz[1],
             'wo_ResampleAlg':   self.base_resampling,
             'wo_src_path':      self.src_path,
             'warp_options':     '\n'.join(warp_options),
@@ -569,21 +578,21 @@ class Pyramid(object):
 
         t_ds = gdal.Open(vrt_text,GA_ReadOnly)
         # create Gtiff
-        pf('...',end='')
         dst_drv = gdal.GetDriverByName('Gtiff')
         temp_tiff=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % zoom) # img for the base zoom
         self.temp_files.append(temp_tiff)
             
+        pf('...',end='')
         dst_ds = dst_drv.CreateCopy(temp_tiff,t_ds,0,[
 			'TILED=YES',
             'INTERLEAVE=BAND',
             'BLOCKXSIZE=%i' % self.tile_sz[0],
             'BLOCKYSIZE=%i' % self.tile_sz[1],
             ])#, gdal.TermProgress)
+        pf('.',end='')
         del dst_ds
         del t_ds
         del self.src_ds
-        pf('.',end='')
 
         # create base_image raster
         self.base_img=BaseImg(temp_tiff,tile_ul[1:],tile_lr[1:],self.transparency)
@@ -598,89 +607,113 @@ class Pyramid(object):
 
         # check for source raster type
         src_ds=gdal.Open(self.src_path,GA_ReadOnly)
+        self.src_ds=src_ds
+
+        src_geotr=src_ds.GetGeoTransform()
+        src_proj=wkt2proj4(src_ds.GetProjection())
+        gcps=src_ds.GetGCPs()
+
+        if not src_proj and gcps :
+            src_proj=wkt2proj4(src_ds.GetGCPProjection())
+
+        if self.options.srs is not None:
+            src_proj=self.options.srs
+
+        ld('src_proj',src_proj,'src geotr',src_geotr)
+        assert src_proj, 'The source does not have a spatial reference system assigned'
+
         src_bands=src_ds.RasterCount
-        
         band1=src_ds.GetRasterBand(1)
-        if (src_bands == 1 and band1.GetColorInterpretation() == GCI_PaletteIndex and 
-                self.base_resampling == 'NearestNeighbour' and self.resampling == Image.NEAREST):
-            color_table=band1.GetColorTable()
-            ncolors=color_table.GetCount()
-            palette=[color_table.GetColorEntry(i) for i in range(ncolors)]
-            r,g,b,a=zip(*palette)
-            pil_palette=flatten(zip(r,g,b))             # PIL doesn't support RGBA palettes
-            if self.options.dst_nodata is not None:
-                self.transparency=int(self.options.dst_nodata.split(',')[0])
-            elif min(a) == 0:
-                self.transparency=a.index(0)
-            elif ncolors < 256:
-                pil_palette+=[0,0,0]                   # the last color added is for transparency
-                self.transparency=len(pil_palette)/3-1
-                
-            if self.transparency is not None:
+        if src_bands == 1 and band1.GetColorInterpretation() == GCI_PaletteIndex : # source is a paletted raster
+            transparency=None
+            if self.base_resampling == 'NearestNeighbour' and self.resampling == Image.NEAREST :
+                # check if src can be rendered in paletted mode
+                color_table=band1.GetColorTable()
+                ncolors=color_table.GetCount()
+                palette=[color_table.GetColorEntry(i) for i in range(ncolors)]
+                r,g,b,a=zip(*palette)
+                pil_palette=flatten(zip(r,g,b))             # PIL doesn't support RGBA palettes
+                if self.options.dst_nodata is not None:
+                    transparency=int(self.options.dst_nodata.split(',')[0])
+                elif min(a) == 0:
+                    transparency=a.index(0)
+                elif ncolors < 256:
+                    pil_palette+=[0,0,0]                   # the last color added is for transparency
+                    transparency=len(pil_palette)/3-1
+                    
+            if transparency is not None: # render in paletted mode
+                self.transparency=transparency
                 self.palette=pil_palette
                 ld('self.palette',self.palette)
-                self.src_ds=src_ds
-                return 
 
-        if src_bands >= 3:
-            self.src_ds=src_ds
-            return 
+            else: # convert src to rgb VRT
+                if not src_geotr or src_geotr == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
+                    geotr_txt=''
+                else:
+                    geotr_txt=geotr_templ % src_geotr
 
-        # convert to rgb VRT
-        assert src_bands == 1
-        xsize,ysize=(src_ds.RasterXSize,src_ds.RasterYSize)
+                gcplst_txt=''
+                if gcps:
+                    gcp_lst='\n'.join((gcp_templ % (g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) 
+                                        for g in gcps))
+                    if self.options.srs is None:
+                        gcp_proj=wkt2proj4(src_ds.GetGCPProjection())
+                    else:
+                        gcp_proj=src_proj
+                    gcplst_txt=gcplst_templ % (gcp_proj,gcp_lst)
 
-        srs_proj=wkt2proj4(src_ds.GetProjection())
-        src_geotr=src_ds.GetGeoTransform()
-        ld('src geotr',src_geotr)
-        if not src_geotr or src_geotr == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
-            geotr_txt=''
-        else:
-            geotr_txt=geotr_templ % src_geotr
+                metadata=src_ds.GetMetadata()
+                if metadata:
+                    mtd_lst=[xml_txt('MDI',metadata[mdkey],4,key=mdkey) for mdkey in metadata]
+                    meta_txt=meta_templ % '\n'.join(mtd_lst)
+                else:
+                    meta_txt=''
 
-        gcplst_txt=''
-        gcps=src_ds.GetGCPs()
-        if gcps:
-            gcp_lst='\n'.join((gcp_templ % (g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) 
-                                for g in gcps))
-            gcp_proj=wkt2proj4(src_ds.GetGCPProjection())
-            gcplst_txt=gcplst_templ % (gcp_proj,gcp_lst)
+                xsize,ysize=(src_ds.RasterXSize,src_ds.RasterYSize)
+                blxsize,blysize=band1.GetBlockSize()
 
-        metadata=src_ds.GetMetadata()
-        if metadata:
-            mtd_lst=[xml_txt('MDI',metadata[mdkey],4,key=mdkey) for mdkey in metadata]
-            meta_txt=meta_templ % '\n'.join(mtd_lst)
-        else:
-            meta_txt=''
+                band_lst=''.join((band_templ % {
+                    'band':     band,
+                    'color':    color,
+                    'src':      self.src_path,
+                    'srcband':  1,
+                    'xsize':    xsize,
+                    'ysize':    ysize,
+                    'blxsize':    blxsize,
+                    'blysize':    blysize,
+                    } for band,color in ((1,'Red'),(2,'Green'),(3,'Blue'))))
+                vrt_txt=vrt_templ % {
+                    'xsize':    xsize,
+                    'ysize':    ysize,
+                    'metadata': meta_txt,
+                    'srs':      (srs_templ % src_proj) if src_proj else '',
+                    'geotr':    geotr_txt,
+                    'gcp_list': gcplst_txt,
+                    'band_list':band_lst,
+                    }
 
-        block_sz=src_ds.GetRasterBand(1).GetBlockSize()
-        band_lst=''.join((band_templ % {
-            'band':     band,
-            'color':    color,
-            'src':      self.src_path,
-            'xsize':    xsize,
-            'ysize':    ysize,
-            'blxsize':    block_sz[0],
-            'blysize':    block_sz[1],
-            } for band,color in ((1,'Red'),(2,'Green'),(3,'Blue'))))
-        vrt_txt=vrt_templ % {
-            'xsize':    xsize,
-            'ysize':    ysize,
-            'metadata': meta_txt,
-            'srs':      (srs_templ % srs_proj) if srs_proj else '',
-            'geotr':    geotr_txt,
-            'gcp_list': gcplst_txt,
-            'band_list':band_lst,
-            }
+                src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
+                self.temp_files.append(src_vrt)
+                self.src_path=src_vrt
+                with open(src_vrt,'w') as f:
+                    f.write(vrt_txt)
 
-        src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
-        self.temp_files.append(src_vrt)
-        self.src_path=src_vrt
-        with open(src_vrt,'w') as f:
-            f.write(vrt_txt)
+                self.src_ds=gdal.Open(src_vrt,GA_ReadOnly)
+                return # rgb VRT created
+            # finished with a paletted raster
 
-        self.src_ds=gdal.Open(vrt_txt,GA_ReadOnly)
-        return 
+        if self.options.srs is not None: # src SRS needs to be relpaced
+            src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
+            self.temp_files.append(src_vrt)
+            self.src_path=src_vrt
+
+            vrt_drv = gdal.GetDriverByName('VRT')
+            self.src_ds = vrt_drv.CreateCopy(src_vrt,src_ds) # replace src dataset
+
+            self.src_ds.SetProjection(proj4wkt(src_proj)) # replace source SRS
+            gcps=self.src_ds.GetGCPs()
+            if gcps :
+                self.src_ds.SetGCPs(gcps,proj4wkt(src_proj))
 
     #############################
 
@@ -1391,6 +1424,8 @@ def main(argv):
         help='output tiles format (default: gmaps)')
     parser.add_option("-l", "--list-formats", action="store_true",
         help='list output formats')
+    parser.add_option("--srs", default=None,metavar="PROJ4_SRS",
+        help="override source's spatial reference system with PROJ.4 definition")
     parser.add_option("-z", "--zoom", default=None,metavar="ZOOM_LIST",
         help='list of zoom ranges to generate')
     parser.add_option('-r','--overview-resampling', default='nearest',metavar="METHOD1",
