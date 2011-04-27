@@ -379,20 +379,18 @@ class Pyramid(object):
 
     def __init__(self,src,dest,options):
         gdal.UseExceptions()
+        self.temp_files=[]
+        self.palette=None
+        self.transparency=None
         self.src=src
         self.dest=dest
         self.options=options
         self.src_path=self.src
         self.tiles_prefix=options.tiles_prefix
-        self.init_proj()
-        ld('proj,longlat',self.proj,self.longlat)
         self.tile_ext='.'+options.tile_format.lower()
         self.tile_sz=tuple(map(int,options.tile_size.split(',')))
         self.src_dir,src_f=os.path.split(src)
         self.base=os.path.splitext(src_f)[0]
-        self.palette=None
-        self.transparency=None
-        self.temp_files=[]
 
         pf('\n%s -> %s '%(self.src,self.dest),end='')
 
@@ -405,6 +403,7 @@ class Pyramid(object):
         os.makedirs(self.dest)
         self.base_resampling=base_resampling_map[options.base_resampling]
         self.resampling=resampling_map[options.overview_resampling]
+
         self.init_map(options.zoom)
 
     def __del__(self):
@@ -425,17 +424,22 @@ class Pyramid(object):
     def init_map(self,zoom_parm):
 
     #############################
-        options=self.options
+
+        self.longlat=proj_cs2geog_cs(self.proj)
+        ld('proj,longlat',self.proj,self.longlat)
+
+        self.init_grid() # virtual
+
         self.get_src_ds()
         # calculate zoom range
         self.zoom_range=self.calc_zoom(zoom_parm)
              
         # reproject to base zoom
-        zoom=self.zoom_range[0]
+        self.base_zoom=self.zoom_range[0]
         
         # extend the raster to cover full tiles
         ld("extend the raster")
-        shifted_srs=self.shift_srs(zoom)
+        shifted_srs=self.shift_srs(self.base_zoom)
 
         # get origin and corners at the target SRS
         t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
@@ -452,152 +456,6 @@ class Pyramid(object):
         self.shift_x=shift_x
         self.proj=shifted_srs
         
-        # adjust raster extents to tile boundaries
-        tile_ul,tile_lr=self.corner_tiles(zoom)
-        ld('tile_ul',tile_ul,'tile_lr',tile_lr)
-        ul_c=self.tile2coord_box(tile_ul)[0]
-        lr_c=self.tile2coord_box(tile_lr)[1]
-        ul_pix=self.tile_corners(tile_ul)[0]
-        lr_pix=self.tile_corners(tile_lr)[1]
-        
-        # base zoom level raster size
-        dst_xsize=lr_pix[0]-ul_pix[0] 
-        dst_ysize=lr_pix[1]-ul_pix[1]
-        
-        ld('Upper Left ',self.origin,ul_c)
-        ld('Lower Right',self.extent,lr_c)
-        ld('coord_offset',self.coord_offset,'ul_c+c_off',map(operator.add,ul_c,self.coord_offset))
-
-        # create VRT for base image warp
-
-        # generate warp transform
-        src_geotr=self.src_ds.GetGeoTransform()
-        src_proj=wkt2proj4(self.src_ds.GetProjection())
-        gcp_proj=None
-
-        if src_geotr and src_geotr != (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
-            ok,src_igeotr=gdal.InvGeoTransform(src_geotr)
-            assert ok
-            src_transform='%s\n%s' % (warp_src_geotr % src_geotr,warp_src_igeotr % src_igeotr)
-        else:
-            gcps=self.src_ds.GetGCPs()
-            assert gcps, ' Neither geotransform, nor gpcs are in the source file %s' % self.src
-
-            gcp_lst=[(g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) for g in gcps]
-            ld('src_proj',self.src_ds.GetProjection())
-            ld('gcp_proj',self.src_ds.GetGCPProjection())
-            gcp_proj=wkt2proj4(self.src_ds.GetGCPProjection())
-            if src_proj and gcp_proj != src_proj:
-                gcp2src=MyTransformer(SRC_SRS=gcp_proj,DST_SRS=src_proj)
-                coords=gcp2src.transform([g[3:6] for g in gcp_lst])
-                gcp_lst=[tuple(p[:3]+c) for p,c in zip(gcp_lst,coords)]
-
-            gcp_txt='\n'.join((gcp_templ % g for g in gcp_lst))
-            #src_transform=warp_src_gcp_transformer % (0,gcp_txt)
-            src_transform=warp_src_tps_transformer % gcp_txt
-
-        res=self.zoom2res(zoom) 
-        dst_geotr=( ul_c[0], res[0],     0.0,
-                ul_c[1],    0.0, -res[1] )
-        ok,dst_igeotr=gdal.InvGeoTransform(dst_geotr)
-        assert ok
-        dst_transform='%s\n%s' % (warp_dst_geotr % dst_geotr,warp_dst_igeotr % dst_igeotr)
-
-        # generate warp options
-        warp_options=[]
-        def w_option(name,value): # warp options template
-            return '    <Option name="%s">%s</Option>' % (name,value)
-
-        warp_options.append(w_option('INIT_DEST','NO_DATA'))
-
-        # generate cut line
-        if options.cut:
-            cut_wkt=self.get_cutline()
-        else:
-            cut_wkt=None
-        if cut_wkt:
-            warp_options.append(w_option('CUTLINE',cut_wkt))
-            if options.blend_dist:
-                warp_options.append(w_option('CUTLINE_BLEND_DIST',options.blend_dist))
-
-        src_bands=self.src_ds.RasterCount
-        ld('src_bands',src_bands)
-
-        # process nodata info
-        src_nodata=None
-        if options.src_nodata:
-            src_nodata=options.src_nodata.split(',')
-            if src_bands > 1:
-                warp_options.append(w_option('UNIFIED_SRC_NODATA','YES'))
-        dst_nodata=None
-        if self.palette is not None:
-            dst_nodata=[self.transparency]
-        ld('nodata',src_nodata,dst_nodata)
-        
-        # src raster bands mapping
-        vrt_bands=[]
-        wo_BandList=[]
-        for i in range(src_bands):
-            vrt_bands.append(warp_band % (i+1,'/'))
-            if src_nodata or dst_nodata:
-                band_mapping_info=warp_band_mapping_nodata % (
-                        warp_band_src_nodata % (src_nodata[i],0) if src_nodata else '',
-                        warp_band_dst_nodata % (dst_nodata[i],0) if dst_nodata else '')
-            else:
-                band_mapping_info='/'
-            wo_BandList.append(warp_band_mapping % (i+1,i+1,band_mapping_info))
-
-        if src_bands < 4 and self.palette is None:
-            vrt_bands.append(warp_band % (src_bands+1,warp_band_color % 'Alpha'))
-
-        block_sz=self.src_ds.GetRasterBand(1).GetBlockSize()
-
-        vrt_text=warp_vrt % {
-            'xsize':            dst_xsize,
-            'ysize':            dst_ysize,
-            'srs':              self.proj,
-            'geotr':            geotr_templ % dst_geotr,
-            'band_list':        '\n'.join(vrt_bands),
-            'blxsize':          block_sz[0],
-            'blysize':          block_sz[1],
-            'wo_ResampleAlg':   self.base_resampling,
-            'wo_src_path':      self.src_path,
-            'warp_options':     '\n'.join(warp_options),
-            'wo_src_srs':       gcp_proj if gcp_proj else src_proj,
-            'wo_dst_srs':       self.proj,
-            'wo_src_transform': src_transform,
-            'wo_dst_transform': dst_transform,
-            'wo_BandList':      '\n'.join(wo_BandList),
-            'wo_DstAlphaBand':  warp_dst_alpha_band % (src_bands+1) if src_bands < 4  and self.palette is None else '',
-            'wo_Cutline':       (warp_cutline % cut_wkt) if cut_wkt else '',
-            }
-
-        temp_vrt=os.path.join(self.dest,self.base+'.tmp.vrt') # auxilary VRT file
-        self.temp_files.append(temp_vrt)
-        with open(temp_vrt,'w') as f:
-            f.write(vrt_text)
-
-        t_ds = gdal.Open(vrt_text,GA_ReadOnly)
-        # create Gtiff
-        dst_drv = gdal.GetDriverByName('Gtiff')
-        temp_tiff=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % zoom) # img for the base zoom
-        self.temp_files.append(temp_tiff)
-            
-        pf('...',end='')
-        dst_ds = dst_drv.CreateCopy(temp_tiff,t_ds,0,[
-			'TILED=YES',
-            'INTERLEAVE=BAND',
-            'BLOCKXSIZE=%i' % self.tile_sz[0],
-            'BLOCKYSIZE=%i' % self.tile_sz[1],
-            ])#, gdal.TermProgress)
-        pf('.',end='')
-        del dst_ds
-        del t_ds
-        del self.src_ds
-
-        # create base_image raster
-        self.base_img=BaseImg(temp_tiff,tile_ul[1:],tile_lr[1:],self.transparency)
-
     #############################
 
     def get_src_ds(self):
@@ -777,6 +635,198 @@ class Pyramid(object):
         return zoom_range
 
     #############################
+    
+    # generate pyramid
+    
+    #############################
+
+    #############################
+
+    def walk_pyramid(self):
+
+    #############################
+        if self.options.noclobber and self.dest is None:
+            pf('*** Pyramid already exists: skipping',end='')
+            return
+        self.make_googlemaps()
+
+        self.make_base_raster()
+
+        tiles=[]
+        for zoom in self.zoom_range:
+            tile_ul,tile_lr=self.corner_tiles(zoom)
+            zoom_tiles=flatten([[(zoom,x,y) for x in range(tile_ul[1],tile_lr[1]+1)] 
+                                           for y in range(tile_ul[2],tile_lr[2]+1)])
+            tiles.extend(zoom_tiles)
+        ld('min_zoom',zoom,'tile_ul',tile_ul,'tile_lr',tile_lr,'zoom_tiles',zoom_tiles)
+        self.all_tiles=frozenset(tiles)
+        top_tiles=filter(None,map(self.proc_tile,zoom_tiles))
+        # write top kml
+        self.make_kml(None,[ch for img,ch,opacities in top_tiles])
+        
+        # cache back tiles opacity
+        file_opacities=[(self.tile_path(tile),opc)
+            for tile,opc in flatten([opacities for img,ch,opacities in top_tiles])]
+        try:
+            pickle.dump(dict(file_opacities),open(os.path.join(self.dest, 'merge-cache'),'w'))
+        except:
+            logging.warning("opacity cache save failed")
+
+    #############################
+
+    def make_base_raster(self):
+
+    #############################
+
+        # adjust raster extents to tile boundaries
+        tile_ul,tile_lr=self.corner_tiles(self.base_zoom)
+        ld('tile_ul',tile_ul,'tile_lr',tile_lr)
+        ul_c=self.tile2coord_box(tile_ul)[0]
+        lr_c=self.tile2coord_box(tile_lr)[1]
+        ul_pix=self.tile_corners(tile_ul)[0]
+        lr_pix=self.tile_corners(tile_lr)[1]
+
+        # base zoom level raster size
+        dst_xsize=lr_pix[0]-ul_pix[0] 
+        dst_ysize=lr_pix[1]-ul_pix[1]
+                
+        ld('Upper Left ',self.origin,ul_c)
+        ld('Lower Right',self.extent,lr_c)
+        ld('coord_offset',self.coord_offset,'ul_c+c_off',map(operator.add,ul_c,self.coord_offset))
+
+        # create VRT for base image warp
+
+        # generate warp transform
+        src_geotr=self.src_ds.GetGeoTransform()
+        src_proj=wkt2proj4(self.src_ds.GetProjection())
+        gcp_proj=None
+
+        if src_geotr and src_geotr != (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
+            ok,src_igeotr=gdal.InvGeoTransform(src_geotr)
+            assert ok
+            src_transform='%s\n%s' % (warp_src_geotr % src_geotr,warp_src_igeotr % src_igeotr)
+        else:
+            gcps=self.src_ds.GetGCPs()
+            assert gcps, ' Neither geotransform, nor gpcs are in the source file %s' % self.src
+
+            gcp_lst=[(g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) for g in gcps]
+            ld('src_proj',self.src_ds.GetProjection())
+            ld('gcp_proj',self.src_ds.GetGCPProjection())
+            gcp_proj=wkt2proj4(self.src_ds.GetGCPProjection())
+            if src_proj and gcp_proj != src_proj:
+                gcp2src=MyTransformer(SRC_SRS=gcp_proj,DST_SRS=src_proj)
+                coords=gcp2src.transform([g[3:6] for g in gcp_lst])
+                gcp_lst=[tuple(p[:3]+c) for p,c in zip(gcp_lst,coords)]
+
+            gcp_txt='\n'.join((gcp_templ % g for g in gcp_lst))
+            #src_transform=warp_src_gcp_transformer % (0,gcp_txt)
+            src_transform=warp_src_tps_transformer % gcp_txt
+
+        res=self.zoom2res(self.base_zoom) 
+        dst_geotr=( ul_c[0], res[0],     0.0,
+                ul_c[1],    0.0, -res[1] )
+        ok,dst_igeotr=gdal.InvGeoTransform(dst_geotr)
+        assert ok
+        dst_transform='%s\n%s' % (warp_dst_geotr % dst_geotr,warp_dst_igeotr % dst_igeotr)
+
+        # generate warp options
+        warp_options=[]
+        def w_option(name,value): # warp options template
+            return '    <Option name="%s">%s</Option>' % (name,value)
+
+        warp_options.append(w_option('INIT_DEST','NO_DATA'))
+
+        # generate cut line
+        if self.options.cut:
+            cut_wkt=self.get_cutline()
+        else:
+            cut_wkt=None
+        if cut_wkt:
+            warp_options.append(w_option('CUTLINE',cut_wkt))
+            if self.options.blend_dist:
+                warp_options.append(w_option('CUTLINE_BLEND_DIST',self.options.blend_dist))
+
+        src_bands=self.src_ds.RasterCount
+        ld('src_bands',src_bands)
+
+        # process nodata info
+        src_nodata=None
+        if self.options.src_nodata:
+            src_nodata=options.src_nodata.split(',')
+            if src_bands > 1:
+                warp_options.append(w_option('UNIFIED_SRC_NODATA','YES'))
+        dst_nodata=None
+        if self.palette is not None:
+            dst_nodata=[self.transparency]
+        ld('nodata',src_nodata,dst_nodata)
+        
+        # src raster bands mapping
+        vrt_bands=[]
+        wo_BandList=[]
+        for i in range(src_bands):
+            vrt_bands.append(warp_band % (i+1,'/'))
+            if src_nodata or dst_nodata:
+                band_mapping_info=warp_band_mapping_nodata % (
+                        warp_band_src_nodata % (src_nodata[i],0) if src_nodata else '',
+                        warp_band_dst_nodata % (dst_nodata[i],0) if dst_nodata else '')
+            else:
+                band_mapping_info='/'
+            wo_BandList.append(warp_band_mapping % (i+1,i+1,band_mapping_info))
+
+        if src_bands < 4 and self.palette is None:
+            vrt_bands.append(warp_band % (src_bands+1,warp_band_color % 'Alpha'))
+
+        block_sz=self.src_ds.GetRasterBand(1).GetBlockSize()
+
+        vrt_text=warp_vrt % {
+            'xsize':            dst_xsize,
+            'ysize':            dst_ysize,
+            'srs':              self.proj,
+            'geotr':            geotr_templ % dst_geotr,
+            'band_list':        '\n'.join(vrt_bands),
+            'blxsize':          block_sz[0],
+            'blysize':          block_sz[1],
+            'wo_ResampleAlg':   self.base_resampling,
+            'wo_src_path':      self.src_path,
+            'warp_options':     '\n'.join(warp_options),
+            'wo_src_srs':       gcp_proj if gcp_proj else src_proj,
+            'wo_dst_srs':       self.proj,
+            'wo_src_transform': src_transform,
+            'wo_dst_transform': dst_transform,
+            'wo_BandList':      '\n'.join(wo_BandList),
+            'wo_DstAlphaBand':  warp_dst_alpha_band % (src_bands+1) if src_bands < 4  and self.palette is None else '',
+            'wo_Cutline':       (warp_cutline % cut_wkt) if cut_wkt else '',
+            }
+
+        temp_vrt=os.path.join(self.dest,self.base+'.tmp.vrt') # auxilary VRT file
+        self.temp_files.append(temp_vrt)
+        with open(temp_vrt,'w') as f:
+            f.write(vrt_text)
+
+        # warp base raster
+        t_ds = gdal.Open(vrt_text,GA_ReadOnly)
+        dst_drv = gdal.GetDriverByName('Gtiff')
+        temp_tiff=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % self.base_zoom) # img for the base zoom
+        self.temp_files.append(temp_tiff)
+            
+        pf('...',end='')
+        dst_ds = dst_drv.CreateCopy(temp_tiff,t_ds,0,[
+			'TILED=YES',
+            'INTERLEAVE=BAND',
+            'BLOCKXSIZE=%i' % self.tile_sz[0],
+            'BLOCKYSIZE=%i' % self.tile_sz[1],
+            ])#, gdal.TermProgress)
+        pf('.',end='')
+        
+        # close datasets in a proper order
+        del dst_ds
+        del t_ds
+        del self.src_ds
+
+        # create base_image raster
+        self.base_img=BaseImg(temp_tiff,tile_ul[1:],tile_lr[1:],self.transparency)
+
+    #############################
 
     def get_cutline(self):
 
@@ -785,7 +835,7 @@ class Pyramid(object):
         src_proj=wkt2proj4(src_ds.GetProjection())
         cutline=src_ds.GetMetadataItem('CUTLINE')
         ld('cutline',cutline)
-        if options.cutline:
+        if self.options.cutline:
             cut_file=self.options.cutline
         else: # try to find a file with a cut shape
             if cutline:
@@ -827,6 +877,94 @@ class Pyramid(object):
                     mpoly.append(','.join(['%r %r' % (p[0],p[1]) for p in p_pix]))
             cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly])
         return cutline
+
+    #############################
+
+    def proc_tile(self,tile):
+
+    #############################
+
+        ch_opacities=[]
+        ch_tiles=[]
+        zoom,x,y=tile
+        if zoom==self.zoom_range[0]: # get from the base image
+            tile_img,opacity=self.base_img.tile(*tile[1:])
+            if tile_img and self.palette:
+                tile_img.putpalette(self.palette)
+        else: # merge children
+            opacity=0
+            cz=self.zoom_range[self.zoom_range.index(zoom)-1] # child's zoom
+            dz=int(2**(cz-zoom))
+
+            children_ofs=dict(flatten(
+                [[((cz,x*dz+dx,y*dz+dy),(dx*self.tile_sz[0]//dz,dy*self.tile_sz[1]//dz))
+                               for dx in range(dz)]
+                                   for dy in range(dz)]))
+
+            ch_tiles=filter(None,map(self.proc_tile,self.all_tiles & set(children_ofs)))
+            if len(ch_tiles) == 4 and all([opacities[0][1]==1 for img,ch,opacities in ch_tiles]):
+                opacity=1
+                mode_opacity=''
+            else:
+                opacity=-1
+                mode_opacity='A'
+
+            tile_img=None
+            for img,ch,opacity_lst in ch_tiles:
+                ch_img=img.resize([i//dz for i in img.size],self.resampling)
+                ch_mask=ch_img.split()[-1] if 'A' in ch_img.mode else None
+                
+                if tile_img is None:
+                    if 'P' in ch_img.mode:
+                        tile_mode='P'
+                    else:
+                        tile_mode=('L' if 'L' in ch_img.mode else 'RGB')+mode_opacity
+                    
+                    if self.transparency is not None:
+                        tile_img=Image.new(tile_mode,self.tile_sz,self.transparency)
+                    else:
+                        tile_img=Image.new(tile_mode,self.tile_sz)
+                    if self.palette is not None:
+                        tile_img.putpalette(self.palette)
+
+                tile_img.paste(ch_img,children_ofs[ch],ch_mask)
+                ch_opacities.extend(opacity_lst)
+
+        if tile_img is not None and opacity != 0:
+            self.write_tile(tile,tile_img)
+            self.make_kml(tile,[ch for img,ch,opacities in ch_tiles])
+            return tile_img,tile,[(tile,opacity)]+ch_opacities
+
+    #############################
+
+    def write_tile(self,tile,tile_img):
+
+    #############################
+        rel_path=self.tile_path(tile)
+        full_path=os.path.join(self.dest,rel_path)
+        try:
+            os.makedirs(os.path.dirname(full_path))
+        except: pass
+
+        if self.options.to_paletted and self.tile_ext == '.png':
+            try:
+                tile_img=tile_img.convert('P', palette=Image.ADAPTIVE, colors=255)
+            except ValueError:
+                #ld('tile_img.mode',tile_img.mode)
+                pass
+
+        if self.transparency is not None:
+            tile_img.save(full_path,transparency=self.transparency)
+        else:
+            tile_img.save(full_path)
+        
+        self.counter()
+
+    def make_kml(self,tile,children=[]): # 'virtual'
+        pass
+
+    def make_googlemaps(self): # 'virtual'
+        pass        
 
     #############################
     
@@ -933,129 +1071,6 @@ class Pyramid(object):
         else:
             return False
 
-    #############################
-    
-    # generate pyramid
-    
-    #############################
-
-    #############################
-
-    def walk_pyramid(self):
-
-    #############################
-        if self.options.noclobber and self.dest is None:
-            pf('*** Pyramid already exists: skipping',end='')
-            return
-        self.make_googlemaps()
-        tiles=[]
-        for zoom in self.zoom_range:
-            tile_ul,tile_lr=self.corner_tiles(zoom)
-            zoom_tiles=flatten([[(zoom,x,y) for x in range(tile_ul[1],tile_lr[1]+1)] 
-                                           for y in range(tile_ul[2],tile_lr[2]+1)])
-            tiles.extend(zoom_tiles)
-        ld('min_zoom',zoom,'tile_ul',tile_ul,'tile_lr',tile_lr,'zoom_tiles',zoom_tiles)
-        self.all_tiles=frozenset(tiles)
-        top_tiles=filter(None,map(self.proc_tile,zoom_tiles))
-        # write top kml
-        self.make_kml(None,[ch for img,ch,opacities in top_tiles])
-        
-        # cache back tiles opacity
-        file_opacities=[(self.tile_path(tile),opc)
-            for tile,opc in flatten([opacities for img,ch,opacities in top_tiles])]
-        try:
-            pickle.dump(dict(file_opacities),open(os.path.join(self.dest, 'merge-cache'),'w'))
-        except:
-            logging.warning("opacity cache save failed")
-
-    #############################
-
-    def proc_tile(self,tile):
-
-    #############################
-        #ld(tile)
-        ch_opacities=[]
-        ch_tiles=[]
-        zoom,x,y=tile
-        if zoom==self.zoom_range[0]: # get from the base image
-            tile_img,opacity=self.base_img.tile(*tile[1:])
-            if tile_img and self.palette:
-                tile_img.putpalette(self.palette)
-        else: # merge children
-            opacity=0
-            cz=self.zoom_range[self.zoom_range.index(zoom)-1] # child's zoom
-            dz=int(2**(cz-zoom))
-
-            children_ofs=dict(flatten(
-                [[((cz,x*dz+dx,y*dz+dy),(dx*self.tile_sz[0]//dz,dy*self.tile_sz[1]//dz))
-                               for dx in range(dz)]
-                                   for dy in range(dz)]))
-
-            ch_tiles=filter(None,map(self.proc_tile,self.all_tiles & set(children_ofs)))
-            if len(ch_tiles) == 4 and all([opacities[0][1]==1 for img,ch,opacities in ch_tiles]):
-                opacity=1
-                mode_opacity=''
-            else:
-                opacity=-1
-                mode_opacity='A'
-
-            tile_img=None
-            for img,ch,opacity_lst in ch_tiles:
-                ch_img=img.resize([i//dz for i in img.size],self.resampling)
-                ch_mask=ch_img.split()[-1] if 'A' in ch_img.mode else None
-                
-                if tile_img is None:
-                    if 'P' in ch_img.mode:
-                        tile_mode='P'
-                    else:
-                        tile_mode=('L' if 'L' in ch_img.mode else 'RGB')+mode_opacity
-                    
-                    if self.transparency is not None:
-                        tile_img=Image.new(tile_mode,self.tile_sz,self.transparency)
-                    else:
-                        tile_img=Image.new(tile_mode,self.tile_sz)
-                    if self.palette is not None:
-                        tile_img.putpalette(self.palette)
-
-                tile_img.paste(ch_img,children_ofs[ch],ch_mask)
-                ch_opacities.extend(opacity_lst)
-
-        if tile_img is not None and opacity != 0:
-            self.write_tile(tile,tile_img)
-            self.make_kml(tile,[ch for img,ch,opacities in ch_tiles])
-            return tile_img,tile,[(tile,opacity)]+ch_opacities
-
-    #############################
-
-    def write_tile(self,tile,tile_img):
-
-    #############################
-        rel_path=self.tile_path(tile)
-        full_path=os.path.join(self.dest,rel_path)
-        try:
-            os.makedirs(os.path.dirname(full_path))
-        except: pass
-
-        if options.to_paletted and self.tile_ext == '.png':
-            try:
-                tile_img=tile_img.convert('P', palette=Image.ADAPTIVE, colors=255)
-            except ValueError:
-                #ld('tile_img.mode',tile_img.mode)
-                pass
-
-        if self.transparency is not None:
-            tile_img.save(full_path,transparency=self.transparency)
-        else:
-            tile_img.save(full_path)
-        
-        self.counter()
-
-    def make_kml(self,tile,children=[]): # 'virtual'
-        pass
-
-    def make_googlemaps(self): # 'virtual'
-        pass        
-
 # Pyramid        
 
 #############################
@@ -1073,9 +1088,10 @@ class PlateCarree(Pyramid):
 
     # Equirectangular (epsg:32662 aka plate carrée, aka Simple Cylindrical)
     proj='+proj=eqc +datum=WGS84 +ellps=WGS84'
-    longlat=proj_cs2geog_cs(proj)
 
-    def init_proj(self):
+    def init_grid(self):
+        'init tile grid parameters'
+        
         tr=MyTransformer(SRC_SRS=self.longlat,DST_SRS=self.proj)
         semi_circ,semi_meridian,z=tr.transform_pt((180,90))
         self.zoom0_tiles=[2,1] # tiles at zoom 0
@@ -1214,12 +1230,12 @@ class Gmaps(Pyramid):
 
     # Google Maps Global Mercator (epsg:3857)
     proj='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext'
-    longlat=proj_cs2geog_cs(proj)
 
-    def init_proj(self):
-        # Half Equator length in meters
+    def init_grid(self):
+        'init tile grid parameters'
+
         tr=MyTransformer(SRC_SRS=self.longlat,DST_SRS=self.proj)
-        semi_circ,y,z=tr.transform_pt((180,0))
+        semi_circ,y,z=tr.transform_pt((180,0)) # Half Equator length in meters
         ld(semi_circ)
         self.zoom0_tiles=[1,1] # tiles at zoom 0
         self.zoom0_tile_dim=[semi_circ*2,semi_circ*2]  # dimentions of a tile at zoom 0
