@@ -499,7 +499,8 @@ class Pyramid(object):
                 elif ncolors < 256:
                     pil_palette+=[0,0,0]                   # the last color added is for transparency
                     transparency=len(pil_palette)/3-1
-                    
+
+            ld('transparency',transparency)
             if transparency is not None: # render in paletted mode
                 self.transparency=transparency
                 self.palette=pil_palette
@@ -752,7 +753,8 @@ class Pyramid(object):
         # process nodata info
         src_nodata=None
         if self.options.src_nodata:
-            src_nodata=options.src_nodata.split(',')
+            src_nodata=map(int,options.src_nodata.split(','))
+            assert len(src_nodata) == src_bands, ' Nodata must match the number of bands'
             if src_bands > 1:
                 warp_options.append(w_option('UNIFIED_SRC_NODATA','YES'))
         dst_nodata=None
