@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-11 11:37:43 
+# 2011-04-27 15:51:39 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -94,14 +94,7 @@ class RefPoints(object):
         self.ids=[s.encode('utf-8') for s in self.ids]
 
     def srs(self):
-        return self.owner.srs #if self.cartesian else self.geo_srs()
-
-    def geo_srs(self):
-        srs_proj = osr.SpatialReference()
-        srs_proj.ImportFromProj4(self.owner.srs)
-        srs_geo = osr.SpatialReference()
-        srs_geo.CopyGeogCSFrom(srs_proj)
-        return srs_geo.ExportToProj4()
+        return self.owner.srs
 
     def __iter__(self):
         for i in zip(self.ids,self.pix_coords(),self.proj_coords()):
@@ -127,7 +120,7 @@ class RefPoints(object):
         if not dtm:
             dtm=[0,0]
         latlong=[(lon+dtm[0],lat+dtm[1]) for lon,lat in self.latlong]
-        srs_tr=MyTransformer(SRC_SRS=self.geo_srs(),DST_SRS=self.owner.srs)
+        srs_tr=MyTransformer(SRC_SRS=proj_cs2geog_cs(self.owner.srs),DST_SRS=self.owner.srs)
         coords=srs_tr.transform(latlong)
         return coords
 

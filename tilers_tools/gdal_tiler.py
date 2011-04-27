@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-24 15:56:09 
+# 2011-04-27 16:01:58 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -385,6 +385,7 @@ class Pyramid(object):
         self.src_path=self.src
         self.tiles_prefix=options.tiles_prefix
         self.init_proj()
+        ld('proj,longlat',self.proj,self.longlat)
         self.tile_ext='.'+options.tile_format.lower()
         self.tile_sz=tuple(map(int,options.tile_size.split(',')))
         self.src_dir,src_f=os.path.split(src)
@@ -721,7 +722,7 @@ class Pyramid(object):
         'change prime meridian to allow charts crossing 180 meridian'
     #############################
         t_ds=self.src_ds
-        tr_pix_ll=MyTransformer(t_ds,DST_SRS=self.latlong)
+        tr_pix_ll=MyTransformer(t_ds,DST_SRS=self.longlat)
         ll=tr_pix_ll.transform([(0,0,0),(t_ds.RasterXSize,t_ds.RasterYSize,0)])
         ul,lr=ll
         ld('ul',ul,'lr',lr)
@@ -729,7 +730,7 @@ class Pyramid(object):
             return self.proj
 
         left_lon=int(math.floor(ul[0]))
-        tr_srs=MyTransformer(SRC_SRS=self.latlong,DST_SRS=self.proj)
+        tr_srs=MyTransformer(SRC_SRS=self.longlat,DST_SRS=self.proj)
         left_xy=tr_srs.transform_pt((left_lon,0))
         if zoom is not None: # adjust to a tile boundary
             left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
@@ -887,15 +888,15 @@ class Pyramid(object):
         zoom_tiles=map(lambda v: v*2**z,self.zoom0_tiles)
         return [z,x%zoom_tiles[0],y%zoom_tiles[1]]
 
-    def coords2latlong(self, coords): # redefined in PlateCarree
+    def coords2longlat(self, coords): # redefined in PlateCarree
         try:
-            self.proj2latlong
+            self.proj2longlat
         except: # first time call
-            self.proj2latlong=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.latlong)
-        return [i[:2] for i in self.proj2latlong.transform(coords)]
+            self.proj2longlat=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
+        return [i[:2] for i in self.proj2longlat.transform(coords)]
 
-    def boxes2latlong(self,box_lst):
-        out=self.coords2latlong(flatten(box_lst))
+    def boxes2longlat(self,box_lst):
+        out=self.coords2longlat(flatten(box_lst))
         deg_lst=[[(j+180)%360-180 for j in i] for i in out]
         ul_lst=deg_lst[0::2]
         lr_lst=[((x if x != -180 else 180),y) for x,y in deg_lst[1::2]]
@@ -1070,17 +1071,18 @@ class PlateCarree(Pyramid):
     # projection where the meridians and parallels are equidistant, straight lines, with the two sets 
     # crossing at right angles. This projection is also known as Lat/Lon WGS84"    
 
-    proj='+proj=eqc +datum=WGS84 +ellps=WGS84' # Equirectangular (aka plate carrée, aka Simple Cylindrical)
-    latlong='+proj=latlong +datum=WGS84'
+    # Equirectangular (epsg:32662 aka plate carrée, aka Simple Cylindrical)
+    proj='+proj=eqc +datum=WGS84 +ellps=WGS84'
+    longlat=proj_cs2geog_cs(proj)
 
     def init_proj(self):
-        tr=MyTransformer(SRC_SRS=self.latlong,DST_SRS=self.proj)
+        tr=MyTransformer(SRC_SRS=self.longlat,DST_SRS=self.proj)
         semi_circ,semi_meridian,z=tr.transform_pt((180,90))
         self.zoom0_tiles=[2,1] # tiles at zoom 0
         self.zoom0_tile_dim=[semi_circ,semi_meridian*2] # dimentions of a tile at zoom 0
         self.coord_offset=[semi_circ,semi_meridian]
 
-    def coords2latlong(self, coords):
+    def coords2longlat(self, coords):
         out=[map(lambda v,dim,c_off: (v+c_off)/dim*180,
                 coord,self.zoom0_tile_dim,(self.shift_x,0)) for coord in coords]
         return [(lon,lat) for lon,lat in out]
@@ -1088,11 +1090,11 @@ class PlateCarree(Pyramid):
     def kml_child_links(self,children,parent=None,path_prefix=''):
         kml_links=[]
         # convert tiles to degree boxes
-        latlong_lst=self.boxes2latlong([self.tile2coord_box(t) for t in children])
+        longlat_lst=self.boxes2longlat([self.tile2coord_box(t) for t in children])
         
-        for tile,latlong in zip(children,latlong_lst):
-            #ld(tile,latlong)
-            w,n,e,s=['%.11f'%v for v in flatten(latlong)]
+        for tile,longlat in zip(children,longlat_lst):
+            #ld(tile,longlat)
+            w,n,e,s=['%.11f'%v for v in flatten(longlat)]
             name=os.path.splitext(self.tile_path(tile))[0]
             # fill in kml link template
             kml_links.append( kml_link_templ % { 
@@ -1123,7 +1125,7 @@ class PlateCarree(Pyramid):
         rel_path=self.tile_path(tile)
         name=os.path.splitext(rel_path)[0]
         kml_links=self.kml_child_links(children,tile,'../../')
-        tile_box=self.boxes2latlong([self.tile2coord_box(tile)])[0]
+        tile_box=self.boxes2longlat([self.tile2coord_box(tile)])[0]
         w,n,e,s=['%.11f'%v for v in flatten(tile_box)]
         kml_overlay = kml_overlay_templ % {
             'name':    name,
@@ -1210,14 +1212,13 @@ class Gmaps(Pyramid):
     format='gmaps'
     defaul_ext='.gmaps'
 
-    #proj='epsg:900913' # Google Maps Global Mercator
-    #proj='epsg:3857' # Google Maps Global Mercator
-    proj='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext' # Google Maps Global Mercator
-    latlong='+proj=latlong +a=6378137 +b=6378137  +nadgrids=@null +wktext'
-    
+    # Google Maps Global Mercator (epsg:3857)
+    proj='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext'
+    longlat=proj_cs2geog_cs(proj)
+
     def init_proj(self):
         # Half Equator length in meters
-        tr=MyTransformer(SRC_SRS=self.latlong,DST_SRS=self.proj)
+        tr=MyTransformer(SRC_SRS=self.longlat,DST_SRS=self.proj)
         semi_circ,y,z=tr.transform_pt((180,0))
         ld(semi_circ)
         self.zoom0_tiles=[1,1] # tiles at zoom 0
@@ -1225,7 +1226,7 @@ class Gmaps(Pyramid):
         self.coord_offset=[semi_circ,semi_circ]
 
     def make_googlemaps(self):
-        ul,lr=self.boxes2latlong([(self.origin,self.extent)])[0]
+        ul,lr=self.boxes2longlat([(self.origin,self.extent)])[0]
         googlemaps = google_templ % dict(
             title=      os.path.basename(self.dest),
             longlat_ll= '%s, %s' % (lr[1],ul[0]),

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-02-21 17:38:50 
+# 2011-04-27 15:58:32 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -154,6 +154,13 @@ def proj4wkt(proj4):
     srs = osr.SpatialReference()
     srs.ImportFromProj4(proj4)
     return srs.ExportToWkt()
+
+def proj_cs2geog_cs(proj4):
+    srs_proj = osr.SpatialReference()
+    srs_proj.ImportFromProj4(proj4)
+    srs_geo = osr.SpatialReference()
+    srs_geo.CopyGeogCSFrom(srs_proj)
+    return srs_geo.ExportToProj4()
 
 class MyTransformer(gdal.Transformer):
     def __init__(self,src_ds=None,dst_ds=None,**options):
