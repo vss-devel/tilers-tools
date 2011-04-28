@@ -60,29 +60,29 @@ if __name__=='__main__':
     usage = "usage: %prog <options>... map_file..."
     parser = OptionParser(usage=usage,
         description="Extends GDAL's builtin support for a few mapping formats: BSB/KAP, GEO/NOS, Ozi map. "
-        "The script translates a map file with into GDAL .vrt, optionally producing .gmt shape file for a cutting polygon.")
-    parser.add_option("-d", "--debug", action="store_true", dest="debug")
-    parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
-    parser.add_option("-t", "--dest-dir", default=None,dest="dst_dir",
-        help='destination directory (default: current)')
-    parser.add_option("-i", "--as-image", action="store_true", 
-        help='give an output file name after a image file name (Ozi)')
-    parser.add_option("-l", "--long-name", action="store_true", 
-        help='give an output file a long name')
-    parser.add_option("--get-cutline", action="store_true", 
-        help='print cutline polygon from KAP file then exit')
-    parser.add_option("--cut-file", action="store_true", 
-        help='create a separate .GMT file with a cutline polygon')
+        "The script translates a map file with into GDAL .vrt")
+    parser.add_option("--srs", default=None,
+        help="specify a full coordinate system for an output file (PROJ.4 definition)")
+    parser.add_option("--datum", default=None,
+        help="override a datum part only (PROJ.4 definition)")
+    parser.add_option("--proj", default=None,
+        help="override a projection part only (PROJ.4 definition)")
     parser.add_option("--force-dtm", action="store_true", 
         help='force using BSB datum shift to WGS84 instead of native BSB datum')
-    parser.add_option("--dtm-shift",dest="dtm_shift",default=None,metavar="SHIFT_LAT,SHIFT_LON",
-        help='define northing, easting (in seconds!)')
-    parser.add_option("--srs", default=None,
-        help="override source's spatial reference system with PROJ.4 definition")
-    parser.add_option("--datum", default=None,
-        help="override chart's datum only (PROJ.4 definition)")
-    parser.add_option("--proj", default=None,
-        help="override chart's projection only (BSB definition)")
+    parser.add_option("--dtm",dest="dtm_shift",default=None,metavar="SHIFT_LONG,SHIFT_LAT",
+        help='northing and easting to WGS84 datum in seconds of arc')
+    parser.add_option("--get-cutline", action="store_true", 
+        help='print a definition of a cutline polygon, then exit')
+    parser.add_option("--cut-file", action="store_true", 
+        help='create a .GMT file with a cutline polygon')
+    parser.add_option("-t", "--dest-dir", default=None, dest="dst_dir",
+        help='destination directory (default: current)')
+    parser.add_option("-l", "--long-name", action="store_true", 
+        help='give an output file a long name')
+    parser.add_option("-i", "--as-image", action="store_true", 
+        help='give an output file name after a name of an image file (Ozi)')
+    parser.add_option("-d", "--debug", action="store_true", dest="debug")
+    parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
 #    parser.add_option("--last-column-bug", action="store_true", 
 #        help='some BSB files are missing value for last column, here is a workaround')
 #    parser.add_option("--broken-raster", action="store_true", 
