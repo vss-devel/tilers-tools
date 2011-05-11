@@ -30,6 +30,7 @@ import stat
 import shutil
 import logging
 import optparse
+from PIL import Image
 
 from tiler_functions import *
 
@@ -39,7 +40,8 @@ def find_by_ext(path, ext):
 
 class KeyboardInterruptError(Exception): pass
 
-def proc_file(fl):
+def optimize_png(fl):
+    'optimize png using pngnq utility'
     try:
         pf('.',end='')
         command(['pngnq','-fn', options.colors, fl])
@@ -47,15 +49,25 @@ def proc_file(fl):
         pf('got KeyboardInterrupt')
         raise KeyboardInterruptError()
 
+def to_jpeg(fl):
+    'convert to jpeg'
+    dst_fl=os.path.splitext(fl)[0]+'.jpg'
+    img=Image.open(fl)
+    img.save(dst_fl,optimize=True,quality=options.quality)
+   
 if __name__=='__main__':
     logging.basicConfig(level=logging.INFO)
     #logging.basicConfig(level=logging.DEBUG)
 
     parser = optparse.OptionParser()
     usage = "usage: %prog [options] arg"
-    parser.add_option("-n", "--colors", dest="colors", default='256',
-        help='Specifies  the  number  of colors to quantize to. Defaults to 256 which is the maximum.  The minimum here is 2')
     parser.add_option("-q", "--quiet", action="store_true")
+    parser.add_option("-n", "--colors", dest="colors", default='256',
+        help='Specifies  the  number  of colors to quantize to (default: 256)')
+    parser.add_option("--jpeg", action="store_true",
+        help='convert tiles to JPEG')
+    parser.add_option("--quality", dest="quality", type="int", default=75,
+        help='JPEG quality (default: 75)')
         
     (options, args) = parser.parse_args()
 
@@ -70,9 +82,17 @@ if __name__=='__main__':
         src_lst=filter(lambda fl: not stat.S_ISLNK(os.lstat(fl)[stat.ST_MODE]), # skip symlinks
                     find_by_ext(src_dir, '.png'))
 
-        parallel_map(proc_file,src_lst)
-        pf('')
+        if options.jpeg:
+            re_sub_file(os.path.join(src_dir,'gmaps.html'),
+                    [('tile_ext = .*;','tile_ext = ".jpg";')])
+            parallel_map(to_jpeg,src_lst)
+            
+            map(os.remove,src_lst)
+        else:        
+            parallel_map(optimize_png,src_lst)
 
-        # 'pngnq' creates *-nq8.png files, so rename files back to original names
-        map(lambda f: os.rename(f,f[:-len('-nq8.png')]+'.png'), find_by_ext(src_dir, '-nq8.png'))
+            # 'pngnq' creates *-nq8.png files, so rename files back to original names
+            map(lambda f: os.rename(f,f[:-len('-nq8.png')]+'.png'), find_by_ext(src_dir, '-nq8.png'))
+
+        pf('')
 
