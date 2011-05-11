@@ -74,5 +74,5 @@ if __name__=='__main__':
         pf('')
 
         # 'pngnq' creates *-nq8.png files, so rename files back to original names
-        map(lambda f: os.rename(f,f[:-len('-nq8.png')]+'.png'), find_byext(src_dir, '-nq8.png'))
+        map(lambda f: os.rename(f,f[:-len('-nq8.png')]+'.png'), find_by_ext(src_dir, '-nq8.png'))
 
