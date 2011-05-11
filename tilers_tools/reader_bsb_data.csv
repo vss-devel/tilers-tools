@@ -2,18 +2,18 @@
 datum,WGS84,                "+datum=WGS84",
 datum,NAD83,                "+datum=NAD83",
 datum,POTSDAM,              "+datum=potsdam",
-datum,EUROPEAN DATUM 1950,  "+towgs84=-84.0000,-97.0000,-117.0000 +ellps=intl",
-datum,EUROPEAN 1950,        "+towgs84=-84.0000,-97.0000,-117.0000 +ellps=intl",
-datum,EUROPEAN 1950 (NORWAY FINLAND), "+towgs84=-85,-95,-120 +ellps=intl",
 #http://earth-info.nga.mil/GandG/coordsys/onlinedatum/CountryEuropeTable.html
+datum,EUROPEAN 1950,        "+towgs84=-87,-98,-121 +ellps=intl",
+datum,EUROPEAN DATUM 1950,  "+towgs84=-87,-98,-121 +ellps=intl",
+datum,EUROPEAN 1950 (NORWAY FINLAND), "+towgs84=-85,-95,-120 +ellps=intl",
 datum,ROMA DATUM 1940,      "+towgs84=-104.1,-49.1,-9.9,0.971,-2.917,0.714,-11.68 +ellps=intl",
 datum,ROMA 1940,            "+towgs84=-104.1,-49.1,-9.9,0.971,-2.917,0.714,-11.68 +ellps=intl",
 datum,HERMANSKOGEL DATUM,   "+datum=hermannskogel",
 datum,OSGB36,               "+towgs84=446.448,-125.157,542.060,0.1502,0.2470,0.8421,-20.4894 +ellps=airy",
-datum,RT90 (SWEDEN),        "+towgs84=414.0978567149,41.3381489658,603.0627177516,-0.8550434314,2.1413465185,-7.0227209516,0 +ellps=bessel",
 # http://sv.wikipedia.org/wiki/RT_90
-datum,SYSTEM KÜSTE,         "+datum=potsdam",
+datum,RT90 (SWEDEN),        "+towgs84=414.0978567149,41.3381489658,603.0627177516,-0.8550434314,2.1413465185,-7.0227209516,0 +ellps=bessel",
 # ???
+datum,SYSTEM KÜSTE,         "+datum=potsdam",
 
 # guess the datum by a comment/copyright string pattern
 datum_guess, "Croatia",            "+ellps=bessel +towgs84=550.499,164.116,475.142,5.80967,2.07902,-11.62386,0.99999445824",
