@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-01-27 11:42:40 
+# 2011-05-11 17:55:10 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -78,16 +78,19 @@ class Poi:
         attr_update(self,label=label,desc=desc,lat=lat,lon=lon,categ=categ.lower())
 
 class Poi2Mapper:
-    def __init__ (self,src,dest_db,input_db):
-        attr_update(self,src=src,input_db=input_db,categories={},styles={},icons={},pois=[])
+    def __init__ (self,src,dest_db):
+        attr_update(self,src=src,categories={},styles={},icons={},pois=[])
         if dest_db:
             self.base=os.path.splitext(dest_db)[0]
             self.dest_db=dest_db
         else:
             self.base=os.path.splitext(src[0])[0]
             self.dest_db=self.base+'.db'
-        # do the whole thing
-        self.process_all()
+        if os.path.exists(self.dest_db):
+            if options.remove_dest:
+                os.remove(self.dest_db)
+            else:
+                raise Exception('Destination already exists: %s' % self.dest_db)
 
     def categ_add_update(self,label=None,enabled=1,desc=None,cat_id=None,icon=None, url=None):
         if not label:
@@ -105,15 +108,15 @@ class Poi2Mapper:
 
     def load_categ_from(self,path):
         if os.path.exists(path):
-            cats_def=[[unicode(i.strip(),'utf-8') for i in l.split(',',4)] 
+            cats_lst=[[unicode(i.strip(),'utf-8') for i in l.split(',',4)] 
                         for l in open(path)]
-            for d in cats_def:
+            for d in cats_lst:
                 try:
-                    (type,icon,categ,desc) = d + [None for i in range(len(d),4)]
-                    ld((type[-1] ,type,icon,categ,desc))
-                    if type[-1] not in ('0','1') or not categ:
+                    (enabled,icon,categ,desc) = d + [None for i in range(len(d),4)]
+                    ld(enabled,icon,categ,desc)
+                    if enabled not in ('0','1') or not categ:
                         continue
-                    self.categ_add_update(categ,int(type[-1]),icon=icon,desc=desc)
+                    self.categ_add_update(categ,int(enabled),icon=icon,desc=desc)
                 except: pass
 
     def input_db_from(self,db_path):
@@ -180,20 +183,23 @@ class Poi2Mapper:
     def write_aux(self):
         cat_list=['# enabled, icon, category, desc']
         icon_urls=[]
-        icon_aliases=["ln -s '%s.db' 'poi.db'"  % self.base]
+        icon_aliases=[] #"ln -s '%s.db' 'poi.db'"  % self.base]
+        icon_aliase_templ="ln -s '%s' '%s'"
         for (c_key,c) in self.categories.iteritems():
             for i_key in c.icons:
-                cat_list.append('# %i, %s, %s%s' % (c.enabled,i_key,c.label,((', '+c.desc) if c.desc else '')))
+                cat_list.append('%i, %s, %s%s' % (c.enabled,i_key,c.label,((', '+c.desc) if c.desc else '')))
                 url=c.icons[i_key]
                 if url:
                     icon_urls.append("wget -nc '%s'" % url)
                 if c_key+'.jpg' != i_key:
-                    icon_aliases.append("ln -s '%s' '%s'" % (i_key, c_key+'.jpg'))
-        f=open(self.base+'.sh.gen','w')
-        for ls in [cat_list,icon_urls,icon_aliases]:
-            for s in ls:
+                    icon_aliases.append(icon_aliase_templ % (i_key, c_key+'.jpg'))
+        with open(self.base+'.categories.gen','w') as f:
+            for s in cat_list:
                 print >>f, s
-            print >>f
+        with open(self.base+'.sh','w') as f:
+            for ls in [icon_urls,icon_aliases]:
+                for s in ls:
+                    print >>f, s
 
     def proc_category(self,c):
         self.dbc.execute('insert into category (label, desc, enabled) values (?,?,?);',
@@ -204,21 +210,24 @@ class Poi2Mapper:
         self.dbc.execute('insert into poi (lat, lon, label, desc, cat_id) values (?,?,?,?,?);',
             (p.lat,p.lon,p.label,p.desc,self.categories[p.categ].cat_id))
 
-    def process_all(self):
-        self.load_categ_from(self.base+'.sh')
-        if self.input_db:
-            map(self.input_db_from, self.input_db)
-
-        for kml in self.src:
-            self.doc = xml.dom.minidom.parse(kml)
+    def proc_src(self,src):
+        try: # to open as kml file
+            self.doc = xml.dom.minidom.parse(src)
             self.name=[n for n in self.doc.getElementsByTagName("Document")[0].childNodes 
                         if n.nodeType == n.ELEMENT_NODE and n.tagName == 'name'][0].firstChild.data
 
+            self.load_categ_from(os.path.splitext(src)[0] + '.categories')
             self.styles=dict(map(self.handleStyle,self.doc.getElementsByTagName("Style")))
             self.pois+=filter(None,map(self.handlePlacemark,self.doc.getElementsByTagName("Placemark")))
+        except xml.parsers.expat.ExpatError:
+            try: # to open as db
+                self.input_db_from(src)
+            except sqlite3.DatabaseError:
+                raise Exception('Invalid input file: %s' % src)
 
-        if os.path.exists(self.dest_db):
-            os.remove(self.dest_db)
+    def proc_all(self):
+        map(self.proc_src, self.src)
+
         self.db=sqlite3.connect(self.dest_db)
         self.dbc = self.db.cursor()
         try:
@@ -239,14 +248,14 @@ class Poi2Mapper:
 
 if __name__=='__main__':
     parser = optparse.OptionParser(
-        usage="usage: %prog [-i <input_db>]... [-o <output_db>] [<kml_file>]...",
+        usage="usage: %prog [-o <output_db>] [<kml_file>]... [<input_db>]...",
         description="makes maemo-mapper POI db from a kml file(s)")
     parser.add_option("-d", "--debug", action="store_true", dest="debug")
     parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
+    parser.add_option("-r", "--remove-dest", action="store_true",
+        help='delete destination before processing')
     parser.add_option("-o", "--output",dest="dest_db", 
                       type="string",help="output POIs db file")
-    parser.add_option("-i", "--input-db", action="append",dest="input_db", 
-                      type="string",help="read POIs from another db")
 
     (options, args) = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if options.debug else 
@@ -255,4 +264,4 @@ if __name__=='__main__':
     if args == [] and not options.input_db:
         raise Exception("No source specified")
 
-    Poi2Mapper(args,options.dest_db,options.input_db)
+    Poi2Mapper(args,options.dest_db).proc_all()
