@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# 2011-04-12 11:53:06 
+# 2011-05-11 11:09:08 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -65,7 +65,7 @@ if __name__=='__main__':
     for src_dir in args:
         print src_dir
         # delete rouge *-nq8.png if any
-        map(os.remove, find_byext(src_dir, '-nq8.png'))
+        map(os.remove, find_by_ext(src_dir, '-nq8.png'))
         # find *.png
         src_lst=filter(lambda fl: not stat.S_ISLNK(os.lstat(fl)[stat.ST_MODE]), # skip symlinks
                     find_by_ext(src_dir, '.png'))
