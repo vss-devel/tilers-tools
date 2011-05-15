@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-27 16:01:58 
+# 2011-05-15 14:52:51 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -58,6 +58,7 @@ from tiler_functions import *
 class TiledTiff(object):
     '''Tile feeder for a base zoom level'''
 #############################
+
     def __init__(self,img_fname,tile_first,tile_last,transparency=None):
         self.fname=img_fname
         self.tile_first=tile_first
@@ -375,36 +376,21 @@ def base_resampling_lst(): return base_resampling_map.keys()
 
 class Pyramid(object):
     '''Pyramid creator'''
+
 #############################
 
     def __init__(self,src,dest,options):
         gdal.UseExceptions()
+
+        self.init_grid() # virtual
+        ld('proj,longlat',self.proj,self.longlat)
+
         self.temp_files=[]
         self.palette=None
         self.transparency=None
         self.src=src
         self.dest=dest
         self.options=options
-        self.src_path=self.src
-        self.tiles_prefix=options.tiles_prefix
-        self.tile_ext='.'+options.tile_format.lower()
-        self.tile_sz=tuple(map(int,options.tile_size.split(',')))
-        self.src_dir,src_f=os.path.split(src)
-        self.base=os.path.splitext(src_f)[0]
-
-        pf('\n%s -> %s '%(self.src,self.dest),end='')
-
-        if os.path.isdir(self.dest):
-            if options.noclobber and os.path.exists(os.path.join(self.dest,'merge-cache')):
-                self.dest=None
-                return
-            else:
-                shutil.rmtree(self.dest,ignore_errors=True)
-        os.makedirs(self.dest)
-        self.base_resampling=base_resampling_map[options.base_resampling]
-        self.resampling=resampling_map[options.overview_resampling]
-
-        self.init_map(options.zoom)
 
     def __del__(self):
         if options.verbose < 2:
@@ -414,21 +400,60 @@ class Pyramid(object):
             except: pass
 
     #############################
-    
-    # initialize geo-parameters and generate base zoom level
-    
+
+    def walk_pyramid(self):
+        'generate pyramid'
+
     #############################
+
+        if not self.init_map(options.zoom):
+            return
+            
+        tiles=[]
+        for zoom in self.zoom_range:
+            tile_ul,tile_lr=self.corner_tiles(zoom)
+            zoom_tiles=flatten([[(zoom,x,y) for x in range(tile_ul[1],tile_lr[1]+1)] 
+                                           for y in range(tile_ul[2],tile_lr[2]+1)])
+            tiles.extend(zoom_tiles)
+        ld('min_zoom',zoom,'tile_ul',tile_ul,'tile_lr',tile_lr,'zoom_tiles',zoom_tiles)
+        self.all_tiles=frozenset(tiles)
+        top_tiles=filter(None,map(self.proc_tile,zoom_tiles))
+        # write top kml
+        self.make_kml(None,[ch for img,ch,opacities in top_tiles])
+        
+        # cache back tiles opacity
+        file_opacities=[(self.tile_path(tile),opc)
+            for tile,opc in flatten([opacities for img,ch,opacities in top_tiles])]
+        try:
+            pickle.dump(dict(file_opacities),open(os.path.join(self.dest, 'merge-cache'),'w'))
+        except:
+            logging.warning("opacity cache save failed")
 
     #############################
 
     def init_map(self,zoom_parm):
+        'initialize geo-parameters and generate base zoom level'
 
     #############################
 
-        self.longlat=proj_cs2geog_cs(self.proj)
-        ld('proj,longlat',self.proj,self.longlat)
+        self.src_path=self.src
+        self.tiles_prefix=options.tiles_prefix
+        self.tile_ext='.'+options.tile_format.lower()
+        self.tile_sz=tuple(map(int,options.tile_size.split(',')))
+        self.src_dir,src_f=os.path.split(self.src)
+        self.base=os.path.splitext(src_f)[0]
 
-        self.init_grid() # virtual
+        pf('\n%s -> %s '%(self.src,self.dest),end='')
+
+        if os.path.isdir(self.dest):
+            if options.noclobber and os.path.exists(os.path.join(self.dest,'merge-cache')):
+                pf('*** Pyramid already exists: skipping',end='')
+                return False
+            else:
+                shutil.rmtree(self.dest,ignore_errors=True)
+        os.makedirs(self.dest)
+        self.base_resampling=base_resampling_map[options.base_resampling]
+        self.resampling=resampling_map[options.overview_resampling]
 
         self.get_src_ds()
         # calculate zoom range
@@ -455,11 +480,18 @@ class Pyramid(object):
         self.coord_offset[0]+=shift_x
         self.shift_x=shift_x
         self.proj=shifted_srs
+
+        self.make_base_raster()
+
+        self.make_googlemaps()
+
+        return True
         
     #############################
 
     def get_src_ds(self):
         'get src dataset, convert to RGB(A) if required'
+
     #############################
         if os.path.exists(self.src):
             self.src_path=os.path.abspath(self.src)
@@ -579,6 +611,7 @@ class Pyramid(object):
 
     def shift_srs(self,zoom=None):
         'change prime meridian to allow charts crossing 180 meridian'
+
     #############################
         t_ds=self.src_ds
         tr_pix_ll=MyTransformer(t_ds,DST_SRS=self.longlat)
@@ -604,6 +637,7 @@ class Pyramid(object):
 
     def calc_zoom(self,zoom_parm):
         'determite zoom levels to generate'
+
     #############################
         res=None
         if not zoom_parm: # calculate "automatic" zoom levels
@@ -634,44 +668,6 @@ class Pyramid(object):
         zoom_range=list(reversed(sorted(set(zrange))))
         ld(('res',res,'zoom_range',zoom_range,'z0 (0,0)',self.coord2pix(0,(0,0))))
         return zoom_range
-
-    #############################
-    
-    # generate pyramid
-    
-    #############################
-
-    #############################
-
-    def walk_pyramid(self):
-
-    #############################
-        if self.options.noclobber and self.dest is None:
-            pf('*** Pyramid already exists: skipping',end='')
-            return
-        self.make_googlemaps()
-
-        self.make_base_raster()
-
-        tiles=[]
-        for zoom in self.zoom_range:
-            tile_ul,tile_lr=self.corner_tiles(zoom)
-            zoom_tiles=flatten([[(zoom,x,y) for x in range(tile_ul[1],tile_lr[1]+1)] 
-                                           for y in range(tile_ul[2],tile_lr[2]+1)])
-            tiles.extend(zoom_tiles)
-        ld('min_zoom',zoom,'tile_ul',tile_ul,'tile_lr',tile_lr,'zoom_tiles',zoom_tiles)
-        self.all_tiles=frozenset(tiles)
-        top_tiles=filter(None,map(self.proc_tile,zoom_tiles))
-        # write top kml
-        self.make_kml(None,[ch for img,ch,opacities in top_tiles])
-        
-        # cache back tiles opacity
-        file_opacities=[(self.tile_path(tile),opc)
-            for tile,opc in flatten([opacities for img,ch,opacities in top_tiles])]
-        try:
-            pickle.dump(dict(file_opacities),open(os.path.join(self.dest, 'merge-cache'),'w'))
-        except:
-            logging.warning("opacity cache save failed")
 
     #############################
 
@@ -969,9 +965,9 @@ class Pyramid(object):
         pass        
 
     #############################
-    
+    #
     # utility functions
-    
+    #    
     #############################
 
     def zoom2res(self,zoom):
@@ -1079,6 +1075,7 @@ class Pyramid(object):
 
 class PlateCarree(Pyramid):
     'Google Earth (plate carrée), Google tile numbering'
+
 #############################
     format='earth'
     defaul_ext='.earth'
@@ -1094,6 +1091,7 @@ class PlateCarree(Pyramid):
     def init_grid(self):
         'init tile grid parameters'
         
+        self.longlat=proj_cs2geog_cs(self.proj)
         tr=MyTransformer(SRC_SRS=self.longlat,DST_SRS=self.proj)
         semi_circ,semi_meridian,z=tr.transform_pt((180,90))
         self.zoom0_tiles=[2,1] # tiles at zoom 0
@@ -1162,6 +1160,7 @@ class PlateCarree(Pyramid):
 
 class PlateCarreeTMS(PlateCarree):
     'Google Earth (plate carrée), TMS tile numbering'
+
 #############################
     format='earth-tms'
     defaul_ext='.earth-tms'
@@ -1226,6 +1225,7 @@ kml_link_templ='''
 
 class Gmaps(Pyramid):
     'Google Maps (Global Mercator), native tile numbering'
+
 #############################
     format='gmaps'
     defaul_ext='.gmaps'
@@ -1236,6 +1236,7 @@ class Gmaps(Pyramid):
     def init_grid(self):
         'init tile grid parameters'
 
+        self.longlat=proj_cs2geog_cs(self.proj)
         tr=MyTransformer(SRC_SRS=self.longlat,DST_SRS=self.proj)
         semi_circ,y,z=tr.transform_pt((180,0)) # Half Equator length in meters
         ld(semi_circ)
@@ -1266,6 +1267,7 @@ class Gmaps(Pyramid):
 
 class GMercatorTMS(Gmaps):
     'Google Maps (Global Mercator), TMS tile numbering'
+
 #############################
     defaul_ext='.tms'
     format='tms'
@@ -1420,6 +1422,7 @@ def proc_src(src):
 
     ext= cls.defaul_ext if options.strip_dest_ext is None else ''
     dest=dest_path(src,options.dest_dir,ext)
+
     cls(src,dest,options).walk_pyramid()
     
 profile_map={
