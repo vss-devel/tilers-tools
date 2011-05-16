@@ -219,6 +219,7 @@ class Poi2Mapper:
             (p.lat,p.lon,p.label,p.desc,self.categories[p.categ].cat_id))
 
     def proc_src(self,src):
+        pf(src)
         try: # to open as kml file
             self.doc = xml.dom.minidom.parse(src)
             self.name=[n for n in self.doc.getElementsByTagName("Document")[0].childNodes 
@@ -227,6 +228,8 @@ class Poi2Mapper:
             self.load_categ_from(os.path.splitext(src)[0] + '.categories')
             self.styles=dict(map(self.handleStyle,self.doc.getElementsByTagName("Style")))
             self.pois+=filter(None,map(self.handlePlacemark,self.doc.getElementsByTagName("Placemark")))
+        except IOError:
+            logging.warning(' No input file: %s' % src)
         except xml.parsers.expat.ExpatError:
             try: # to open as db
                 self.input_db_from(src)
