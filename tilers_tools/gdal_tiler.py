@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-05-15 14:52:51 
+# 2011-05-18 15:36:25 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -418,8 +418,9 @@ class Pyramid(object):
         ld('min_zoom',zoom,'tile_ul',tile_ul,'tile_lr',tile_lr,'zoom_tiles',zoom_tiles)
         self.all_tiles=frozenset(tiles)
         top_tiles=filter(None,map(self.proc_tile,zoom_tiles))
-        # write top kml
-        self.make_kml(None,[ch for img,ch,opacities in top_tiles])
+
+        # write top-level metadata (html/kml)
+        self.write_metadata(None,[ch for img,ch,opacities in top_tiles])
         
         # cache back tiles opacity
         file_opacities=[(self.tile_path(tile),opc)
@@ -482,8 +483,6 @@ class Pyramid(object):
         self.proj=shifted_srs
 
         self.make_base_raster()
-
-        self.make_googlemaps()
 
         return True
         
@@ -930,7 +929,9 @@ class Pyramid(object):
 
         if tile_img is not None and opacity != 0:
             self.write_tile(tile,tile_img)
-            self.make_kml(tile,[ch for img,ch,opacities in ch_tiles])
+            
+            # write tile-level metadata (html/kml)            
+            self.write_metadata(tile,[ch for img,ch,opacities in ch_tiles])
             return tile_img,tile,[(tile,opacity)]+ch_opacities
 
     #############################
@@ -958,11 +959,12 @@ class Pyramid(object):
         
         self.counter()
 
-    def make_kml(self,tile,children=[]): # 'virtual'
+    #############################
+
+    def write_metadata(self,tile,children=[]): # 'virtual'
         pass
 
-    def make_googlemaps(self): # 'virtual'
-        pass        
+    #############################
 
     #############################
     #
@@ -1133,7 +1135,7 @@ class PlateCarree(Pyramid):
             }
         open(os.path.join(self.dest,rel_path+'.kml'),'w+').write(kml)
 
-    def make_kml(self,tile,children=[]): #
+    def write_metadata(self,tile,children=[]): #
         if not tile: # create top level kml
             self.write_kml(os.path.basename(self.base),os.path.basename(self.base),self.kml_child_links(children))
             return
@@ -1244,7 +1246,11 @@ class Gmaps(Pyramid):
         self.zoom0_tile_dim=[semi_circ*2,semi_circ*2]  # dimentions of a tile at zoom 0
         self.coord_offset=[semi_circ,semi_circ]
 
-    def make_googlemaps(self):
+    def write_metadata(self,tile,children=[]): 
+        if not tile: # create top level html
+            self.write_html_maps()
+
+    def write_html_maps(self):
         ul,lr=self.boxes2longlat([(self.origin,self.extent)])[0]
         googlemaps = google_templ % dict(
             title=      os.path.basename(self.dest),
