@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-01-27 11:44:37 
+# 2011-05-18 13:40:03 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -291,7 +291,7 @@ def list_formats():
             cl.__doc__
             )
 
-def tiles_convert(in_fmt,src,out_fmt,dest,append):
+def tiles_convert(src_lst,in_fmt,out_fmt,dst_dir,append):
     for in_class in tile_formats:
         if in_class.input and in_fmt == in_class.format:
             break
@@ -302,8 +302,12 @@ def tiles_convert(in_fmt,src,out_fmt,dest,append):
             break
     else:
         raise Exception("Invalid output format: %s" % out_fmt)
-    dest=dest if dest else src+out_class.ext
-    out_class(dest,write=True,append=append).load_from(in_class(src))
+
+    for src in src_lst:
+        dest=os.path.join(dst_dir,os.path.splitext(src)[0]+out_class.ext)
+        pf('%s -> %s ' % (src,dest),end='')
+        out_class(dest,write=True,append=append).load_from(in_class(src))
+        pf('')
       
 if __name__=='__main__':
     parser = optparse.OptionParser(
@@ -317,6 +321,8 @@ if __name__=='__main__':
         help='list available formats')
     parser.add_option("-a", "--append", action="store_true", dest="append",
         help="don't delete destination, append to it")
+    parser.add_option("-t", "--dest-dir", default='.', dest="dst_dir",
+        help='destination directory (default: current)')
     parser.add_option("-d", "--debug", action="store_true", dest="debug")
     parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
 
@@ -329,15 +335,7 @@ if __name__=='__main__':
         list_formats()
         sys.exit(0)
         
-    try:
-        src=args[0]
-    except:
-        raise Exception("No source specified")
-    try:
-        dest=args[1]
-    except:
-        dest=None
+    src_lst=args
 
-    tiles_convert(options.in_fmt,src,options.out_fmt,dest,options.append)
-    pf('')
+    tiles_convert(src_lst,options.in_fmt,options.out_fmt,options.dst_dir,options.append)
 
