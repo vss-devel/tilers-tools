@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-05-18 13:40:03 
+# 2011-05-31 11:47:06 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -177,7 +177,7 @@ class SASPlanet(TileDir): # http://sasgis.ru/forum/viewtopic.php?f=2&t=24
         return (z-1,x,y)
 
     def coord2path(self,z,x,y):
-        return 'z%d/%d/x%d/%d/y%d%s' % (z+1,x % 1024,x,y % 1024,y)
+        return 'z%d/%d/x%d/%d/y%d' % (z+1, x//1024, x, y//1024, y)
 
 class SASGoogle(TileDir):
     'SASPlanet google maps cache'
