@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-05-31 11:47:06 
+# 2011-06-01 15:51:39 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -35,6 +35,24 @@ import optparse
 
 from tiler_functions import *
 
+ext_map=(
+    ('\x89PNG\x0D\x0A\x1A\x0A','.png'),
+    ('GIF89a','.gif'),
+    ('GIF87a','.gif'),
+    ('\xFF\xD8\xFF\xE0','.jpg'),
+    )
+
+def ext_from_buffer(buf):
+    for magic,ext in ext_map:
+        if buf.startswith(magic): 
+            return ext 
+    raise Exception('Cannot determing image type in a buffer')
+
+def ext_from_file(path):
+    with file(path, "r") as f:
+        buf = f.read(512)
+        return ext_from_buffer(buf)
+
 def path2list(path):
     head,ext=os.path.splitext(path)
     split=[ext]
@@ -44,36 +62,54 @@ def path2list(path):
     split.reverse()
     return split
 
-class Tile:
+class Tile(object):
     def __init__(self,coord):
         self._coord=coord
+        
     def coord(self):
         return self._coord
 
 class FileTile(Tile):
     def __init__(self,coord,path):
-        Tile.__init__(self,coord)
+        super(FileTile, self).__init__(coord)
         self.path=path
+
     def data(self):
         return open(self.path,'rb').read()
-    def copy2file(self,dest_path):
+
+    def get_ext(self):
+        return os.path.splitext(self.path)[1]        
+
+    def copy2file(self,dest_path,tile_ext=None):
         # dest_path is w/o extension!
-        tile_ext=os.path.splitext(self.path)[1]
+        if not tile_ext:
+            tile_ext=self.get_ext()
         shutil.copy(self.path,dest_path+tile_ext)
+
+class FileTileNoExt(FileTile):
+    def get_ext(self):
+        return ext_from_file(self.path)
 
 class PixBufTile(Tile):
     def __init__(self,coord,pixbuf,key):
-        Tile.__init__(self,coord)
+        super(PixBufTile, self).__init__(coord)
         self.pixbuf=pixbuf
         self.path=repr(key) # only for debugging
+
     def data(self):
         return self.pixbuf
-    def copy2file(self,dest_path):
+
+    def get_ext(self):
+        ext=ext_from_buffer(self.pixbuf)
+        return ext        
+
+    def copy2file(self,dest_path,tile_ext=None):
         # dest_path is w/o extension!
-        tile_ext='.png' if self.pixbuf.startswith('\x89PNG\x0D\x0A\x1A\x0A') else '.jpg'
+        if not tile_ext:
+            tile_ext=self.get_ext()
         open(dest_path+tile_ext,'wb').write(self.pixbuf)
 
-class TileSet:
+class TileSet(object):
     def __init__(self,root,write=False,append=False):
         ld(root)
         self.root=root
@@ -108,8 +144,12 @@ class TileSet:
 # TileSet
 
 class TileDir(TileSet):
+    forced_ext = None
+    tile_class = FileTile
+        
     def __init__(self,root,write=False,append=False):
-        TileSet.__init__(self,root,write,append)
+
+        super(TileDir, self).__init__(root,write,append)
         if write:
             try:
                 os.makedirs(root)
@@ -124,7 +164,7 @@ class TileDir(TileSet):
             os.chdir(wrk_dir)
         for f in file_lst:
             self.counter()
-            yield FileTile(self.path2coord(f),os.path.join(self.root,f))
+            yield self.tile_class(self.path2coord(f),os.path.join(self.root,f))
 
 #    def path2coord(self,tile_path):
 #        raise Exception("Unimplemented!")
@@ -139,10 +179,10 @@ class TileDir(TileSet):
         try:
             os.makedirs(os.path.split(dest_path)[0])
         except os.error: pass
-        tile.copy2file(dest_path)
+        tile.copy2file(dest_path,self.forced_ext)
         self.counter()
 # TileDir
-                            
+
 class TMStiles(TileDir): # see TileMap Diagram at http://wiki.osgeo.org/wiki/Tile_Map_Service_Specification
     'TMS tiles'
     format,ext,input,output='tms','.tms',True,True
@@ -165,6 +205,21 @@ class Gmaps(TileDir): # http://code.google.com/apis/maps/documentation/javascrip
 
     def coord2path(self,z,x,y):
         return '%d/%d/%d' % (z,x,y)
+
+class MapNav(TileDir): # http://mapnav.spb.ru/site/e107_plugins/forum/forum_viewtopic.php?29047.post
+    'MapNav (Global Mapper - compatible)'
+    format,ext,input,output='mapnav','.mapnav',True,True
+    dir_pattern='Z[0-9]*/*/*.pic'
+    forced_ext = '.pic'
+    tile_class = FileTileNoExt
+
+    def path2coord(self,tile_path):
+        z,y,x,ext=path2list(tile_path)
+        return map(int,(z[1:],x,y))
+
+    def coord2path(self,z,x,y):
+        return 'Z%d/%d/%d' % (z,y,x)
+
 
 class SASPlanet(TileDir): # http://sasgis.ru/forum/viewtopic.php?f=2&t=24
     'SASPlanet cache'
@@ -197,7 +252,8 @@ class MapperSQLite(TileSet):
     
     def __init__(self,root,write=False,append=False):
         import sqlite3
-        TileSet.__init__(self,root,write,append)
+
+        super(MapperSQLite, self).__init__(root,write,append)
         self.db=sqlite3.connect(self.root)
         self.dbc = self.db.cursor()
         if write:
@@ -244,7 +300,8 @@ class MapperGDBM(TileSet): # due to GDBM weirdness on ARM this only works if run
         assert platform.machine().startswith('arm'), 'This convertion works only on a Nokia tablet'
         import gdbm
         import struct
-        TileSet.__init__(self,root,write,append)
+
+        super(MapperGDBM, self).__init__(root,write,append)
         self.pack=struct.pack
         self.unpack=struct.unpack
         print self.root
@@ -278,6 +335,7 @@ tile_formats=(
     MapperSQLite,
     MapperGDBM,
     Gmaps,
+    MapNav,
     SASPlanet,
     SASGoogle,
     )
