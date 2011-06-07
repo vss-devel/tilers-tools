@@ -371,23 +371,45 @@ base_resampling_map={
     'lanczos':      'Lanczos',
     }
 def base_resampling_lst(): return base_resampling_map.keys()
-    
+
 #############################
 
 class Pyramid(object):
-    '''Pyramid creator'''
+    '''Tile pyramid generator and utilities'''
 
 #############################
 
-    def __init__(self,src,dest,options):
-        gdal.UseExceptions()
+    @staticmethod
+    def domain_class(domain_name):
+        for cls in domain_map:
+            if cls.domain == domain_name:
+                return cls
+        else:
+            raise Exception("Invalid domain: %s" % domain_name)
 
-        self.init_grid() # virtual
-        ld('proj,longlat',self.proj,self.longlat)
+    @staticmethod
+    def domain_lst(tty=False):
+        if not tty:
+            return [c.domain for c in domain_map]    
+        print('\nOutput domains and compatibility:\n')
+        [print('%10s - %s' % (c.domain,c.__doc__)) for c in domain_map]
+        print()
+
+    def __init__(self,src=None,dest=None,options=None):
+        gdal.UseExceptions()
 
         self.temp_files=[]
         self.palette=None
         self.transparency=None
+        self.shift_x=0
+        self.tile_sz=(256,256)
+
+        self.init_grid() # virtual
+        self.origin=self.pix2coord(0,(0,0))
+        self.extent=self.pix2coord(0,map(operator.mul,self.zoom0_tiles,self.tile_sz))
+
+        ld('proj,longlat',self.proj,self.longlat)
+
         self.src=src
         self.dest=dest
         self.options=options
@@ -1020,11 +1042,14 @@ class Pyramid(object):
         z,x,y=self.tile_norm(tile)
         return '%i/%i/%i%s' % (z,x,y,self.tile_ext)
 
+    def zoom_tiles(self,zoom):
+        return map(lambda v: v*2**zoom,self.zoom0_tiles)
+
     def tile_norm(self,tile):
         'x,y of a tile do not exceed max values'
         z,x,y=tile
-        zoom_tiles=map(lambda v: v*2**z,self.zoom0_tiles)
-        return [z,x%zoom_tiles[0],y%zoom_tiles[1]]
+        nztiles=self.zoom_tiles(z)
+        return [z,x%nztiles[0],y%nztiles[1]]
 
     def coords2longlat(self, coords): # redefined in PlateCarree
         try:
@@ -1047,18 +1072,15 @@ class Pyramid(object):
         p_lr=self.coord2pix(zoom,self.extent)
         t_lr=[zoom]+map(lambda p,ts:(p-1)//ts,p_lr,self.tile_sz)
 
+        nztiles=self.zoom_tiles(zoom)
+
         ld('zoom',zoom,'p_ul',p_ul,'p_lr',p_lr,'t_ul',t_ul,'t_lr',t_lr,
-            'zoom tiles',map(lambda zt:zt*2**zoom,self.zoom0_tiles),
-            'zoom size',map(lambda zt,ts:ts*zt*2**zoom,self.zoom0_tiles,self.tile_sz))
+            'zoom tiles',nztiles,
+            'zoom size',map(lambda zt,ts:zt*ts,nztiles,self.tile_sz))
         return t_ul,t_lr
 
-    def info(self,info_lst,pattern):
-        info_line=[i for i in info_lst if pattern in i][0]
-        if '(' in info_line:
-            out=info_line[info_line.find('(')+1:info_line.find(')')]
-        else:
-            out=info_line[info_line.find(pattern)+len(pattern):]
-        return out.strip()
+    def set_envelope(self,upper_left,lower_right):
+        self.origin,self.extent=upper_left,lower_right
         
     tick_rate=50
     count=0
@@ -1079,7 +1101,7 @@ class PlateCarree(Pyramid):
     'Google Earth (plate carrée), Google tile numbering'
 
 #############################
-    format='earth'
+    domain='earth'
     defaul_ext='.earth'
 
     # http://earth.google.com/support/bin/static.py?page=guide.cs&guide=22373&topic=23750
@@ -1164,7 +1186,7 @@ class PlateCarreeTMS(PlateCarree):
     'Google Earth (plate carrée), TMS tile numbering'
 
 #############################
-    format='earth-tms'
+    domain='earth-tms'
     defaul_ext='.earth-tms'
 
     def tile_path(self,tile):
@@ -1229,7 +1251,7 @@ class Gmaps(Pyramid):
     'Google Maps (Global Mercator), native tile numbering'
 
 #############################
-    format='gmaps'
+    domain='gmaps'
     defaul_ext='.gmaps'
 
     # Google Maps Global Mercator (epsg:3857)
@@ -1276,7 +1298,7 @@ class GMercatorTMS(Gmaps):
 
 #############################
     defaul_ext='.tms'
-    format='tms'
+    domain='tms'
 
     def tile_path(self,tile):
         z,x,y=self.tile_norm(tile)
@@ -1289,7 +1311,7 @@ class Yandex(Gmaps):
     'Yandex Maps (WGS 84 / World Mercator, epsg:3395)'
 
 #############################
-    format='yandex'
+    domain='yandex'
     defaul_ext='.yandex'
 
     proj='+proj=merc +datum=WGS84 +ellps=WGS84'
@@ -1421,39 +1443,31 @@ google_templ='''<!DOCTYPE html>
 </body>
 </html>
 '''
+# google_templ
 
-format_map=(
+domain_map=(
     Gmaps,
     GMercatorTMS,
     PlateCarree,
     PlateCarreeTMS,
     Yandex,
     )
-def formats_lst(tty=False):
-    if not tty:
-        return [c.format for c in format_map]    
-    print('\nOutput formats and compatibility:\n')
-    [print('%10s - %s' % (c.format,c.__doc__)) for c in format_map]
-    print()
 
 def proc_src(src):
-    for cls in format_map:
-        if cls.format == options.format:
-            break
-    else:
-        raise Exception("Invalid format: %s" % format)
-
+    cls=Pyramid.domain_class(options.domain)
     ext= cls.defaul_ext if options.strip_dest_ext is None else ''
     dest=dest_path(src,options.dest_dir,ext)
-
+    #
     cls(src,dest,options).walk_pyramid()
-    
+
 profile_map={
     'none':     None,
     'draft':    ('nearest','nearest'),
     'release':  ('antialias','bilinear'),
     }
-def profile_lst(): return profile_map.keys()
+
+def profile_lst(): 
+    return profile_map.keys()
 
 #############################
 
@@ -1464,11 +1478,11 @@ def main(argv):
     usage = "usage: %prog <options>... input_file..."
     parser = OptionParser(usage=usage,
         description='Tile cutter for GDAL-compatible raster maps')
-    parser.add_option('-f',"--to",dest="format",metavar='FORMAT',
-        default='gmaps',choices=formats_lst(),
-        help='output tiles format (default: gmaps)')
-    parser.add_option("-l", "--list-formats", action="store_true",
-        help='list output formats')
+    parser.add_option("--to",dest="domain",metavar='DOMAIN',
+        default='gmaps',choices=Pyramid.domain_lst(),
+        help='output tiles domain (default: gmaps)')
+    parser.add_option("-l", "--list-domains", action="store_true",
+        help='list tile domains')
     parser.add_option("--srs", default=None,metavar="PROJ4_SRS",
         help="override source's spatial reference system with PROJ.4 definition")
     parser.add_option("-z", "--zoom", default=None,metavar="ZOOM_LIST",
@@ -1520,8 +1534,8 @@ def main(argv):
     ld(os.name)
     ld(options)
     
-    if options.list_formats:
-        formats_lst(tty=True)
+    if options.list_domains:
+        Pyramid.domain_lst(tty=True)
         sys.exit(0)
 
     if options.profile != 'none':
