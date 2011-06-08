@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-06-08 12:48:05 
+# 2011-06-08 16:32:30 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -171,21 +171,15 @@ class TileDir(TileSet):
             except os.error: pass
         
     def __iter__(self):
-        try:
-            wrk_dir=os.getcwd()
-            os.chdir(self.root)
-            file_lst=glob.glob(self.dir_pattern)
-        finally:
-            os.chdir(wrk_dir)
-        for f in file_lst:
+        for f in glob.iglob(os.path.join(self.root,self.dir_pattern)):
             self.counter()
-            yield self.tile_class(self.path2coord(f),os.path.join(self.root,f))
+            yield self.tile_class(self.path2coord(f),f)
 
-#    def path2coord(self,tile_path):
-#        raise Exception("Unimplemented!")
+    def path2coord(self,tile_path):
+        raise Exception("Unimplemented!")
 
-#    def coord2path(self,z,x,y):
-#        raise Exception("Unimplemented!")
+    def coord2path(self,z,x,y):
+        raise Exception("Unimplemented!")
 
     def store_tile(self, tile):
         # dest_path is w/o extension!
@@ -204,7 +198,7 @@ class TMStiles(TileDir): # see TileMap Diagram at http://wiki.osgeo.org/wiki/Til
     dir_pattern='[0-9]*/*/*.*'
 
     def path2coord(self,tile_path):
-        z,x,y=map(int,path2list(tile_path)[0:3])
+        z,x,y=map(int,path2list(tile_path)[-4:-1])
         return (z,x,2**z-1-y)
 
     def coord2path(self,z,x,y):
@@ -216,7 +210,7 @@ class Gmaps(TileDir): # http://code.google.com/apis/maps/documentation/javascrip
     dir_pattern='[0-9]*/*/*.*'
 
     def path2coord(self,tile_path):
-        return map(int,path2list(tile_path)[0:3])
+        return map(int,path2list(tile_path)[-4:-1])
 
     def coord2path(self,z,x,y):
         return '%d/%d/%d' % (z,x,y)
@@ -229,7 +223,7 @@ class MapNav(TileDir): # http://mapnav.spb.ru/site/e107_plugins/forum/forum_view
     tile_class = FileTileNoExt
 
     def path2coord(self,tile_path):
-        z,y,x,ext=path2list(tile_path)
+        z,y,x=path2list(tile_path)[-4:-1]
         return map(int,(z[1:],x,y))
 
     def coord2path(self,z,x,y):
@@ -242,7 +236,7 @@ class SASPlanet(TileDir): # http://sasgis.ru/forum/viewtopic.php?f=2&t=24
     dir_pattern='z[0-9]*/*/x[0-9]*/*/y[0-9]*.*'
 
     def path2coord(self,tile_path):
-        z,dx,x,dy,y,ext=path2list(tile_path)
+        z,dx,x,dy,y=path2list(tile_path)[-6:-1]
         z,x,y=map(int,(z[1:],x[1:],y[1:]))
         return (z-1,x,y)
 
@@ -255,7 +249,8 @@ class SASGoogle(TileDir):
     dir_pattern='z[0-9]*/*/*.*'
 
     def path2coord(self,tile_path):
-        return map(int,path2list(tile_path[1:])[0:3])
+        z,y,x=path2list(tile_path)[-4:-1]
+        return map(int,(z[1:],x,y))
 
     def coord2path(self,z,x,y):
         return 'z%d/%d/%d' % (z,x,y)
