@@ -379,22 +379,6 @@ class Pyramid(object):
 
 #############################
 
-    @staticmethod
-    def domain_class(domain_name):
-        for cls in domain_map:
-            if cls.domain == domain_name:
-                return cls
-        else:
-            raise Exception("Invalid domain: %s" % domain_name)
-
-    @staticmethod
-    def domain_lst(tty=False):
-        if not tty:
-            return [c.domain for c in domain_map]    
-        print('\nOutput domains and compatibility:\n')
-        [print('%10s - %s' % (c.domain,c.__doc__)) for c in domain_map]
-        print()
-
     def __init__(self,src=None,dest=None,options=None):
         gdal.UseExceptions()
 
@@ -415,7 +399,7 @@ class Pyramid(object):
         self.options=options
 
     def __del__(self):
-        if options.verbose < 2:
+        if self.options and self.options.verbose < 2:
             try:
                 for f in self.temp_files:
                     os.remove(f)
@@ -865,35 +849,17 @@ class Pyramid(object):
                     break
             else:
                 cut_file=None
+
         if cut_file:
-            cut_ds=ogr.Open(cut_file)
-            assert cut_ds, ' Invalid cutline file %s' % cut_file
-            layer=cut_ds.GetLayer()
-            poly_srs=layer.GetSpatialRef()
-            if poly_srs:
-                poly_proj=poly_srs.ExportToProj4()
-            else:
-                poly_proj=src_proj
-            feature=layer.GetFeature(0)
-            geom=feature.GetGeometryRef()
-            gname=geom.GetGeometryName()
-            poly_iter={
-                'MULTIPOLYGON':(geom.GetGeometryRef(i) for i in range(geom.GetGeometryCount())),
-                'POLYGON': (geom,),
-                }[gname]
-            mpoly=[]
-            srs_tr=MyTransformer(SRC_SRS=poly_proj,DST_SRS=src_proj)
-            if poly_proj == src_proj:
-                srs_tr.transform=lambda x:x
+            multipoint_lst=self.shape2mpointlst(cut_file,src_proj)
+
             pix_tr=MyTransformer(src_ds)
-            for pl in poly_iter:
-                assert pl.GetGeometryName() == 'POLYGON'
-                for ln in (pl.GetGeometryRef(j) for j in range(pl.GetGeometryCount())):
-                    assert ln.GetGeometryName() == 'LINEARRING'
-                    points=[ln.GetPoint(n) for n in range(ln.GetPointCount())]
-                    p_src=srs_tr.transform(points)
-                    p_pix=pix_tr.transform_pt(p_src,inv=True)
-                    mpoly.append(','.join(['%r %r' % (p[0],p[1]) for p in p_pix]))
+            p_pix=pix_tr.transform_pt(point_lst,inv=True)
+
+            mpoly=[]
+            for points in multipoint_lst:
+                p_pix=pix_tr.transform_pt(points,inv=True)
+                mpoly.append(','.join(['%r %r' % (p[0],p[1]) for p in p_pix]))
             cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly])
         return cutline
 
@@ -994,6 +960,22 @@ class Pyramid(object):
     #    
     #############################
 
+    @staticmethod
+    def domain_class(domain_name):
+        for cls in domain_map:
+            if cls.domain == domain_name:
+                return cls
+        else:
+            raise Exception("Invalid domain: %s" % domain_name)
+
+    @staticmethod
+    def domain_lst(tty=False):
+        if not tty:
+            return [c.domain for c in domain_map]    
+        print('\nOutput domains and compatibility:\n')
+        [print('%10s - %s' % (c.domain,c.__doc__)) for c in domain_map]
+        print()
+
     def zoom2res(self,zoom):
         return map(lambda z0,ts:
             z0/(ts*2**zoom), self.zoom0_tile_dim,self.tile_sz)
@@ -1079,9 +1061,57 @@ class Pyramid(object):
             'zoom size',map(lambda zt,ts:zt*ts,nztiles,self.tile_sz))
         return t_ul,t_lr
 
-    def set_envelope(self,upper_left,lower_right):
+    def belongs_to(self,tile):
+        zoom,x,y=tile
+        t_ul,t_lr=self.corner_tiles(zoom)
+        return x>=t_ul[1] and y>=t_ul[2] and x<=t_lr[1] and y<=t_lr[2]
+
+    def shape2mpointlst(self,datasource,target_srs):
+        ds=ogr.Open(datasource)
+        assert ds, ' Invalid datasource %s' % datasource
+
+        layer=ds.GetLayer()
+        feature=layer.GetFeature(0)
+        geom=feature.GetGeometryRef()
+        geom_name=geom.GetGeometryName()
+        geom_lst={
+            'MULTIPOLYGON':(geom.GetGeometryRef(i) for i in range(geom.GetGeometryCount())),
+            'POLYGON': (geom,),
+            }[geom_name]
+
+        l_srs=layer.GetSpatialRef()
+        if l_srs:
+            poly_proj=l_srs.ExportToProj4()
+        else:
+            poly_proj=target_srs
+        srs_tr=MyTransformer(SRC_SRS=poly_proj,DST_SRS=target_srs)
+        if poly_proj == target_srs:
+            srs_tr.transform=lambda x:x
+
+        mpointlst=[]
+        for pl in geom_lst:
+            assert pl.GetGeometryName() == 'POLYGON'
+            for ln in (pl.GetGeometryRef(j) for j in range(pl.GetGeometryCount())):
+                assert ln.GetGeometryName() == 'LINEARRING'
+                points=[ln.GetPoint(n) for n in range(ln.GetPointCount())]
+                transformed_points=srs_tr.transform(points)
+                mpointlst.append(transformed_points)
+        return mpointlst
+
+    def set_region(self,point_lst,source_srs=None):
+        if source_srs and source_srs != self.proj:
+            srs_tr=MyTransformer(SRC_SRS=source_srs,DST_SRS=self.proj)
+            point_lst=srs_tr.transform(point_lst)
+
+        x_coords,y_coords=zip(*point_lst)[0:2]
+        upper_left=min(x_coords),max(y_coords)
+        lower_right=max(x_coords),min(y_coords)
         self.origin,self.extent=upper_left,lower_right
-        
+
+    def load_region(self,datasource):
+        point_lst=flatten(self.shape2mpointlst(datasource,self.proj))
+        self.set_region(point_lst)
+    
     tick_rate=50
     count=0
 

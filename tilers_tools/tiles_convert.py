@@ -110,26 +110,37 @@ class PixBufTile(Tile):
         open(dest_path+tile_ext,'wb').write(self.pixbuf)
 
 class TileSet(object):
-    def __init__(self,root,write=False,append=False):
+    def __init__(self,root,write=False,append=False,region=None):
         ld(root)
+        self.pyramid=None
         self.root=root
-        self.count=0
-        self.tick_rate=100
-        if write:
+        if not write:
+            assert os.path.exists(root), "No file or directory found: %s" % root
+        else:
             if not append and os.path.exists(self.root):
                 if os.path.isdir(self.root):
                     shutil.rmtree(self.root,ignore_errors=True)
                 else:
                     os.remove(self.root)
-        else:
-            assert os.path.exists(root), "No file or directory found: %s" % root
+            if region:
+                from gdal_tiler import Pyramid
+                self.pyramid=Pyramid.domain_class('gmaps')()
+                self.pyramid.load_region(region)
 
     def __del__(self):
         ld(self.count)
 
-#    def store_tile(self, tile):
-#        raise Exception("Unimplemented!")
+    def load_from(self,src_tiles):
+        ld((src_tiles.root, self.root))
+        map(self.process_tile,src_tiles)
 
+    def process_tile(self, tile):
+        if self.pyramid and not self.pyramid.belongs_to(tile.coord()):
+            return
+        self.store_tile(tile)
+            
+    count=0
+    tick_rate=100
     def counter(self):
         self.count+=1
         if self.count % self.tick_rate == 0:
@@ -138,18 +149,15 @@ class TileSet(object):
         else:
             return False
 
-    def load_from(self,src_tiles):
-        ld((src_tiles.root, self.root))
-        map(self.store_tile,src_tiles)
 # TileSet
 
 class TileDir(TileSet):
     forced_ext = None
     tile_class = FileTile
         
-    def __init__(self,root,write=False,append=False):
+    def __init__(self,root,write=False,append=False,region=None):
 
-        super(TileDir, self).__init__(root,write,append)
+        super(TileDir, self).__init__(root,write,append,region)
         if write:
             try:
                 os.makedirs(root)
@@ -250,10 +258,10 @@ class MapperSQLite(TileSet):
     format,ext,input,output='sqlite','.db',True,True
     max_zoom=20
     
-    def __init__(self,root,write=False,append=False):
+    def __init__(self,root,write=False,append=False,region=None):
         import sqlite3
 
-        super(MapperSQLite, self).__init__(root,write,append)
+        super(MapperSQLite, self).__init__(root,write,append,region)
         self.db=sqlite3.connect(self.root)
         self.dbc = self.db.cursor()
         if write:
@@ -295,13 +303,13 @@ class MapperGDBM(TileSet): # due to GDBM weirdness on ARM this only works if run
     format,ext,input,output='gdbm','.gdbm',True,True
     max_zoom=20
     
-    def __init__(self,root,write=False,append=False):
+    def __init__(self,root,write=False,append=False,region=None):
         import platform
         assert platform.machine().startswith('arm'), 'This convertion works only on a Nokia tablet'
         import gdbm
         import struct
 
-        super(MapperGDBM, self).__init__(root,write,append)
+        super(MapperGDBM, self).__init__(root,write,append,region)
         self.pack=struct.pack
         self.unpack=struct.unpack
         print self.root
@@ -349,22 +357,22 @@ def list_formats():
             cl.__doc__
             )
 
-def tiles_convert(src_lst,in_fmt,out_fmt,dst_dir,append):
+def tiles_convert(src_lst,options):
     for in_class in tile_formats:
-        if in_class.input and in_fmt == in_class.format:
+        if in_class.input and options.in_fmt == in_class.format:
             break
     else:
-        raise Exception("Invalid input format: %s" % in_fmt)
+        raise Exception("Invalid input format: %s" % options.in_fmt)
     for out_class in tile_formats:
-        if out_class.output and out_fmt == out_class.format:
+        if out_class.output and options.out_fmt == out_class.format:
             break
     else:
-        raise Exception("Invalid output format: %s" % out_fmt)
+        raise Exception("Invalid output format: %s" % options.out_fmt)
 
     for src in src_lst:
-        dest=os.path.join(dst_dir,os.path.splitext(src)[0]+out_class.ext)
+        dest=os.path.join(options.dst_dir,os.path.splitext(src)[0]+out_class.ext)
         pf('%s -> %s ' % (src,dest),end='')
-        out_class(dest,write=True,append=append).load_from(in_class(src))
+        out_class(dest,write=True,append=options.append,region=options.region).load_from(in_class(src))
         pf('')
       
 if __name__=='__main__':
@@ -381,6 +389,8 @@ if __name__=='__main__':
         help="don't delete destination, append to it")
     parser.add_option("-t", "--dest-dir", default='.', dest="dst_dir",
         help='destination directory (default: current)')
+    parser.add_option("--region", default=None, metavar="DATASOURCE",
+        help='region to process (OGR shape)')
     parser.add_option("-d", "--debug", action="store_true", dest="debug")
     parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
 
@@ -395,5 +405,5 @@ if __name__=='__main__':
         
     src_lst=args
 
-    tiles_convert(src_lst,options.in_fmt,options.out_fmt,options.dst_dir,options.append)
+    tiles_convert(src_lst,options)
 
