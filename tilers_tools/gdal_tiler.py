@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-06-08 12:48:21 
+# 2011-06-08 14:34:17 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -52,6 +52,42 @@ except ImportError:
     from gdalconst import *
 
 from tiler_functions import *
+
+def sasplanet_hlg2ogr(fname):
+    with open(fname) as f:
+        lines=f.readlines(4096)
+        if not lines[0].startswith('[HIGHLIGHTING]'):
+            return None
+        coords=[[],[]]
+        for l in lines[2:]:
+            val=float(l.split('=')[1].replace(',','.'))
+            coords[1 if l.find('Lat')!=-1 else 0].append(val)
+        points=zip(*coords)
+        ld('points',points)
+
+    ring = ogr.Geometry(ogr.wkbLinearRing)
+    for p in points:
+        ring.AddPoint(*p)
+    polygon = ogr.Geometry(ogr.wkbPolygon)
+    polygon.AddGeometry(ring)
+
+    ds = ogr.GetDriverByName('Memory').CreateDataSource( 'wrk' )
+    assert ds is not None, 'Unable to create datasource'
+
+    src_srs = osr.SpatialReference()
+    src_srs.ImportFromProj4('+proj=latlong +a=6378137 +b=6378137 +nadgrids=@null +wktext')
+
+    layer = ds.CreateLayer('sasplanet_hlg',srs=src_srs)
+
+    feature = ogr.Feature(layer.GetLayerDefn())
+    feature.SetGeometry(polygon)
+    layer.CreateFeature(feature)
+    
+    del feature
+    del polygon
+    del ring
+    
+    return ds
 
 #############################
 
@@ -703,7 +739,7 @@ class Pyramid(object):
             src_transform='%s\n%s' % (warp_src_geotr % src_geotr,warp_src_igeotr % src_igeotr)
         else:
             gcps=self.src_ds.GetGCPs()
-            assert gcps, ' Neither geotransform, nor gpcs are in the source file %s' % self.src
+            assert gcps, 'Neither geotransform, nor gpcs are in the source file %s' % self.src
 
             gcp_lst=[(g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) for g in gcps]
             ld('src_proj',self.src_ds.GetProjection())
@@ -749,7 +785,7 @@ class Pyramid(object):
         src_nodata=None
         if self.options.src_nodata:
             src_nodata=map(int,options.src_nodata.split(','))
-            assert len(src_nodata) == src_bands, ' Nodata must match the number of bands'
+            assert len(src_nodata) == src_bands, 'Nodata must match the number of bands'
             if src_bands > 1:
                 warp_options.append(w_option('UNIFIED_SRC_NODATA','YES'))
         dst_nodata=None
@@ -1064,7 +1100,9 @@ class Pyramid(object):
 
     def shape2mpointlst(self,datasource,target_srs):
         ds=ogr.Open(datasource)
-        assert ds, ' Invalid datasource %s' % datasource
+        if not ds:
+            ds=sasplanet_hlg2ogr(datasource)
+        assert ds, 'Invalid datasource %s' % datasource
 
         layer=ds.GetLayer()
         feature=layer.GetFeature(0)
