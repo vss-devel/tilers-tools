@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-06-01 15:51:39 
+# 2011-06-08 12:48:05 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -110,14 +110,17 @@ class PixBufTile(Tile):
         open(dest_path+tile_ext,'wb').write(self.pixbuf)
 
 class TileSet(object):
-    def __init__(self,root,write=False,append=False,region=None):
+    def __init__(self,root,write=False,append=False,region=None,zoom=None):
         ld(root)
-        self.pyramid=None
         self.root=root
-        if not write:
+        self.write=write
+        self.append=append
+        self.pyramid=None
+
+        if not self.write:
             assert os.path.exists(root), "No file or directory found: %s" % root
         else:
-            if not append and os.path.exists(self.root):
+            if not self.append and os.path.exists(self.root):
                 if os.path.isdir(self.root):
                     shutil.rmtree(self.root,ignore_errors=True)
                 else:
@@ -126,7 +129,13 @@ class TileSet(object):
                 from gdal_tiler import Pyramid
                 self.pyramid=Pyramid.domain_class('gmaps')()
                 self.pyramid.load_region(region)
+                self.pyramid.set_zoom(zoom)
 
+        self.child_init()
+
+    def child_init(self):
+        pass
+        
     def __del__(self):
         ld(self.count)
 
@@ -155,12 +164,10 @@ class TileDir(TileSet):
     forced_ext = None
     tile_class = FileTile
         
-    def __init__(self,root,write=False,append=False,region=None):
-
-        super(TileDir, self).__init__(root,write,append,region)
-        if write:
+    def child_init(self):
+        if self.write:
             try:
-                os.makedirs(root)
+                os.makedirs(self.root)
             except os.error: pass
         
     def __iter__(self):
@@ -258,13 +265,12 @@ class MapperSQLite(TileSet):
     format,ext,input,output='sqlite','.db',True,True
     max_zoom=20
     
-    def __init__(self,root,write=False,append=False,region=None):
+    def child_init(self):
         import sqlite3
 
-        super(MapperSQLite, self).__init__(root,write,append,region)
         self.db=sqlite3.connect(self.root)
         self.dbc = self.db.cursor()
-        if write:
+        if self.write:
             try:
                 self.dbc.execute ('''
                     create table maps (
@@ -303,13 +309,12 @@ class MapperGDBM(TileSet): # due to GDBM weirdness on ARM this only works if run
     format,ext,input,output='gdbm','.gdbm',True,True
     max_zoom=20
     
-    def __init__(self,root,write=False,append=False,region=None):
+    def child_init(self):
         import platform
         assert platform.machine().startswith('arm'), 'This convertion works only on a Nokia tablet'
         import gdbm
         import struct
 
-        super(MapperGDBM, self).__init__(root,write,append,region)
         self.pack=struct.pack
         self.unpack=struct.unpack
         print self.root
@@ -372,9 +377,9 @@ def tiles_convert(src_lst,options):
     for src in src_lst:
         dest=os.path.join(options.dst_dir,os.path.splitext(src)[0]+out_class.ext)
         pf('%s -> %s ' % (src,dest),end='')
-        out_class(dest,write=True,append=options.append,region=options.region).load_from(in_class(src))
+        out_class(dest,write=True,append=options.append,region=options.region,zoom=options.zoom).load_from(in_class(src))
         pf('')
-      
+
 if __name__=='__main__':
     parser = optparse.OptionParser(
         usage="usage: %prog  <source> [<target>]",
@@ -391,6 +396,8 @@ if __name__=='__main__':
         help='destination directory (default: current)')
     parser.add_option("--region", default=None, metavar="DATASOURCE",
         help='region to process (OGR shape)')
+    parser.add_option("-z", "--zoom", default=None,metavar="ZOOM_LIST",
+        help='list of zoom ranges to process')
     parser.add_option("-d", "--debug", action="store_true", dest="debug")
     parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
 

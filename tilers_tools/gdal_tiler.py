@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-05-31 15:14:03 
+# 2011-06-08 12:48:21 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -385,6 +385,7 @@ class Pyramid(object):
         self.temp_files=[]
         self.palette=None
         self.transparency=None
+        self.zoom_range=None
         self.shift_x=0
         self.tile_sz=(256,256)
 
@@ -464,7 +465,7 @@ class Pyramid(object):
 
         self.get_src_ds()
         # calculate zoom range
-        self.zoom_range=self.calc_zoom(zoom_parm)
+        self.calc_zoom(zoom_parm)
              
         # reproject to base zoom
         self.base_zoom=self.zoom_range[0]
@@ -641,7 +642,7 @@ class Pyramid(object):
     #############################
 
     def calc_zoom(self,zoom_parm):
-        'determite zoom levels to generate'
+        'determine and set a list of zoom levels to generate'
 
     #############################
         res=None
@@ -663,16 +664,9 @@ class Pyramid(object):
             ld(ul_c,lr_c,wh)
             min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_sz[i]for i in (0,1)]))
             zoom_parm='%d-%d'%(min_zoom,max_zoom)
-        zchunks=[map(int,z.split('-')) for z in zoom_parm.split(',')]
-        zrange=[]
-        for z in zchunks:
-            if len(z) == 1:
-                zrange+=z
-            else:
-                zrange+=range(min(z),max(z)+1)
-        zoom_range=list(reversed(sorted(set(zrange))))
-        ld(('res',res,'zoom_range',zoom_range,'z0 (0,0)',self.coord2pix(0,(0,0))))
-        return zoom_range
+
+        self.set_zoom(zoom_parm)
+        ld(('res',res,'zoom_range',self.zoom_range,'z0 (0,0)',self.coord2pix(0,(0,0))))
 
     #############################
 
@@ -1063,6 +1057,8 @@ class Pyramid(object):
 
     def belongs_to(self,tile):
         zoom,x,y=tile
+        if self.zoom_range and zoom not in self.zoom_range:
+            return False
         t_ul,t_lr=self.corner_tiles(zoom)
         return x>=t_ul[1] and y>=t_ul[2] and x<=t_lr[1] and y<=t_lr[2]
 
@@ -1081,11 +1077,11 @@ class Pyramid(object):
 
         l_srs=layer.GetSpatialRef()
         if l_srs:
-            poly_proj=l_srs.ExportToProj4()
+            layer_proj=l_srs.ExportToProj4()
         else:
-            poly_proj=target_srs
-        srs_tr=MyTransformer(SRC_SRS=poly_proj,DST_SRS=target_srs)
-        if poly_proj == target_srs:
+            layer_proj=target_srs
+        srs_tr=MyTransformer(SRC_SRS=layer_proj,DST_SRS=target_srs)
+        if layer_proj == target_srs:
             srs_tr.transform=lambda x:x
 
         mpointlst=[]
@@ -1096,6 +1092,8 @@ class Pyramid(object):
                 points=[ln.GetPoint(n) for n in range(ln.GetPointCount())]
                 transformed_points=srs_tr.transform(points)
                 mpointlst.append(transformed_points)
+                
+        ld('mpointlst',mpointlst)
         return mpointlst
 
     def set_region(self,point_lst,source_srs=None):
@@ -1109,8 +1107,25 @@ class Pyramid(object):
         self.origin,self.extent=upper_left,lower_right
 
     def load_region(self,datasource):
+        if not datasource:
+            return
         point_lst=flatten(self.shape2mpointlst(datasource,self.proj))
         self.set_region(point_lst)
+
+    def set_zoom(self,zoom_parm):
+        'set a list of zoom levels from a parameter list'
+
+        if not zoom_parm:
+            return
+
+        zchunks=[map(int,z.split('-')) for z in zoom_parm.split(',')]
+        zrange=[]
+        for z in zchunks:
+            if len(z) == 1:
+                zrange+=z
+            else:
+                zrange+=range(min(z),max(z)+1)
+        self.zoom_range=list(reversed(sorted(set(zrange))))
     
     tick_rate=50
     count=0
