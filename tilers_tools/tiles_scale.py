@@ -57,8 +57,12 @@ class ZoomSet:
         pf('.',end='')
         (x,y)=dest_xy
         im = Image.new("RGBA",(256,256),(0,0,0,0))
-        tiles_map=[(0,128), (128,128),
-                    (0,0), (128,0)]
+#        tiles_map=[(0,128), (128,128),
+#                    (0,0), (128,0)]
+        tiles_map=[
+                    (0,0), (128,0),
+                    (0,128), (128,128),
+                    ]
         tiles_in=[(x*2,y*2),(x*2+1,y*2),
                     (x*2,y*2+1),(x*2+1,y*2+1)]
         for (src_xy,out_loc) in zip(tiles_in,tiles_map):
@@ -99,9 +103,7 @@ if __name__=='__main__':
 
         os.chdir(tiles_root)
         pf('')
-        # modify googlemaps.html and openlayers.html
-        re_sub_file(os.path.join(tiles_root,'googlemaps.html'),
-            [('(var mapMinZoom =).*;','\\1 %i;' % min_zoom)])
-        re_sub_file(os.path.join(tiles_root,'openlayers.html'),
+        # modify gmaps.html
+        re_sub_file(os.path.join(tiles_root,'gmaps.html'),
             [('(var mapMinZoom =).*;','\\1 %i;' % min_zoom)])
         os.chdir(start_dir)
