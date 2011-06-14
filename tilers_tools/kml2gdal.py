@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-01-27 11:39:40 
+# 2011-06-14 14:27:08  
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -30,6 +30,7 @@ import sys
 import logging
 import re
 from optparse import OptionParser
+import math
 
 from tiler_functions import *
 
@@ -49,38 +50,53 @@ def find_image(img_path, map_dir):
 
 def overlay2vrt(ol,map_dir):
     ld(ol)
+    name=kml_parm(ol,'name')
     img_file=kml_parm(ol,'href')
     ld(img_file)
     img_path=find_image(img_file,map_dir)
     base=os.path.splitext(img_path)[0]
-    out_vrt= base + '.vrt'        # output VRT file
-#    pf(out_vrt)
+    out_vrt= '%s - %s.vrt' % (base,name) # output VRT file
     if os.path.exists(out_vrt): os.remove(out_vrt)
 
     # http://trac.osgeo.org/proj/wiki/FAQ#ChangingEllipsoidWhycantIconvertfromWGS84toGoogleEarthVirtualGlobeMercator
     out_srs="+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs"
-    #"+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +no_defs"
 
     info_out=command(['gdalinfo',img_path]).splitlines()
     width, height=eval([i for i in info_out if 'Size is' in i][0].replace('Size is',''))
     ld((width, height))
     points=[(0,height), (width,height), (width,0),(0,0)]
-    if 'gx:LatLonQuad' in ol:
-        refs=[i.split(',') for i in kml_parm(ol,'coordinates').split()]
+    if '<gx:LatLonQuad>' in ol:
+        refs=[map(float,i.split(',')) for i in kml_parm(ol,'coordinates').split()]
     else: # assume LatLonBox
-        if '<rotation>' in ol: 
-            raise Exception("*** rotation in <LatLonBox> is not supported. Suggestion: convert to LatLonQuad")
-        n=kml_parm(ol,'north')
-        s=kml_parm(ol,'south')
-        e=kml_parm(ol,'east')
-        w=kml_parm(ol,'west')
-        refs=[(w,s),(e,s),(e,n),(w,n)]
-    latlong=''.join(['%s %s\n' % (ref[0],ref[1]) for ref in refs])
+        assert '<LatLonBox>' in ol
+        north,south,east,west=[float(kml_parm(ol,parm)) for parm in ('north','south','east','west')]
+        refs=[(west,south),(east,south),(east,north),(west,north)]
+    latlong=''.join(['%r %r\n' % (ref[0],ref[1]) for ref in refs])
     ld(latlong)
     refs_proj=[ i.split() for i in 
         command(['proj'] + out_srs.split(), latlong).splitlines()]
     ld(refs_proj)
-    gcps=flatten([('-gcp', str(i[0][0]),str(i[0][1]),i[1][0],i[1][1]) for i in zip(points, refs_proj)])
+    if '<rotation>' in ol:
+        north,south,east,west=[float(refs_proj[i][j]) for i,j in ((2,1),(0,1),(1,0),(0,0))]
+        angle=math.radians(float(kml_parm(ol,'rotation')))
+        dx=east-west
+        dy=north-south
+        xc=(west +east )/2
+        yc=(south+north)/2
+        x1=dy*math.sin(angle)
+        x2=dx*math.cos(angle)
+        y1=dy*math.cos(angle)
+        y2=dx*math.sin(angle)
+        x0=xc-(x1+x2)/2
+        y0=yc-(y1+y2)/2
+        ld('west,east',west,east)
+        ld('south,north',south,north)
+        ld('dx dy',dx,dy)
+        ld('xc x0 x1 x2',xc,x0,x1,x2)
+        ld('yc y0 y1 y2',yc,y0,y1,y2)
+        refs_proj=[(x0+x1,y0),(x0+x1+x2,y0+y2),(x0+x2,y0+y1+y2),(x0,y0+y1)]
+    gcps=flatten([map(str,('-gcp',i[0][0],i[0][1],i[1][0],i[1][1])) for i in zip(points, refs_proj)])
+    ld('gcps',gcps)
     transl_cmd=['gdal_translate','-of','VRT',img_path, out_vrt,'-a_srs', out_srs]
     if 'Color Table' in info_out:
         transl_cmd=transl_cmd+['-expand','rgb']
