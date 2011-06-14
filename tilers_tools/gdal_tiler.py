@@ -61,7 +61,7 @@ def sasplanet_hlg2ogr(fname):
         coords=[[],[]]
         for l in lines[2:]:
             val=float(l.split('=')[1].replace(',','.'))
-            coords[1 if l.find('Lat')!=-1 else 0].append(val)
+            coords[1 if 'Lat' in l else 0].append(val)
         points=zip(*coords)
         ld('points',points)
 
