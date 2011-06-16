@@ -55,6 +55,7 @@ def overlay2vrt(ol,map_dir):
     ld(img_file)
     img_path=find_image(img_file,map_dir)
     base=os.path.splitext(img_path)[0]
+    pf('%s - %s' % (base,name))
     out_vrt= '%s - %s.vrt' % (base,name) # output VRT file
     if os.path.exists(out_vrt): os.remove(out_vrt)
 
@@ -98,10 +99,10 @@ def overlay2vrt(ol,map_dir):
     gcps=flatten([map(str,('-gcp',i[0][0],i[0][1],i[1][0],i[1][1])) for i in zip(points, refs_proj)])
     ld('gcps',gcps)
     transl_cmd=['gdal_translate','-of','VRT',img_path, out_vrt,'-a_srs', out_srs]
-    if 'Color Table' in info_out:
-        transl_cmd=transl_cmd+['-expand','rgb']
+#    if 'Color Table' in info_out:
+#        transl_cmd=transl_cmd+['-expand','rgb']
     transl_out=command(transl_cmd + gcps)
-    logging.info( '"%s" %s' % (img_path,transl_out.strip()))
+    ld( '"%s" %s' % (img_path,transl_out.strip()))
 
 def kml2vrt(map_path):
     map_dir, map_fname=os.path.split(map_path)
