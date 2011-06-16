@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-18 15:38:45 
+# 2011-06-16 18:16:32 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -150,7 +150,7 @@ class OziMap(MapTranslator):
         
     def get_refs(self):
         'get a list of geo refs in tuples'
-        points=[i for i in self.hdr_parms('Point') if i[2] != ''] # Get a list of geo refs
+        points=[i for i in self.hdr_parms('Point') if len(i) > 2 and i[2] != ''] # Get a list of geo refs
         if points[0][14] != '': # refs are cartesian
             refs=OziRefPoints(self,[(
                     i[0],                               # id
@@ -173,7 +173,10 @@ class OziMap(MapTranslator):
         ply_pix=[(int(i[2]),int(i[3])) for i in self.hdr_parms('MMPXY')]    # Moving Map border pixels
         ply_ll=[(float(i[2]),float(i[3])) for i in self.hdr_parms('MMPLL')] # Moving Map border lat,lon
         ids=[i[0] for i in self.hdr_parms('MMPXY')]    # Moving Map border pixels
-        plys=RefPoints(self,ids=ids,pixels=ply_pix,latlong=ply_ll)
+        if (ply_pix and ply_ll):
+            plys=RefPoints(self,ids=ids,pixels=ply_pix,latlong=ply_ll)
+        else
+            plys=None
         return plys
 
     def get_dtm(self):
