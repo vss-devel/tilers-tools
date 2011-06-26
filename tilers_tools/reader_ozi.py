@@ -175,7 +175,7 @@ class OziMap(MapTranslator):
         ids=[i[0] for i in self.hdr_parms('MMPXY')]    # Moving Map border pixels
         if (ply_pix and ply_ll):
             plys=RefPoints(self,ids=ids,pixels=ply_pix,latlong=ply_ll)
-        else
+        else:
             plys=None
         return plys
 
