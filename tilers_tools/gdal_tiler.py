@@ -1556,15 +1556,6 @@ def proc_src(src):
     #
     cls(src,dest,options).walk_pyramid()
 
-profile_map={
-    'none':     None,
-    'draft':    ('nearest','nearest'),
-    'release':  ('antialias','bilinear'),
-    }
-
-def profile_lst(): 
-    return profile_map.keys()
-
 #############################
 
 def main(argv):
@@ -1589,9 +1580,8 @@ def main(argv):
     parser.add_option('--base-resampling', default='nearest',metavar="METHOD2",
         choices=base_resampling_lst(),
         help='base image resampling method (default: nearest)')
-    parser.add_option('-p','--profile', default='none',
-        choices=profile_lst(),
-        help='resampling profile (default: draft)')
+    parser.add_option('--release', action="store_true",
+        help='set resampling options to (antialias,bilinear)')
     parser.add_option("-c", "--cut", action="store_true", 
         help='cut the raster as per cutline provided')
     parser.add_option("--cutline", default=None, metavar="DATASOURCE",
@@ -1634,8 +1624,8 @@ def main(argv):
         Pyramid.domain_lst(tty=True)
         sys.exit(0)
 
-    if options.profile != 'none':
-        options.overview_resampling,options.base_resampling=profile_map[options.profile]
+    if options.release:
+        options.overview_resampling,options.base_resampling=('antialias','bilinear')
 
     if not args:
         parser.error('No input file(s) specified')
