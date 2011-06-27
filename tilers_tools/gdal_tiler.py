@@ -1574,13 +1574,13 @@ def main(argv):
         help="override source's spatial reference system with PROJ.4 definition")
     parser.add_option("-z", "--zoom", default=None,metavar="ZOOM_LIST",
         help='list of zoom ranges to generate')
-    parser.add_option('-r','--overview-resampling', default='nearest',metavar="METHOD1",
+    parser.add_option('--overview-resampling', default='nearest',metavar="METHOD1",
         choices=resampling_lst(),
         help='overview tiles resampling method (default: nearest)')
     parser.add_option('--base-resampling', default='nearest',metavar="METHOD2",
         choices=base_resampling_lst(),
         help='base image resampling method (default: nearest)')
-    parser.add_option('--release', action="store_true",
+    parser.add_option('-r','--release', action="store_true",
         help='set resampling options to (antialias,bilinear)')
     parser.add_option("-c", "--cut", action="store_true", 
         help='cut the raster as per cutline provided')
