@@ -673,20 +673,18 @@ class Pyramid(object):
         'change prime meridian to allow charts crossing 180 meridian'
 
     #############################
-        ul,lr=MyTransformer(self.src_ds,DST_SRS=self.longlat).transform([(0,0,0),(self.src_ds.RasterXSize,self.src_ds.RasterYSize,0)])
+        ul,lr=MyTransformer(self.src_ds,DST_SRS=self.longlat).transform([(0,0),(self.src_ds.RasterXSize,self.src_ds.RasterYSize)])
         ld('shift_srs ul',ul,'lr',lr)
-        if ul[0] < lr[0]:
+        if lr[0] <= 180 and ul[0] >=-180 and ul[0] < lr[0]:
             return self.proj
 
         left_lon=int(math.floor(ul[0]))
         left_xy=self.proj2geog.transform_point((left_lon,0),inv=True)
-        if zoom is not None: # adjust to a tile boundary
-            left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
-
-        new_pm=int(math.floor(
-                self.proj2geog.transform_point(left_xy)[0]
-                ))#-180
-        ld('left_xy',left_xy,'new_pm',new_pm)
+#        if zoom is not None: # adjust to a tile boundary
+#            left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
+#        new_pm=int(math.floor(self.proj2geog.transform_point(left_xy)[0]))+180
+        new_pm=left_lon+180
+        ld('left_lon',left_lon,'left_xy',left_xy,'new_pm',new_pm)
         return '%s +pm=%d' % (self.proj,new_pm)
 
     #############################
