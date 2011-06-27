@@ -132,12 +132,13 @@ def dest_path(src,dest_dir,ext='',template='%s'):
     
 def re_sub_file(fname, subs_list):
     'stream edit file using reg exp substitution list'
-    with open(fname+'.new', 'w') as out:
+    new=fname+'.new'
+    with open(new, 'w') as out:
         for l in open(fname, 'rU'):
             for (pattern,repl) in subs_list:
                 l=re.sub(pattern,repl,string=l)
             out.write(l)
-    shutil.move(fname+'.new',fname)
+    shutil.move(new,fname)
 
 #############################
 #
@@ -176,8 +177,8 @@ class MyTransformer(gdal.Transformer):
     def transform(self,points,inv=False):
         transformed,ok=self.TransformPoints(inv,points)
         assert ok
-        return transformed
+        return [i[:2] for i in transformed]
 
-    def transform_pt(self,point,inv=False):
+    def transform_point(self,point,inv=False):
         return self.transform([point],inv=inv)[0]
 

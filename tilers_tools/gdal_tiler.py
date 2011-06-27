@@ -306,6 +306,7 @@ warp_vrt='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d" subClass
   <BlockXSize>%(blxsize)d</BlockXSize>
   <BlockYSize>%(blysize)d</BlockYSize>
   <GDALWarpOptions>
+    <!-- <WarpMemoryLimit>6.71089e+07</WarpMemoryLimit> -->
     <ResampleAlg>%(wo_ResampleAlg)s</ResampleAlg>
     <WorkingDataType>Byte</WorkingDataType>
     <SourceDataset relativeToVRT="0">%(wo_src_path)s</SourceDataset>
@@ -425,11 +426,14 @@ class Pyramid(object):
         self.shift_x=0
         self.tile_sz=(256,256)
 
+        self.longlat=proj_cs2geog_cs(self.proj)
+        self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
         self.init_grid() # virtual
+        ld('proj,longlat',self.proj,self.longlat)
+        
+        # init to maximum extent
         self.origin=self.pix2coord(0,(0,0))
         self.extent=self.pix2coord(0,map(operator.mul,self.zoom0_tiles,self.tile_sz))
-
-        ld('proj,longlat',self.proj,self.longlat)
 
         self.src=src
         self.dest=dest
@@ -502,29 +506,33 @@ class Pyramid(object):
         self.get_src_ds()
         # calculate zoom range
         self.calc_zoom(zoom_parm)
+        self.base_zoom=self.zoom_range[0]        
              
-        # reproject to base zoom
-        self.base_zoom=self.zoom_range[0]
-        
-        # extend the raster to cover full tiles
-        ld("extend the raster")
+        # shift target SRS to avoid crossing 180 meridian
         shifted_srs=self.shift_srs(self.base_zoom)
-
-        # get origin and corners at the target SRS
-        t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
-        tr=MyTransformer(t_ds)
-        self.origin,self.extent=tr.transform([(0,0),(t_ds.RasterXSize,t_ds.RasterYSize)])
-
-        # shift SRS to avoid crossing 180 meridian
-        tr_srs=MyTransformer(SRC_SRS=shifted_srs,DST_SRS=self.proj)
-        shift_x,y,z=tr_srs.transform_pt((0,0))
+        shift_x,y=MyTransformer(SRC_SRS=shifted_srs,DST_SRS=self.proj).transform_point((0,0))
         ld('new_srs',shifted_srs,'shift_x',shift_x,'coord_offset',self.coord_offset)
         if shift_x < 0:
-            shift_x+=self.zoom0_tile_dim[0]*2
+            shift_x += self.zoom0_tile_dim[0]*2
         self.coord_offset[0]+=shift_x
         self.shift_x=shift_x
         self.proj=shifted_srs
 
+        # get corners at the target SRS
+        target_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
+        target_origin,target_extent=MyTransformer(target_ds).transform([(0,0),(target_ds.RasterXSize,target_ds.RasterYSize)])
+
+        # clip to the max tileset area (set at the __init__)
+        ld('target raster')
+        ld('Upper Left ',self.origin,target_origin,self.proj2geog.transform([self.origin,target_origin]))
+        ld('Lower Right',self.extent,target_extent,self.proj2geog.transform([self.extent,target_extent]))
+
+        self.origin[0]=max(self.origin[0],target_origin[0])
+        self.origin[1]=min(self.origin[1],target_origin[1])
+        self.extent[0]=min(self.extent[0],target_extent[0])
+        self.extent[1]=max(self.extent[1],target_extent[1])
+        
+        # reproject to base zoom
         self.make_base_raster()
 
         return True
@@ -545,6 +553,8 @@ class Pyramid(object):
         src_geotr=src_ds.GetGeoTransform()
         src_proj=wkt2proj4(src_ds.GetProjection())
         gcps=src_ds.GetGCPs()
+        if gcps:
+            ld('src GCPsToGeoTransform',gdal.GCPsToGeoTransform(gcps))
 
         if not src_proj and gcps :
             src_proj=wkt2proj4(src_ds.GetGCPProjection())
@@ -649,31 +659,35 @@ class Pyramid(object):
             if gcps :
                 self.src_ds.SetGCPs(gcps,proj4wkt(src_proj))
 
+        # debug print
+        ld('source_raster')
+        src_origin,src_extent=MyTransformer(src_ds).transform([(0,0),(src_ds.RasterXSize,src_ds.RasterYSize)])
+        src_proj=wkt2proj4(src_ds.GetProjection())
+        src_proj2geog=MyTransformer(SRC_SRS=src_proj,DST_SRS=proj_cs2geog_cs(src_proj))
+        ld('Upper Left ',src_origin,src_proj2geog.transform([src_origin]))
+        ld('Lower Right',src_extent,src_proj2geog.transform([src_extent]))        
+
     #############################
 
     def shift_srs(self,zoom=None):
         'change prime meridian to allow charts crossing 180 meridian'
 
     #############################
-        t_ds=self.src_ds
-        tr_pix_ll=MyTransformer(t_ds,DST_SRS=self.longlat)
-        ll=tr_pix_ll.transform([(0,0,0),(t_ds.RasterXSize,t_ds.RasterYSize,0)])
-        ul,lr=ll
-        ld('ul',ul,'lr',lr)
+        ul,lr=MyTransformer(self.src_ds,DST_SRS=self.longlat).transform([(0,0,0),(self.src_ds.RasterXSize,self.src_ds.RasterYSize,0)])
+        ld('shift_srs ul',ul,'lr',lr)
         if ul[0] < lr[0]:
             return self.proj
 
         left_lon=int(math.floor(ul[0]))
-        tr_srs=MyTransformer(SRC_SRS=self.longlat,DST_SRS=self.proj)
-        left_xy=tr_srs.transform_pt((left_lon,0))
+        left_xy=self.proj2geog.transform_point((left_lon,0),inv=True)
         if zoom is not None: # adjust to a tile boundary
             left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
 
         new_pm=int(math.floor(
-                tr_srs.transform_pt(left_xy,inv=True)[0]
+                self.proj2geog.transform_point(left_xy)[0]
                 ))#-180
         ld('left_xy',left_xy,'new_pm',new_pm)
-        return '%s +lon_0=%d' % (self.proj,new_pm)
+        return '%s +pm=%d' % (self.proj,new_pm)
 
     #############################
 
@@ -685,7 +699,7 @@ class Pyramid(object):
         if not zoom_parm: # calculate "automatic" zoom levels
             # check raster parameters to find default zoom range
             # modify target srs to allow charts crossing meridian 180
-            ld('"automatic" zoom levels')
+            ld('automatic zoom levels')
             shifted_srs=self.shift_srs()
 
             t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
@@ -697,7 +711,7 @@ class Pyramid(object):
             ul_c=(geotr[0], geotr[3])
             lr_c=gdal.ApplyGeoTransform(geotr,t_ds.RasterXSize,t_ds.RasterYSize)
             wh=(lr_c[0]-ul_c[0],ul_c[1]-lr_c[1])
-            ld(ul_c,lr_c,wh)
+            ld('ul_c,lr_c,wh',ul_c,lr_c,wh)
             min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_sz[i]for i in (0,1)]))
             zoom_parm='%d-%d'%(min_zoom,max_zoom)
 
@@ -712,6 +726,7 @@ class Pyramid(object):
 
         # adjust raster extents to tile boundaries
         tile_ul,tile_lr=self.corner_tiles(self.base_zoom)
+        ld('base_raster')
         ld('tile_ul',tile_ul,'tile_lr',tile_lr)
         ul_c=self.tile2coord_box(tile_ul)[0]
         lr_c=self.tile2coord_box(tile_lr)[1]
@@ -721,9 +736,9 @@ class Pyramid(object):
         # base zoom level raster size
         dst_xsize=lr_pix[0]-ul_pix[0] 
         dst_ysize=lr_pix[1]-ul_pix[1]
-                
-        ld('Upper Left ',self.origin,ul_c)
-        ld('Lower Right',self.extent,lr_c)
+
+        ld('Upper Left ',self.origin,ul_c,self.proj2geog.transform([self.origin,ul_c]))
+        ld('Lower Right',self.extent,lr_c,self.proj2geog.transform([self.extent,lr_c]))
         ld('coord_offset',self.coord_offset,'ul_c+c_off',map(operator.add,ul_c,self.coord_offset))
 
         # create VRT for base image warp
@@ -746,15 +761,15 @@ class Pyramid(object):
             ld('gcp_proj',self.src_ds.GetGCPProjection())
             gcp_proj=wkt2proj4(self.src_ds.GetGCPProjection())
             if src_proj and gcp_proj != src_proj:
-                gcp2src=MyTransformer(SRC_SRS=gcp_proj,DST_SRS=src_proj)
-                coords=gcp2src.transform([g[3:6] for g in gcp_lst])
+                coords=MyTransformer(SRC_SRS=gcp_proj,DST_SRS=src_proj).transform([g[3:6] for g in gcp_lst])
                 gcp_lst=[tuple(p[:3]+c) for p,c in zip(gcp_lst,coords)]
 
             gcp_txt='\n'.join((gcp_templ % g for g in gcp_lst))
             #src_transform=warp_src_gcp_transformer % (0,gcp_txt)
             src_transform=warp_src_tps_transformer % gcp_txt
 
-        res=self.zoom2res(self.base_zoom) 
+        res=self.zoom2res(self.base_zoom)
+        ld('base_zoom,res',self.base_zoom,res)
         dst_geotr=( ul_c[0], res[0],     0.0,
                 ul_c[1],    0.0, -res[1] )
         ok,dst_igeotr=gdal.InvGeoTransform(dst_geotr)
@@ -809,7 +824,7 @@ class Pyramid(object):
         if src_bands < 4 and self.palette is None:
             vrt_bands.append(warp_band % (src_bands+1,warp_band_color % 'Alpha'))
 
-        block_sz=self.src_ds.GetRasterBand(1).GetBlockSize()
+        block_sz=self.tile_sz
 
         vrt_text=warp_vrt % {
             'xsize':            dst_xsize,
@@ -883,12 +898,11 @@ class Pyramid(object):
         if cut_file:
             multipoint_lst=self.shape2mpointlst(cut_file,src_proj)
 
-            pix_tr=MyTransformer(src_ds)
-            p_pix=pix_tr.transform_pt(point_lst,inv=True)
+            p_pix=MyTransformer(src_ds).transform_point(point_lst,inv=True)
 
             mpoly=[]
             for points in multipoint_lst:
-                p_pix=pix_tr.transform_pt(points,inv=True)
+                p_pix=pix_tr.transform_point(points,inv=True)
                 mpoly.append(','.join(['%r %r' % (p[0],p[1]) for p in p_pix]))
             cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly])
         return cutline
@@ -1047,7 +1061,7 @@ class Pyramid(object):
 
     def pix2coord(self,zoom,pix_coord):
         pix00_ofs=map(operator.mul,pix_coord,self.zoom2res(zoom))
-        return (pix00_ofs[0]-self.coord_offset[0],-(pix00_ofs[1]-self.coord_offset[1]))
+        return [pix00_ofs[0]-self.coord_offset[0],-(pix00_ofs[1]-self.coord_offset[1])]
 
     def tile_path(self,tile):
         'relative path to a tile'
@@ -1064,11 +1078,10 @@ class Pyramid(object):
         return [z,x%nztiles[0],y%nztiles[1]]
 
     def coords2longlat(self, coords): # redefined in PlateCarree
-        try:
-            self.proj2longlat
-        except: # first time call
-            self.proj2longlat=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
-        return [i[:2] for i in self.proj2longlat.transform(coords)]
+        longlat=[i[:2] for i in self.proj2geog.transform(coords)]
+        ld('coords',coords)
+        ld('longlat',longlat)
+        return longlat
 
     def boxes2longlat(self,box_lst):
         out=self.coords2longlat(flatten(box_lst))
@@ -1086,7 +1099,7 @@ class Pyramid(object):
 
         nztiles=self.zoom_tiles(zoom)
 
-        ld('zoom',zoom,'p_ul',p_ul,'p_lr',p_lr,'t_ul',t_ul,'t_lr',t_lr,
+        ld('corner_tiles zoom',zoom,'p_ul',p_ul,'p_lr',p_lr,'t_ul',t_ul,'t_lr',t_lr,
             'zoom tiles',nztiles,
             'zoom size',map(lambda zt,ts:zt*ts,nztiles,self.tile_sz))
         return t_ul,t_lr
@@ -1136,8 +1149,7 @@ class Pyramid(object):
 
     def set_region(self,point_lst,source_srs=None):
         if source_srs and source_srs != self.proj:
-            srs_tr=MyTransformer(SRC_SRS=source_srs,DST_SRS=self.proj)
-            point_lst=srs_tr.transform(point_lst)
+            point_lst=MyTransformer(SRC_SRS=source_srs,DST_SRS=self.proj).transform(point_lst)
 
         x_coords,y_coords=zip(*point_lst)[0:2]
         upper_left=min(x_coords),max(y_coords)
@@ -1198,9 +1210,7 @@ class PlateCarree(Pyramid):
     def init_grid(self):
         'init tile grid parameters'
         
-        self.longlat=proj_cs2geog_cs(self.proj)
-        tr=MyTransformer(SRC_SRS=self.longlat,DST_SRS=self.proj)
-        semi_circ,semi_meridian,z=tr.transform_pt((180,90))
+        semi_circ,semi_meridian=self.proj2geog.transform_point((180,90),inv=True)
         self.zoom0_tiles=[2,1] # tiles at zoom 0
         self.zoom0_tile_dim=[semi_circ,semi_meridian*2] # dimentions of a tile at zoom 0
         self.coord_offset=[semi_circ,semi_meridian]
@@ -1343,10 +1353,8 @@ class Gmaps(Pyramid):
     def init_grid(self):
         'init tile grid parameters'
 
-        self.longlat=proj_cs2geog_cs(self.proj)
-        tr=MyTransformer(SRC_SRS=self.longlat,DST_SRS=self.proj)
-        semi_circ,y,z=tr.transform_pt((180,0)) # Half Equator length in meters
-        ld(semi_circ)
+        semi_circ,foo=self.proj2geog.transform_point((180,0),inv=True) # Half Equator length in meters
+        ld('semi_circ',semi_circ)
         self.zoom0_tiles=[1,1] # tiles at zoom 0
         self.zoom0_tile_dim=[semi_circ*2,semi_circ*2]  # dimentions of a tile at zoom 0
         self.coord_offset=[semi_circ,semi_circ]
@@ -1413,16 +1421,19 @@ google_templ='''<!DOCTYPE html>
 <title>%(title)s</title>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <!-- <meta name="viewport" content="initial-scale=1.0, user-scalable=no" /> -->
+
 <style type="text/css">
   html { height: 100%% }
   body { height: 100%%; margin: 0px; padding: 0px }
   #map_canvas { height: 100%% }
 </style>
+
 <script type="text/javascript"
     src="http://maps.google.com/maps/api/js?sensor=false">
 </script>
+
 <script type="text/javascript">
-    var G=google.maps; // use G instead of google.maps
+    var G=google.maps; // use G. instead of google.maps.
 
     var mapBounds = new G.LatLngBounds(new G.LatLng(%(longlat_ll)s), new G.LatLng(%(longlat_ur)s));
     var mapMinZoom = %(minzoom)d;
@@ -1432,8 +1443,8 @@ google_templ='''<!DOCTYPE html>
     var tiles_root = "%(tiles_root)s";
     var tms_tiles = %(tms_tiles)s;
     var map_type = G.MapTypeId.%(map_type)s;
-
     var opacity = 0.5;
+    var transparent_url='http://maps.gstatic.com/mapfiles/transparent.png';
 
     function log(msg) {
         setTimeout(function() {
@@ -1444,15 +1455,18 @@ google_templ='''<!DOCTYPE html>
     function map_overlay(){
         return new G.ImageMapType({
             getTileUrl: function(coord, zoom) {
-                max_x=1<<zoom
-                max_y=1<<zoom
+                max_x=1<<zoom;
+                max_y=1<<zoom;
+                y=coord.y;
+                if(y >= max_y || y < 0)
+                    return transparent_url
                 x=coord.x %% max_x;
                 if (x < 0)
-                    x=max_x+x
-                y=coord.y;
+                    x=max_x+x;
                 if (tms_tiles) y=(1<<zoom)-coord.y-1;
-                //log(tiles_root+zoom+"/"+x+"/"+y+tile_ext)
-                return tiles_root+zoom+"/"+x+"/"+y+tile_ext;
+                url=tiles_root+zoom+"/"+x+"/"+y+tile_ext;
+                //log(url);
+                return url;
                 },
             tileSize: tile_size,
             opacity: opacity,
@@ -1520,6 +1534,7 @@ google_templ='''<!DOCTYPE html>
         }
 </script>
 </head>
+
 <body onload="initialize()">
 <!--    <div id="header"><h1>%(header)s</h1></div> -->
     <div id="map_canvas" style="width:100%%; height:100%%"></div>
