@@ -53,15 +53,6 @@ def ext_from_file(path):
         buf = f.read(512)
         return ext_from_buffer(buf)
 
-def path2list(path):
-    head,ext=os.path.splitext(path)
-    split=[ext]
-    while head:
-        head,p=os.path.split(head)
-        split.append(p)
-    split.reverse()
-    return split
-
 class Tile(object):
     def __init__(self,coord):
         self._coord=coord

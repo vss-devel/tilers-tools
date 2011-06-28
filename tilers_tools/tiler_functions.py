@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-27 15:58:32 
+# 2011-06-28 12:53:09 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -98,6 +98,15 @@ except:
 
 def if_set(x,default=None):
     return x if x is not None else default
+
+def path2list(path):
+    head,ext=os.path.splitext(path)
+    split=[ext]
+    while head:
+        head,p=os.path.split(head)
+        split.append(p)
+    split.reverse()
+    return split
 
 def command(params,child_in=None):
     cmd_str=' '.join(('"%s"' % i if ' ' in i else i for i in params))
