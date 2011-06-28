@@ -78,8 +78,10 @@ if __name__=='__main__':
     logging.basicConfig(level=logging.INFO)
     #logging.basicConfig(level=logging.DEBUG)
 
-    parser = optparse.OptionParser()
-    usage = "usage: %prog [options] arg"
+    parser = optparse.OptionParser(
+        usage="usage: %prog [options] arg",
+        version=version,
+        )
     parser.add_option("-n", "--colors", dest="colors", default='256',
         help='Specifies  the  number  of colors to quantize to (default: 256)')
     parser.add_option("--jpeg", action="store_true",

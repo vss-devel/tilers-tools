@@ -78,8 +78,10 @@ class ZoomSet:
 # ZoomSet end
 
 if __name__=='__main__':
-    usage = "usage: %prog tiles_dir ..."
-    parser = optparse.OptionParser(usage=usage, description="")
+    parser = optparse.OptionParser(
+        usage="usage: %prog tiles_dir ...", 
+        version=version,
+        )
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose")
     parser.add_option("-z", "--zoom", dest="zoom", type='int', 
         help='target zoom level)')

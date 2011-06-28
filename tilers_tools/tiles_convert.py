@@ -369,6 +369,7 @@ def tiles_convert(src_lst,options):
 if __name__=='__main__':
     parser = optparse.OptionParser(
         usage="usage: %prog  <source> [<target>]",
+        version=version,
         description="copies map tiles from one structure to another")
     parser.add_option("--from", dest="in_fmt", default='gmaps',
         help='input tiles format (default: gmaps)')

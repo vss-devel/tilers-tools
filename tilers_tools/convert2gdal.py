@@ -57,8 +57,9 @@ def proc_src(src):
     cls(src,options=options).convert()
 
 if __name__=='__main__':
-    usage = "usage: %prog <options>... map_file..."
-    parser = OptionParser(usage=usage,
+    parser = OptionParser(
+        usage="usage: %prog <options>... map_file...",
+        version=version,
         description="Extends GDAL's builtin support for a few mapping formats: BSB/KAP, GEO/NOS, Ozi map. "
         "The script translates a map file with into GDAL .vrt")
     parser.add_option("--srs", default=None,
@@ -89,7 +90,7 @@ if __name__=='__main__':
 #        help='try to workaround some BSB broken rasters (requires "convert" from ImageMagick)')
 
     (options, args) = parser.parse_args()
-    
+
     if not args:
         parser.error('No input file(s) specified')
 

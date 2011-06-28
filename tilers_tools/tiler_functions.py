@@ -28,6 +28,8 @@
 from __future__ import with_statement
 from __future__ import print_function
 
+version='%prog version 2.2b'
+
 import sys
 import os
 import os.path

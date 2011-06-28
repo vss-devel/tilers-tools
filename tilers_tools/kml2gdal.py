@@ -114,8 +114,9 @@ def kml2vrt(map_path):
         overlay2vrt(ol,map_dir)
 
 if __name__=='__main__':
-    usage = "usage: %prog [--cut] [--dest-dir=DEST_DIR] MAP_file..."
-    parser = OptionParser(usage=usage,
+    parser = OptionParser(
+        usage="usage: %prog [--cut] [--dest-dir=DEST_DIR] MAP_file...",
+        version=version,
         description="simple KML converter into GDAL .VRT format")
     parser.add_option("-d", "--debug", action="store_true", dest="debug")
     parser.add_option("-t", "--dest-dir", dest="dest_dir", default='',

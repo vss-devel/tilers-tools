@@ -82,10 +82,12 @@ class MergeSet:
 # MergeSet end
 
 if __name__=='__main__':
-    usage = "usage: %prog tiles_dir"
-    parser = optparse.OptionParser(usage=usage, description="")
+    parser = optparse.OptionParser(
+        usage="usage: %prog tiles_dir",
+        version=version,
+        )
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose")
-        
+
     (options, args) = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG if options.verbose else logging.INFO)

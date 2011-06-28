@@ -260,6 +260,7 @@ class Poi2Mapper:
 if __name__=='__main__':
     parser = optparse.OptionParser(
         usage="usage: %prog [-o <output_db>] [<kml_file>]... [<input_db>]...",
+        version=version,
         description="makes maemo-mapper POI db from a kml file(s)")
     parser.add_option("-d", "--debug", action="store_true", dest="debug")
     parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
@@ -272,7 +273,7 @@ if __name__=='__main__':
     logging.basicConfig(level=logging.DEBUG if options.debug else 
         (logging.ERROR if options.quiet else logging.INFO))
 
-    if args == [] and not options.input_db:
+    if args == []:
         raise Exception("No source specified")
 
     Poi2Mapper(args,options.dest_db).proc_all()

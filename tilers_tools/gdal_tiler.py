@@ -1562,8 +1562,9 @@ def main(argv):
 
 #############################
     
-    usage = "usage: %prog <options>... input_file..."
-    parser = OptionParser(usage=usage,
+    parser = OptionParser(
+        usage = "usage: %prog <options>... input_file...",
+        version=version,
         description='Tile cutter for GDAL-compatible raster maps')
     parser.add_option("--to",dest="domain",metavar='DOMAIN',
         default='gmaps',choices=Pyramid.domain_lst(),

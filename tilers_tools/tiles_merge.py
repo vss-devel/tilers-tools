@@ -229,6 +229,7 @@ class MergeSet:
 if __name__=='__main__':
     parser = optparse.OptionParser(
         usage="usage: %prog [--cut] [--dest-dir=DEST_DIR] <tile_dirs>... <target_dir>",
+        version=version,
         description="")
     parser.add_option("-r", "--remove-dest", action="store_true",
         help='delete destination directory before merging')
