@@ -110,7 +110,7 @@ if __name__=='__main__':
 
         if options.remove_dest: 
             shutil.rmtree(dst_dir,ignore_errors=True)
-        else os.path.exists(dst_dir):
+        elif os.path.exists(dst_dir):
             raise Exception('Destination already exists: %s' % dst_dir)
 
         # find all source files
@@ -122,8 +122,8 @@ if __name__=='__main__':
         finally:
             os.chdir(cwd)
 
-        parallel_map(proc_file,src_lst)            
-            
+        parallel_map(proc_file,src_lst)
+
         if options.jpeg: 
             gmaps=os.path.join(dst_dir,'gmaps.html')
             if os.path.exists(gmaps):
