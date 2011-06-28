@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-12 11:36:05 
+# 2011-06-28 12:19:18 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -92,9 +92,9 @@ def modify_htmls(src_dir, dest_dir):
         # check if it's TMS type
         s=[ i for i in open(os.path.join(src_dir,googlemaps))
             if 'var tms_tiles' in i][0]
-        tms_type= 'true' in s
+        tms_tiles= 'true' in s
 
-        return tms_type
+        return tms_tiles
 
 def transparency(img):
     'estimate transparency of an image'
@@ -131,14 +131,17 @@ class MergeSet:
         # do the thing
         self.merge_dirs()
 
-    def underlay(self,tile,src_path,src_raster):
+    def underlay(self,tile,src_path,src_raster,level):
+        if level <= 0:
+            return
+        level -= 1
         (s,ext)=os.path.splitext(tile)
         (s,y)=os.path.split(s)
         (z,x)=os.path.split(s)
         (z,y,x)=map(int,(z,y,x))
         if z < self.max_zoom:
             return
-        if self.tms_type:
+        if self.tms_tiles:
             tiles_map=[
                 (  0,128,128,256), (128,128,256,256),
                 (  0,  0,128,128), (128,  0,256,128),
@@ -151,19 +154,26 @@ class MergeSet:
         tiles_in=[(x*2,y*2), (x*2+1,y*2),
                   (x*2,y*2+1),(x*2+1,y*2+1)]
         for (src_xy,out_loc) in zip(tiles_in,tiles_map):
-            dest_path=os.path.join(self.dest,'%i/%i/%i.png' % (z+1,src_xy[0],src_xy[1]))
-            if os.path.exists(dest_path):
-                dest_raster=Image.open(dest_path).convert("RGBA")
-                if transparency(dest_raster) == 1: # lower tile is fully opaque
-                    continue
-                pf('#',end='')
-                if not src_raster: # check if opening was deferred
-                    src_raster=Image.open(src_path).convert("RGBA")
-                out_raster=src_raster.crop(out_loc).resize((256,256),Image.BILINEAR)
-                out_raster=Image.composite(dest_raster,out_raster,dest_raster)
-                del dest_raster
-                out_raster.save(dest_path)
-        
+            dest_tile='%i/%i/%i%s' % (z+1,src_xy[0],src_xy[1],ext)
+            dest_path=os.path.join(self.dest,dest_tile)
+            if not os.path.exists(dest_path):
+                continue
+            dest_raster=Image.open(dest_path).convert("RGBA")
+            if transparency(dest_raster) == 1: # lower tile is fully opaque
+                continue
+            if not src_raster: # check if opening was deferred
+                src_raster=Image.open(src_path).convert("RGBA")
+            out_raster=src_raster.crop(out_loc).resize((256,256),Image.BILINEAR)
+            out_raster=Image.composite(dest_raster,out_raster,dest_raster)
+            del dest_raster
+            out_raster.save(dest_path)
+
+            if options.debug:
+                pf('%i'%level,end='')
+            else:
+                pf('#',end='')            
+            self.underlay(dest_tile,dest_path,out_raster,level)
+                
     def __call__(self,tile):
         '''called by map() to merge a source tile into the destination tile set'''
         try:
@@ -195,7 +205,7 @@ class MergeSet:
                 dst_raster=Image.composite(src_raster,Image.open(dest_tile),src_raster)
                 dst_raster.save(dest_tile)
             if options.underlay and transp != 0:
-                self.underlay(tile,src_path,src_raster)
+                self.underlay(tile,src_path,src_raster,options.underlay)
         except KeyboardInterrupt: # http://jessenoller.com/2009/01/08/multiprocessingpool-and-keyboardinterrupt/
             print 'got KeyboardInterrupt'
             raise KeyboardInterruptError()
@@ -210,7 +220,7 @@ class MergeSet:
         pf('')
 
     def merge_dirs(self):
-        self.tms_type=modify_htmls(self.src, self.dest)
+        self.tms_tiles=modify_htmls(self.src, self.dest)
         res=parallel_map(self,self.src_lst)
         self.upd_stat(res)
 
@@ -228,7 +238,7 @@ if __name__=='__main__':
         help='strip extension suffix from a source parameter')
     parser.add_option("-x", "--add-src-ext", default=None,
         help='add extension suffix to a source parameter')
-    parser.add_option('-u',"--underlay", action="store_true",
+    parser.add_option('-u',"--underlay", type='int', default=0,
         help="underlay semitransparent tiles with a zoomed-in raster from a higher level")
     parser.add_option("-q", "--quiet", action="store_true")
     parser.add_option("-d", "--debug", action="store_true")
@@ -238,6 +248,8 @@ if __name__=='__main__':
     (options, args) = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if options.debug else 
         (logging.ERROR if options.quiet else logging.INFO))
+        
+    ld(options)
 
     if options.src_list:
         src_dirs=[i.rstrip('\n') for i in open(options.src_list,'r')]
