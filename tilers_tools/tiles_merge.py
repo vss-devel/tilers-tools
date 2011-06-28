@@ -131,7 +131,7 @@ class MergeSet:
         # do the thing
         self.merge_dirs()
 
-    def cutout(self,tile,src_path,src_raster):
+    def underlay(self,tile,src_path,src_raster):
         (s,ext)=os.path.splitext(tile)
         (s,y)=os.path.split(s)
         (z,x)=os.path.split(s)
@@ -194,8 +194,8 @@ class MergeSet:
                     src_raster=Image.open(src_path).convert("RGBA")
                 dst_raster=Image.composite(src_raster,Image.open(dest_tile),src_raster)
                 dst_raster.save(dest_tile)
-            if options.cutout and transp != 0:
-                self.cutout(tile,src_path,src_raster)
+            if options.underlay and transp != 0:
+                self.underlay(tile,src_path,src_raster)
         except KeyboardInterrupt: # http://jessenoller.com/2009/01/08/multiprocessingpool-and-keyboardinterrupt/
             print 'got KeyboardInterrupt'
             raise KeyboardInterruptError()
@@ -228,8 +228,8 @@ if __name__=='__main__':
         help='strip extension suffix from a source parameter')
     parser.add_option("-x", "--add-src-ext", default=None,
         help='add extension suffix to a source parameter')
-    parser.add_option("--cutout", action="store_true",
-        help="transparent areas at the top of the source pyramid are filled in with zoomed in image from the destination's higher level")
+    parser.add_option('-u',"--underlay", action="store_true",
+        help="underlay semitransparent tiles with a zoomed-in raster from a higher level")
     parser.add_option("-q", "--quiet", action="store_true")
     parser.add_option("-d", "--debug", action="store_true")
     parser.add_option("--nothreads", action="store_true",
