@@ -110,6 +110,8 @@ if __name__=='__main__':
 
         if options.remove_dest: 
             shutil.rmtree(dst_dir,ignore_errors=True)
+        else os.path.exists(dst_dir):
+            raise Exception('Destination already exists: %s' % dst_dir)
 
         # find all source files
         try:
