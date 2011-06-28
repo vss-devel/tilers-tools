@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-06-28 12:19:18 
+# 2011-06-28 14:40:44 
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -121,9 +121,9 @@ class MergeSet:
         
         # load cached tile transparency data if any
         self.src_transp=dict.fromkeys(self.src_lst,None)
-        self.cache_path=os.path.join(self.src, 'merge-cache')
+        self.src_cache_path=os.path.join(self.src, 'merge-cache')
         try:
-            self.src_transp.update(pickle.load(open(self.cache_path,'r')))
+            self.src_transp.update(pickle.load(open(self.src_cache_path,'r')))
         except:
             ld("cache load failed")
         ld(repr(self.src_transp))
@@ -181,9 +181,9 @@ class MergeSet:
             dest_tile=os.path.join(self.dest,tile)
             dpath=os.path.dirname(dest_tile)
             if not os.path.exists(dpath):
-                try:
+                try: # thread race safety
                     os.makedirs(dpath)
-                except os.error: pass
+                except os.error: pass 
             src_raster=None
             transp=self.src_transp[tile]
             if transp == None: # transparency value not cached yet
@@ -198,7 +198,7 @@ class MergeSet:
                 # fully opaque or no destination tile exists yet
                 #pf('>',end='')
                 shutil.copy(src_path,dest_tile)
-            else: # semitransparent, combine with destination (exists!)
+            else: # semitransparent, combine with destination (exists! see above)
                 pf('+',end='')
                 if not src_raster: 
                     src_raster=Image.open(src_path).convert("RGBA")
@@ -214,7 +214,7 @@ class MergeSet:
     def upd_stat(self,stat):
         self.src_transp.update(dict(stat))
         try:
-            pickle.dump(self.src_transp,open(self.cache_path,'w'))
+            pickle.dump(self.src_transp,open(self.src_cache_path,'w'))
         except:
             ld("cache save failed")
         pf('')
