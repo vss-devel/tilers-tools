@@ -1003,19 +1003,19 @@ class Pyramid(object):
     #############################
 
     @staticmethod
-    def domain_class(domain_name):
-        for cls in domain_map:
-            if cls.domain == domain_name:
+    def profile_class(profile_name):
+        for cls in profile_map:
+            if cls.profile == profile_name:
                 return cls
         else:
-            raise Exception("Invalid domain: %s" % domain_name)
+            raise Exception("Invalid profile: %s" % profile_name)
 
     @staticmethod
-    def domain_lst(tty=False):
+    def profile_lst(tty=False):
         if not tty:
-            return [c.domain for c in domain_map]    
-        print('\nOutput domains and compatibility:\n')
-        [print('%10s - %s' % (c.domain,c.__doc__)) for c in domain_map]
+            return [c.profile for c in profile_map]    
+        print('\nOutput profiles and compatibility:\n')
+        [print('%10s - %s' % (c.profile,c.__doc__)) for c in profile_map]
         print()
 
     def zoom2res(self,zoom):
@@ -1194,7 +1194,7 @@ class PlateCarree(Pyramid):
     'Google Earth (plate carrée), Google tile numbering'
 
 #############################
-    domain='earth'
+    profile='earth'
     defaul_ext='.earth'
 
     # http://earth.google.com/support/bin/static.py?page=guide.cs&guide=22373&topic=23750
@@ -1277,7 +1277,7 @@ class PlateCarreeTMS(PlateCarree):
     'Google Earth (plate carrée), TMS tile numbering'
 
 #############################
-    domain='earth-tms'
+    profile='earth-tms'
     defaul_ext='.earth-tms'
 
     def tile_path(self,tile):
@@ -1342,7 +1342,7 @@ class Gmaps(Pyramid):
     'Google Maps (Global Mercator), native tile numbering'
 
 #############################
-    domain='gmaps'
+    profile='gmaps'
     defaul_ext='.gmaps'
 
     # Google Maps Global Mercator (epsg:3857)
@@ -1387,7 +1387,7 @@ class GMercatorTMS(Gmaps):
 
 #############################
     defaul_ext='.tms'
-    domain='tms'
+    profile='tms'
 
     def tile_path(self,tile):
         z,x,y=self.tile_norm(tile)
@@ -1400,7 +1400,7 @@ class Yandex(Gmaps):
     'Yandex Maps (WGS 84 / World Mercator, epsg:3395)'
 
 #############################
-    domain='yandex'
+    profile='yandex'
     defaul_ext='.yandex'
 
     proj='+proj=merc +datum=WGS84 +ellps=WGS84'
@@ -1541,7 +1541,7 @@ google_templ='''<!DOCTYPE html>
 '''
 # google_templ
 
-domain_map=(
+profile_map=(
     Gmaps,
     GMercatorTMS,
     PlateCarree,
@@ -1550,7 +1550,7 @@ domain_map=(
     )
 
 def proc_src(src):
-    cls=Pyramid.domain_class(options.domain)
+    cls=Pyramid.profile_class(options.profile)
     ext= cls.defaul_ext if options.strip_dest_ext is None else ''
     dest=dest_path(src,options.dest_dir,ext)
     #
@@ -1566,11 +1566,11 @@ def main(argv):
         usage = "usage: %prog <options>... input_file...",
         version=version,
         description='Tile cutter for GDAL-compatible raster maps')
-    parser.add_option("--to",dest="domain",metavar='DOMAIN',
-        default='gmaps',choices=Pyramid.domain_lst(),
-        help='output tiles domain (default: gmaps)')
-    parser.add_option("-l", "--list-domains", action="store_true",
-        help='list tile domains')
+    parser.add_option('-p','--profile','--to',dest="profile",metavar='PROFILE',
+        default='gmaps',choices=Pyramid.profile_lst(),
+        help='output tiles profile (default: gmaps)')
+    parser.add_option("-l", "--list-profiles", action="store_true",
+        help='list tile profiles')
     parser.add_option("--srs", default=None,metavar="PROJ4_SRS",
         help="override source's spatial reference system with PROJ.4 definition")
     parser.add_option("-z", "--zoom", default=None,metavar="ZOOM_LIST",
@@ -1621,8 +1621,8 @@ def main(argv):
     ld(os.name)
     ld(options)
     
-    if options.list_domains:
-        Pyramid.domain_lst(tty=True)
+    if options.list_profiles:
+        Pyramid.profile_lst(tty=True)
         sys.exit(0)
 
     if options.release:
