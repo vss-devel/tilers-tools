@@ -186,6 +186,8 @@ class MyTransformer(gdal.Transformer):
         super(MyTransformer, self).__init__(src_ds,dst_ds,opt_lst)
 
     def transform(self,points,inv=False):
+        if not points:
+            return []
         transformed,ok=self.TransformPoints(inv,points)
         assert ok
         return [i[:2] for i in transformed]

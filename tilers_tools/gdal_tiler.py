@@ -540,6 +540,10 @@ class Pyramid(object):
         self.shift_x=shift_x
         self.proj=shifted_srs
 
+        self.longlat=proj_cs2geog_cs(self.proj)
+        ld('proj,longlat',self.proj,self.longlat)
+        self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
+
         # get corners at the target SRS
         target_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
         target_origin,target_extent=MyTransformer(target_ds).transform([(0,0),(target_ds.RasterXSize,target_ds.RasterYSize)])
@@ -705,7 +709,7 @@ class Pyramid(object):
 #        new_pm=int(math.floor(self.proj2geog.transform_point(left_xy)[0]))+180
         new_pm=left_lon+180
         ld('left_lon',left_lon,'left_xy',left_xy,'new_pm',new_pm)
-        return '%s +pm=%d' % (self.proj,new_pm)
+        return '%s +lon_0=%d' % (self.proj,new_pm)
 
     #############################
 
@@ -1109,8 +1113,8 @@ class Pyramid(object):
 
     def coords2longlat(self, coords): # redefined in PlateCarree
         longlat=[i[:2] for i in self.proj2geog.transform(coords)]
-        ld('coords',coords)
-        ld('longlat',longlat)
+        #ld('coords',coords)
+        #ld('longlat',longlat)
         return longlat
 
     def boxes2longlat(self,box_lst):
@@ -1263,10 +1267,10 @@ class PlateCarree(Pyramid):
 #        self.coord_offset=[semi_circ,semi_meridian]
 #        ld('self.zoom0_tile_dim',self.zoom0_tile_dim,'self.coord_offset',self.coord_offset)
 
-    def coords2longlat(self, coords):
-        out=[map(lambda v,dim,c_off: (v+c_off)/dim*180,
-                coord,self.zoom0_tile_dim,(self.shift_x,0)) for coord in coords]
-        return [(lon,lat) for lon,lat in out]
+#    def coords2longlat(self, coords):
+#        out=[map(lambda v,dim,c_off: (v+c_off)/dim*180,
+#                coord,self.zoom0_tile_dim,(self.shift_x,0)) for coord in coords]
+#        return [(lon,lat) for lon,lat in out]
 
     def kml_child_links(self,children,parent=None,path_prefix=''):
         kml_links=[]
