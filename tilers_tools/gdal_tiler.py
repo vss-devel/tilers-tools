@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-06-08 14:34:17 
+# 2011-06-30 13:42:13 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -413,10 +413,15 @@ def base_resampling_lst(): return base_resampling_map.keys()
 
 class Pyramid(object):
     '''Tile pyramid generator and utilities'''
-
 #############################
 
+    tile_sz=(256,256)
+
+    #############################
+
     def __init__(self,src=None,dest=None,options=None):
+
+    #############################
         gdal.UseExceptions()
 
         self.temp_files=[]
@@ -424,22 +429,26 @@ class Pyramid(object):
         self.transparency=None
         self.zoom_range=None
         self.shift_x=0
-        self.tile_sz=(256,256)
 
         self.longlat=proj_cs2geog_cs(self.proj)
-        self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
-        self.init_grid() # virtual
         ld('proj,longlat',self.proj,self.longlat)
+        self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
+
+        self.init_grid()
         
         # init to maximum extent
         self.origin=self.pix2coord(0,(0,0))
-        self.extent=self.pix2coord(0,map(operator.mul,self.zoom0_tiles,self.tile_sz))
-
+        self.extent=self.pix2coord(0,(self.zoom0_tiles[0]*self.tile_sz[0],
+                                      self.zoom0_tiles[1]*self.tile_sz[1]))
         self.src=src
         self.dest=dest
         self.options=options
 
+    #############################
+
     def __del__(self):
+
+    #############################
         if self.options and self.options.verbose < 2:
             try:
                 for f in self.temp_files:
@@ -448,14 +457,29 @@ class Pyramid(object):
 
     #############################
 
+    def init_grid(self):
+        # init tile grid parameters
+    #############################
+        semi_circ,foo=self.proj2geog.transform_point((180,0),inv=True) # Half Equator length
+        ld('semi_circ',semi_circ)
+        # dimentions of a tile at zoom 0
+        zoom0_res=semi_circ*2/(self.zoom0_tiles[0]*self.tile_sz[0])
+        self.zoom0_tile_dim=[zoom0_res*self.tile_sz[0],
+                             zoom0_res*self.tile_sz[1]]
+        # offset from the upper left corner to the origin of the coord system
+        self.coord_offset=[semi_circ,
+                           self.zoom0_tile_dim[1]*self.zoom0_tiles[1]/2]
+        ld('zoom0_tiles',self.zoom0_tiles,'zoom0_tile_dim',self.zoom0_tile_dim,'coord_offset',self.coord_offset)
+    
+    #############################
+
     def walk_pyramid(self):
         'generate pyramid'
-
     #############################
 
         if not self.init_map(options.zoom):
             return
-            
+
         tiles=[]
         for zoom in self.zoom_range:
             tile_ul,tile_lr=self.corner_tiles(zoom)
@@ -481,13 +505,11 @@ class Pyramid(object):
 
     def init_map(self,zoom_parm):
         'initialize geo-parameters and generate base zoom level'
-
     #############################
 
         self.src_path=self.src
         self.tiles_prefix=options.tiles_prefix
         self.tile_ext='.'+options.tile_format.lower()
-        self.tile_sz=tuple(map(int,options.tile_size.split(',')))
         self.src_dir,src_f=os.path.split(self.src)
         self.base=os.path.splitext(src_f)[0]
 
@@ -513,7 +535,7 @@ class Pyramid(object):
         shift_x,y=MyTransformer(SRC_SRS=shifted_srs,DST_SRS=self.proj).transform_point((0,0))
         ld('new_srs',shifted_srs,'shift_x',shift_x,'coord_offset',self.coord_offset)
         if shift_x < 0:
-            shift_x += self.zoom0_tile_dim[0]*2
+            shift_x += self.coord_offset[0]*2 # Equator length
         self.coord_offset[0]+=shift_x
         self.shift_x=shift_x
         self.proj=shifted_srs
@@ -541,7 +563,6 @@ class Pyramid(object):
 
     def get_src_ds(self):
         'get src dataset, convert to RGB(A) if required'
-
     #############################
         if os.path.exists(self.src):
             self.src_path=os.path.abspath(self.src)
@@ -671,7 +692,6 @@ class Pyramid(object):
 
     def shift_srs(self,zoom=None):
         'change prime meridian to allow charts crossing 180 meridian'
-
     #############################
         ul,lr=MyTransformer(self.src_ds,DST_SRS=self.longlat).transform([(0,0),(self.src_ds.RasterXSize,self.src_ds.RasterYSize)])
         ld('shift_srs ul',ul,'lr',lr)
@@ -691,7 +711,6 @@ class Pyramid(object):
 
     def calc_zoom(self,zoom_parm):
         'determine and set a list of zoom levels to generate'
-
     #############################
         res=None
         if not zoom_parm: # calculate "automatic" zoom levels
@@ -975,7 +994,7 @@ class Pyramid(object):
             os.makedirs(os.path.dirname(full_path))
         except: pass
 
-        if self.options.to_paletted and self.tile_ext == '.png':
+        if self.options.paletted and self.tile_ext == '.png':
             try:
                 tile_img=tile_img.convert('P', palette=Image.ADAPTIVE, colors=255)
             except ValueError:
@@ -991,10 +1010,28 @@ class Pyramid(object):
 
     #############################
 
-    def write_metadata(self,tile,children=[]): # 'virtual'
-        pass
+    def tile_path(self,tile):
+        'relative path to a tile'
+    #############################
+        z,x,y=self.tile_norm(tile)
+        return '%i/%i/%i%s' % (z,x,y,self.tile_ext)
 
     #############################
+
+    def tms_tile_path(self,tile):
+        'relative path to a tile, TMS style'
+    #############################
+        z,x,y=self.tile_norm(tile)
+        y_tiles=self.zoom0_tiles[1]*2**z
+        return '%i/%i/%i%s' % (z,x,y_tiles-y-1,self.tile_ext)
+
+    #############################
+
+    def write_metadata(self,tile,children=[]): 
+
+    #############################
+        pass # 'virtual'
+
 
     #############################
     #
@@ -1060,11 +1097,6 @@ class Pyramid(object):
     def pix2coord(self,zoom,pix_coord):
         pix00_ofs=map(operator.mul,pix_coord,self.zoom2res(zoom))
         return [pix00_ofs[0]-self.coord_offset[0],-(pix00_ofs[1]-self.coord_offset[1])]
-
-    def tile_path(self,tile):
-        'relative path to a tile'
-        z,x,y=self.tile_norm(tile)
-        return '%i/%i/%i%s' % (z,x,y,self.tile_ext)
 
     def zoom_tiles(self,zoom):
         return map(lambda v: v*2**zoom,self.zoom0_tiles)
@@ -1190,12 +1222,30 @@ class Pyramid(object):
 
 #############################
 
+class GenericMap(Pyramid):
+    'full profile options are to be specified'
+#############################
+    profile='generic'
+    defaul_ext='.generic'
+    
+    def __init__(self,src=None,dest=None,options=None):
+        self.proj=options.t_srs
+        assert self.proj, 'Target SRS is not specified'
+        self.tile_sz=tuple(map(int,options.tile_size.split(',')))
+        self.zoom0_tiles=map(int,options.zoom0_tiles.split(','))
+        if options.tms:
+            tile_path=Pyramid.tms_tile_path # method shortcut
+
+        super(GenericMap, self).__init__(src,dest,options)
+
+#############################
+
 class PlateCarree(Pyramid):
     'Google Earth (plate carrée), Google tile numbering'
-
 #############################
     profile='earth'
     defaul_ext='.earth'
+    zoom0_tiles=[2,1] # tiles at zoom 0
 
     # http://earth.google.com/support/bin/static.py?page=guide.cs&guide=22373&topic=23750
     # "Google Earth uses Simple Cylindrical projection for its imagery base. This is a simple map 
@@ -1205,13 +1255,13 @@ class PlateCarree(Pyramid):
     # Equirectangular (epsg:32662 aka plate carrée, aka Simple Cylindrical)
     proj='+proj=eqc +datum=WGS84 +ellps=WGS84'
 
-    def init_grid(self):
-        'init tile grid parameters'
-        
-        semi_circ,semi_meridian=self.proj2geog.transform_point((180,90),inv=True)
-        self.zoom0_tiles=[2,1] # tiles at zoom 0
-        self.zoom0_tile_dim=[semi_circ,semi_meridian*2] # dimentions of a tile at zoom 0
-        self.coord_offset=[semi_circ,semi_meridian]
+#    def init_grid(self):
+#        'init tile grid parameters'
+#        
+#        semi_circ,semi_meridian=self.proj2geog.transform_point((180,90),inv=True)
+#        self.zoom0_tile_dim=[semi_circ,semi_meridian*2] # dimentions of a tile at zoom 0
+#        self.coord_offset=[semi_circ,semi_meridian]
+#        ld('self.zoom0_tile_dim',self.zoom0_tile_dim,'self.coord_offset',self.coord_offset)
 
     def coords2longlat(self, coords):
         out=[map(lambda v,dim,c_off: (v+c_off)/dim*180,
@@ -1275,15 +1325,10 @@ class PlateCarree(Pyramid):
 
 class PlateCarreeTMS(PlateCarree):
     'Google Earth (plate carrée), TMS tile numbering'
-
 #############################
     profile='earth-tms'
     defaul_ext='.earth-tms'
-
-    def tile_path(self,tile):
-        z,x,y=self.tile_norm(tile)
-        y_tiles=self.zoom0_tiles[1]*2**z
-        return '%i/%i/%i%s' % (z,x,y_tiles-y-1,self.tile_ext)
+    tile_path=Pyramid.tms_tile_path # method shortcut
 
 kml_templ='''<?xml version="1.0" encoding="utf-8"?>
 <kml xmlns="http://earth.google.com/kml/2.1">
@@ -1338,24 +1383,33 @@ kml_link_templ='''
 
 #############################
 
+class Yandex(Pyramid):
+    'Yandex Maps (WGS 84 / World Mercator, epsg:3395)'
+#############################
+    profile='yandex'
+    defaul_ext='.yandex'
+    proj='+proj=merc +datum=WGS84 +ellps=WGS84'
+# Yandex
+
+#############################
+
 class Gmaps(Pyramid):
     'Google Maps (Global Mercator), native tile numbering'
-
 #############################
     profile='gmaps'
     defaul_ext='.gmaps'
+    zoom0_tiles=[1,1] # tiles at zoom 0
 
     # Google Maps Global Mercator (epsg:3857)
     proj='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext'
 
-    def init_grid(self):
-        'init tile grid parameters'
+#    def init_grid(self):
+#        'init tile grid parameters'
 
-        semi_circ,foo=self.proj2geog.transform_point((180,0),inv=True) # Half Equator length in meters
-        ld('semi_circ',semi_circ)
-        self.zoom0_tiles=[1,1] # tiles at zoom 0
-        self.zoom0_tile_dim=[semi_circ*2,semi_circ*2]  # dimentions of a tile at zoom 0
-        self.coord_offset=[semi_circ,semi_circ]
+#        semi_circ,foo=self.proj2geog.transform_point((180,0),inv=True) # Half Equator length in meters
+#        ld('semi_circ',semi_circ)
+#        self.zoom0_tile_dim=[semi_circ*2,semi_circ*2]  # dimentions of a tile at zoom 0
+#        self.coord_offset=[semi_circ,semi_circ]
 
     def write_metadata(self,tile,children=[]): 
         if not tile: # create top level html
@@ -1377,38 +1431,16 @@ class Gmaps(Pyramid):
             tiles_root= self.tiles_prefix,
             )
         open(os.path.join(self.dest,'gmaps.html'),'w').write(googlemaps)
-
 # GMaps
 
 #############################
 
 class GMercatorTMS(Gmaps):
     'Google Maps (Global Mercator), TMS tile numbering'
-
 #############################
     defaul_ext='.tms'
     profile='tms'
-
-    def tile_path(self,tile):
-        z,x,y=self.tile_norm(tile)
-        y_tiles=self.zoom0_tiles[1]*2**z
-        return '%i/%i/%i%s' % (z,x,y_tiles-y-1,self.tile_ext)
-    
-#############################
-
-class Yandex(Gmaps):
-    'Yandex Maps (WGS 84 / World Mercator, epsg:3395)'
-
-#############################
-    profile='yandex'
-    defaul_ext='.yandex'
-
-    proj='+proj=merc +datum=WGS84 +ellps=WGS84'
-
-    def write_metadata(self,tile,children=[]): 
-        pass
-
-# Yandex
+    tile_path=Pyramid.tms_tile_path # method shortcut
 
 google_templ='''<!DOCTYPE html>
 
@@ -1547,6 +1579,7 @@ profile_map=(
     PlateCarree,
     PlateCarreeTMS,
     Yandex,
+    GenericMap,
     )
 
 def proc_src(src):
@@ -1571,6 +1604,14 @@ def main(argv):
         help='output tiles profile (default: gmaps)')
     parser.add_option("-l", "--list-profiles", action="store_true",
         help='list tile profiles')
+    parser.add_option("--t-srs", default=None,metavar="TARGET_SRS",
+        help='generic profile: PROJ.4 definition for target srs (default: None)')
+    parser.add_option("--tile-size", default='256,256',metavar="SIZE_X,SIZE_Y",
+        help='generic profile: tile size (default: 256,256)')
+    parser.add_option("--zoom0-tiles", default='1,1',metavar="NTILES_X,NTILES_Y",
+        help='generic profile: number of tiles along the axis at the zoom 0 (default: 1,1)')
+    parser.add_option("--tms", action="store_true", 
+        help='generic profile: generate TMS tiles (default: google)')
     parser.add_option("--srs", default=None,metavar="PROJ4_SRS",
         help="override source's spatial reference system with PROJ.4 definition")
     parser.add_option("-z", "--zoom", default=None,metavar="ZOOM_LIST",
@@ -1597,10 +1638,8 @@ def main(argv):
         help='prefix for tile URLs at googlemaps.hml')
     parser.add_option("--tile-format", default='png',metavar="FMT",
         help='tile image format (default: PNG)')
-    parser.add_option("--to-paletted", action="store_true", 
+    parser.add_option("--paletted", action="store_true", 
         help='convert tiles to paletted format (8 bit/pixel)')
-    parser.add_option("--tile-size", default='256,256',metavar="SIZE_X,SIZE_Y",
-        help='tile size (default: 256,256)')
     parser.add_option("-t", "--dest-dir", dest="dest_dir", default=None,
         help='destination directory (default: source)')
     parser.add_option("--noclobber", action="store_true", 
