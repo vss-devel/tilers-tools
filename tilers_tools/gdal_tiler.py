@@ -480,6 +480,9 @@ class Pyramid(object):
         if not self.init_map(options.zoom):
             return
 
+        # reproject to base zoom
+        self.make_base_raster()
+
         tiles=[]
         for zoom in self.zoom_range:
             tile_ul,tile_lr=self.corner_tiles(zoom)
@@ -512,6 +515,8 @@ class Pyramid(object):
         self.tile_ext='.'+options.tile_format.lower()
         self.src_dir,src_f=os.path.split(self.src)
         self.base=os.path.splitext(src_f)[0]
+        self.base_resampling=base_resampling_map[options.base_resampling]
+        self.resampling=resampling_map[options.overview_resampling]
 
         pf('\n%s -> %s '%(self.src,self.dest),end='')
 
@@ -521,9 +526,6 @@ class Pyramid(object):
                 return False
             else:
                 shutil.rmtree(self.dest,ignore_errors=True)
-        os.makedirs(self.dest)
-        self.base_resampling=base_resampling_map[options.base_resampling]
-        self.resampling=resampling_map[options.overview_resampling]
 
         self.get_src_ds()
         # calculate zoom range
@@ -558,9 +560,6 @@ class Pyramid(object):
         self.extent[0]=min(self.extent[0],target_extent[0])
         self.extent[1]=max(self.extent[1],target_extent[1])
         
-        # reproject to base zoom
-        self.make_base_raster()
-
         return True
         
     #############################
@@ -574,6 +573,9 @@ class Pyramid(object):
         # check for source raster type
         src_ds=gdal.Open(self.src_path,GA_ReadOnly)
         self.src_ds=src_ds
+
+        # source is successfully opened, then create destination dir
+        os.makedirs(self.dest)
 
         src_geotr=src_ds.GetGeoTransform()
         src_proj=wkt2proj4(src_ds.GetProjection())
@@ -736,7 +738,7 @@ class Pyramid(object):
             min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_sz[i]for i in (0,1)]))
             zoom_parm='%d-%d'%(min_zoom,max_zoom)
 
-        self.set_zoom(zoom_parm)
+        self.set_zoom_range(zoom_parm)
         ld(('res',res,'zoom_range',self.zoom_range,'z0 (0,0)',self.coord2pix(0,(0,0))))
 
     #############################
@@ -1196,7 +1198,7 @@ class Pyramid(object):
         point_lst=flatten(self.shape2mpointlst(datasource,self.proj))
         self.set_region(point_lst)
 
-    def set_zoom(self,zoom_parm):
+    def set_zoom_range(self,zoom_parm):
         'set a list of zoom levels from a parameter list'
 
         if not zoom_parm:

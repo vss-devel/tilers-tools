@@ -120,7 +120,7 @@ class TileSet(object):
                 from gdal_tiler import Pyramid
                 self.pyramid=Pyramid.domain_class('gmaps')()
                 self.pyramid.load_region(region)
-                self.pyramid.set_zoom(zoom)
+                self.pyramid.set_zoom_range(zoom)
 
         self.child_init()
 
