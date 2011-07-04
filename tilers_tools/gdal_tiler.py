@@ -463,13 +463,14 @@ class Pyramid(object):
         semi_circ,foo=self.proj2geog.transform_point((180,0),inv=True) # Half Equator length
         ld('semi_circ',semi_circ)
         # dimentions of a tile at zoom 0
-        zoom0_res=semi_circ*2/(self.zoom0_tiles[0]*self.tile_sz[0])
-        self.zoom0_tile_dim=[zoom0_res*self.tile_sz[0],
-                             zoom0_res*self.tile_sz[1]]
+        res0=semi_circ*2/(self.zoom0_tiles[0]*self.tile_sz[0])
+        self.zoom0_res=[res0,res0]
         # offset from the upper left corner to the origin of the coord system
         self.coord_offset=[semi_circ,
-                           self.zoom0_tile_dim[1]*self.zoom0_tiles[1]/2]
-        ld('zoom0_tiles',self.zoom0_tiles,'zoom0_tile_dim',self.zoom0_tile_dim,'coord_offset',self.coord_offset)
+                           self.zoom0_res[1]*self.tile_sz[1]*self.zoom0_tiles[1]/2]
+        zoom0_tile_dim=[self.zoom0_res[0]*self.tile_sz[0],
+                        self.zoom0_res[1]*self.tile_sz[1]]
+        ld('zoom0_tiles',self.zoom0_tiles,'zoom0_tile_dim',zoom0_tile_dim,'coord_offset',self.coord_offset)
     
     #############################
 
@@ -706,12 +707,12 @@ class Pyramid(object):
 
         left_lon=int(math.floor(ul[0]))
         left_xy=self.proj2geog.transform_point((left_lon,0),inv=True)
-#        if zoom is not None: # adjust to a tile boundary
-#            left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
-#        new_pm=int(math.floor(self.proj2geog.transform_point(left_xy)[0]))+180
-        new_pm=left_lon+180
-        ld('left_lon',left_lon,'left_xy',left_xy,'new_pm',new_pm)
-        return '%s +lon_0=%d' % (self.proj,new_pm)
+        if zoom is not None: # adjust to a tile boundary
+            left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
+            left_lon=int(math.floor(self.proj2geog.transform_point(left_xy)[0]))
+        lon_0=left_lon-180
+        ld('left_lon',left_lon,'left_xy',left_xy,'lon_0',lon_0)
+        return '%s +lon_0=%d' % (self.proj,lon_0)
 
     #############################
 
@@ -1062,18 +1063,15 @@ class Pyramid(object):
         print()
 
     def zoom2res(self,zoom):
-        return map(lambda z0,ts:
-            z0/(ts*2**zoom), self.zoom0_tile_dim,self.tile_sz)
+        return map(lambda res: res/2**zoom, self.zoom0_res)
 
     def res2zoom_xy(self,res):
         'resolution to zoom levels (separate for x and y)'
-        z=map(lambda z0,ts,r:
-            int(math.floor(math.log(z0/(ts*r),2))), self.zoom0_tile_dim,self.tile_sz,res)
+        z=map(lambda z0r,r: int(math.floor(math.log(z0r/r,2))), self.zoom0_res,res)
         return [v if v>0 else 0 for v in z]
 
     def pix2tile(self,zoom,pix):
         'pixel coordinates to tile (z,x,y)'
-        zoom_tiles=map(lambda v: v*2**zoom,self.zoom0_tiles)
         return [zoom]+map(lambda p,ts:p/ts,pix,self.tile_sz)
 
     def tile2pix(self,tile):
@@ -1120,24 +1118,30 @@ class Pyramid(object):
         return longlat
 
     def boxes2longlat(self,box_lst):
-        out=self.coords2longlat(flatten(box_lst))
-        deg_lst=[[(j+180)%360-180 for j in i] for i in out]
+        deg_lst=self.coords2longlat(flatten(box_lst))
         ul_lst=deg_lst[0::2]
-        lr_lst=[((x if x != -180 else 180),y) for x,y in deg_lst[1::2]]
-        return zip(ul_lst,lr_lst)
+        lr_lst=deg_lst[1::2]
+        res=[[
+            (ul[0] if ul[0] <  180 else ul[0]-360,ul[1]),
+            (lr[0] if lr[0] > -180 else lr[0]+360,lr[1]),
+            ] for ul,lr in zip(ul_lst,lr_lst)]
+        return res
 
     def corner_tiles(self,zoom):
         p_ul=self.coord2pix(zoom,self.origin)
-        t_ul=[zoom]+map(lambda p,ts:(p+1)//ts,p_ul,self.tile_sz)
+        t_ul=self.pix2tile(zoom,(p_ul[0]+1,p_ul[1]+1))
 
         p_lr=self.coord2pix(zoom,self.extent)
-        t_lr=[zoom]+map(lambda p,ts:(p-1)//ts,p_lr,self.tile_sz)
+        t_lr=self.pix2tile(zoom,(p_lr[0]-1,p_lr[1]-1))
 
         nztiles=self.zoom_tiles(zoom)
-
-        ld('corner_tiles zoom',zoom,'p_ul',p_ul,'p_lr',p_lr,'t_ul',t_ul,'t_lr',t_lr,
+        box_ul,box_lr=[self.tile2coord_box(t) for t in (t_ul,t_lr)]
+        ld('corner_tiles zoom',zoom,
             'zoom tiles',nztiles,
-            'zoom size',map(lambda zt,ts:zt*ts,nztiles,self.tile_sz))
+            'zoom size',map(lambda zt,ts:zt*ts,nztiles,self.tile_sz),
+            'p_ul',p_ul,'p_lr',p_lr,'t_ul',t_ul,'t_lr',t_lr,
+            'longlat', self.coords2longlat([box_ul[0],box_lr[1]])
+            )
         return t_ul,t_lr
 
     def belongs_to(self,tile):
@@ -1261,18 +1265,10 @@ class PlateCarree(Pyramid):
     # Equirectangular (epsg:32662 aka plate carrée, aka Simple Cylindrical)
     proj='+proj=eqc +datum=WGS84 +ellps=WGS84'
 
-#    def init_grid(self):
-#        'init tile grid parameters'
-#        
-#        semi_circ,semi_meridian=self.proj2geog.transform_point((180,90),inv=True)
-#        self.zoom0_tile_dim=[semi_circ,semi_meridian*2] # dimentions of a tile at zoom 0
-#        self.coord_offset=[semi_circ,semi_meridian]
-#        ld('self.zoom0_tile_dim',self.zoom0_tile_dim,'self.coord_offset',self.coord_offset)
-
-#    def coords2longlat(self, coords):
-#        out=[map(lambda v,dim,c_off: (v+c_off)/dim*180,
-#                coord,self.zoom0_tile_dim,(self.shift_x,0)) for coord in coords]
-#        return [(lon,lat) for lon,lat in out]
+    def coords2longlat(self, coords):
+        out=[map(lambda c,res0,tsz,c_off: (((c+c_off)/(res0*tsz)*180)+180)%360-180,
+                coord,self.zoom0_res,self.tile_sz,(self.shift_x,0)) for coord in coords]
+        return [(lon,lat) for lon,lat in out]
 
     def kml_child_links(self,children,parent=None,path_prefix=''):
         kml_links=[]
@@ -1408,14 +1404,6 @@ class Gmaps(Pyramid):
 
     # Google Maps Global Mercator (epsg:3857)
     proj='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext'
-
-#    def init_grid(self):
-#        'init tile grid parameters'
-
-#        semi_circ,foo=self.proj2geog.transform_point((180,0),inv=True) # Half Equator length in meters
-#        ld('semi_circ',semi_circ)
-#        self.zoom0_tile_dim=[semi_circ*2,semi_circ*2]  # dimentions of a tile at zoom 0
-#        self.coord_offset=[semi_circ,semi_circ]
 
     def write_metadata(self,tile,children=[]): 
         if not tile: # create top level html
