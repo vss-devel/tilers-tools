@@ -536,16 +536,12 @@ class Pyramid(object):
         # shift target SRS to avoid crossing 180 meridian
         shifted_srs=self.shift_srs(self.base_zoom)
         shift_x,y=MyTransformer(SRC_SRS=shifted_srs,DST_SRS=self.proj).transform_point((0,0))
-        ld('new_srs',shifted_srs,'shift_x',shift_x,'coord_offset',self.coord_offset)
-        if shift_x < 0:
-            shift_x += self.coord_offset[0]*2 # Equator length
-        self.coord_offset[0]+=shift_x
-        self.shift_x=shift_x
-        self.proj=shifted_srs
-
-        self.longlat=proj_cs2geog_cs(self.proj)
-        ld('proj,longlat',self.proj,self.longlat)
-        self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
+        if shift_x != 0:
+            ld('new_srs',shifted_srs,'shift_x',shift_x,'coord_offset',self.coord_offset)
+            self.coord_offset[0]+=shift_x
+            self.shift_x=shift_x
+            self.proj=shifted_srs
+            self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
 
         # get corners at the target SRS
         target_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
@@ -568,6 +564,8 @@ class Pyramid(object):
     def get_src_ds(self):
         'get src dataset, convert to RGB(A) if required'
     #############################
+        override_srs=self.options.srs
+        
         if os.path.exists(self.src):
             self.src_path=os.path.abspath(self.src)
 
@@ -674,7 +672,7 @@ class Pyramid(object):
                 return # rgb VRT created
             # finished with a paletted raster
 
-        if self.options.srs is not None: # src SRS needs to be relpaced
+        if override_srs is not None: # src SRS needs to be relpaced
             src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
             self.temp_files.append(src_vrt)
             self.src_path=src_vrt
@@ -682,10 +680,10 @@ class Pyramid(object):
             vrt_drv = gdal.GetDriverByName('VRT')
             self.src_ds = vrt_drv.CreateCopy(src_vrt,src_ds) # replace src dataset
 
-            self.src_ds.SetProjection(proj4wkt(src_proj)) # replace source SRS
+            self.src_ds.SetProjection(proj4wkt(override_srs)) # replace source SRS
             gcps=self.src_ds.GetGCPs()
             if gcps :
-                self.src_ds.SetGCPs(gcps,proj4wkt(src_proj))
+                self.src_ds.SetGCPs(gcps,proj4wkt(override_srs))
 
         # debug print
         ld('source_raster')
@@ -710,7 +708,7 @@ class Pyramid(object):
         if zoom is not None: # adjust to a tile boundary
             left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
             left_lon=int(math.floor(self.proj2geog.transform_point(left_xy)[0]))
-        lon_0=left_lon-180
+        lon_0=left_lon+180
         ld('left_lon',left_lon,'left_xy',left_xy,'lon_0',lon_0)
         return '%s +lon_0=%d' % (self.proj,lon_0)
 
@@ -759,7 +757,7 @@ class Pyramid(object):
 
         # base zoom level raster size
         dst_xsize=lr_pix[0]-ul_pix[0] 
-        dst_ysize=lr_pix[1]-ul_pix[1]
+        dst_ysize=lr_pix[1]-ul_pix[1]        
 
         ld('Upper Left ',self.origin,ul_c,self.proj2geog.transform([self.origin,ul_c]))
         ld('Lower Right',self.extent,lr_c,self.proj2geog.transform([self.extent,lr_c]))
@@ -793,9 +791,10 @@ class Pyramid(object):
             src_transform=warp_src_tps_transformer % gcp_txt
 
         res=self.zoom2res(self.base_zoom)
-        ld('base_zoom,res',self.base_zoom,res)
+        ul_ll,lr_ll=self.coords2longlat([ul_c,lr_c])
+        ld('base_zoom',self.base_zoom,'size',dst_xsize,dst_ysize,'-tr',res[0],res[1],'-te',ul_c[0],lr_c[1],lr_c[0],ul_c[1])
         dst_geotr=( ul_c[0], res[0],     0.0,
-                ul_c[1],    0.0, -res[1] )
+                    ul_c[1],    0.0, -res[1] )
         ok,dst_igeotr=gdal.InvGeoTransform(dst_geotr)
         assert ok
         dst_transform='%s\n%s' % (warp_dst_geotr % dst_geotr,warp_dst_igeotr % dst_igeotr)
@@ -876,13 +875,13 @@ class Pyramid(object):
             f.write(vrt_text)
 
         # warp base raster
-        t_ds = gdal.Open(vrt_text,GA_ReadOnly)
+        tmp_ds = gdal.Open(vrt_text,GA_ReadOnly)
         dst_drv = gdal.GetDriverByName('Gtiff')
-        temp_tiff=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % self.base_zoom) # img for the base zoom
-        self.temp_files.append(temp_tiff)
+        base_tiff=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % self.base_zoom) # img for the base zoom
+        self.temp_files.append(base_tiff)
             
         pf('...',end='')
-        dst_ds = dst_drv.CreateCopy(temp_tiff,t_ds,0,[
+        dst_ds = dst_drv.CreateCopy(base_tiff,tmp_ds,0,[
 			'TILED=YES',
             'INTERLEAVE=BAND',
             'BLOCKXSIZE=%i' % self.tile_sz[0],
@@ -892,11 +891,11 @@ class Pyramid(object):
         
         # close datasets in a proper order
         del dst_ds
-        del t_ds
+        del tmp_ds
         del self.src_ds
 
         # create base_image raster
-        self.base_img=BaseImg(temp_tiff,tile_ul[1:],tile_lr[1:],self.transparency)
+        self.base_img=BaseImg(base_tiff,tile_ul[1:],tile_lr[1:],self.transparency)
 
     #############################
 
@@ -1070,9 +1069,9 @@ class Pyramid(object):
         z=map(lambda z0r,r: int(math.floor(math.log(z0r/r,2))), self.zoom0_res,res)
         return [v if v>0 else 0 for v in z]
 
-    def pix2tile(self,zoom,pix):
+    def pix2tile(self,zoom,pix_coord):
         'pixel coordinates to tile (z,x,y)'
-        return [zoom]+map(lambda p,ts:p/ts,pix,self.tile_sz)
+        return [zoom]+map(lambda pc,ts: pc//ts, pix_coord,self.tile_sz)
 
     def tile2pix(self,tile):
         'tile to pixel coordinates'
@@ -1094,8 +1093,8 @@ class Pyramid(object):
 
     def coord2pix(self,zoom,coord):
         'cartesian coordinates to pixel coordinates'
-        ul_c=(coord[0]+self.coord_offset[0],self.coord_offset[1]-coord[1])
-        out=tuple([int(c/r) for c,r in zip(ul_c,self.zoom2res(zoom))])
+        ul_distance=(coord[0]+self.coord_offset[0],self.coord_offset[1]-coord[1])
+        out=tuple([int(dist/res) for dist,res in zip(ul_distance,self.zoom2res(zoom))])
         return out
 
     def pix2coord(self,zoom,pix_coord):
@@ -1138,7 +1137,7 @@ class Pyramid(object):
         box_ul,box_lr=[self.tile2coord_box(t) for t in (t_ul,t_lr)]
         ld('corner_tiles zoom',zoom,
             'zoom tiles',nztiles,
-            'zoom size',map(lambda zt,ts:zt*ts,nztiles,self.tile_sz),
+            'zoom pixels',map(lambda zt,ts:zt*ts,nztiles,self.tile_sz),
             'p_ul',p_ul,'p_lr',p_lr,'t_ul',t_ul,'t_lr',t_lr,
             'longlat', self.coords2longlat([box_ul[0],box_lr[1]])
             )
