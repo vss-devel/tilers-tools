@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-06-30 13:42:13 
+# 2011-07-05 15:43:48
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -226,7 +226,7 @@ class TiledTiff(object):
             for i in range(IFD_ofs,tags_end,self.tag_len)] # tag,datatype,data_cnt,data_ofs
         tag_ids=zip(*tag_lst)[0] 
         tag_dict=dict(zip(tag_ids,tag_lst)) # tag: tag, datatype,data_cnt,data_ofs
-        ld(tag_dict)
+        ld('tag_dict',tag_dict)
         return tag_dict, next_IFD
 
 # TiledTiff
@@ -430,19 +430,20 @@ class Pyramid(object):
         self.zoom_range=None
         self.shift_x=0
 
+        self.src=src
+        self.dest=dest
+        self.options=options
+
         self.longlat=proj_cs2geog_cs(self.proj)
         ld('proj,longlat',self.proj,self.longlat)
         self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
 
-        self.init_grid()
+        self.init_tile_grid()
         
-        # init to maximum extent
+        # set self.origin and self.extent to the maximum values
         self.origin=self.pix2coord(0,(0,0))
         self.extent=self.pix2coord(0,(self.zoom0_tiles[0]*self.tile_sz[0],
                                       self.zoom0_tiles[1]*self.tile_sz[1]))
-        self.src=src
-        self.dest=dest
-        self.options=options
 
     #############################
 
@@ -457,7 +458,7 @@ class Pyramid(object):
 
     #############################
 
-    def init_grid(self):
+    def init_tile_grid(self):
         # init tile grid parameters
     #############################
         semi_circ,foo=self.proj2geog.transform_point((180,0),inv=True) # Half Equator length
@@ -474,43 +475,11 @@ class Pyramid(object):
     
     #############################
 
-    def walk_pyramid(self):
-        'generate pyramid'
-    #############################
-
-        if not self.init_map(options.zoom):
-            return
-
-        # reproject to base zoom
-        self.make_base_raster()
-
-        tiles=[]
-        for zoom in self.zoom_range:
-            tile_ul,tile_lr=self.corner_tiles(zoom)
-            zoom_tiles=flatten([[(zoom,x,y) for x in range(tile_ul[1],tile_lr[1]+1)] 
-                                           for y in range(tile_ul[2],tile_lr[2]+1)])
-            tiles.extend(zoom_tiles)
-        ld('min_zoom',zoom,'tile_ul',tile_ul,'tile_lr',tile_lr,'zoom_tiles',zoom_tiles)
-        self.all_tiles=frozenset(tiles)
-        top_tiles=filter(None,map(self.proc_tile,zoom_tiles))
-
-        # write top-level metadata (html/kml)
-        self.write_metadata(None,[ch for img,ch,opacities in top_tiles])
-        
-        # cache back tiles opacity
-        file_opacities=[(self.tile_path(tile),opc)
-            for tile,opc in flatten([opacities for img,ch,opacities in top_tiles])]
-        try:
-            pickle.dump(dict(file_opacities),open(os.path.join(self.dest, 'merge-cache'),'w'))
-        except:
-            logging.warning("opacity cache save failed")
-
-    #############################
-
     def init_map(self,zoom_parm):
         'initialize geo-parameters and generate base zoom level'
     #############################
 
+        # init variables
         self.src_path=self.src
         self.tiles_prefix=options.tiles_prefix
         self.tile_ext='.'+options.tile_format.lower()
@@ -528,7 +497,9 @@ class Pyramid(object):
             else:
                 shutil.rmtree(self.dest,ignore_errors=True)
 
+        # connect to src dataset
         self.get_src_ds()
+
         # calculate zoom range
         self.calc_zoom(zoom_parm)
         self.base_zoom=self.zoom_range[0]        
@@ -710,7 +681,10 @@ class Pyramid(object):
             left_lon=int(math.floor(self.proj2geog.transform_point(left_xy)[0]))
         lon_0=left_lon+180
         ld('left_lon',left_lon,'left_xy',left_xy,'lon_0',lon_0)
-        return '%s +lon_0=%d' % (self.proj,lon_0)
+        new_srs='%s +lon_0=%d' % (self.proj,lon_0)
+        if not (lr[0] <= 180 and ul[0] >=-180):
+            new_srs+=' +over +wktext' # allow for a map to span beyond -180 -- +180 range
+        return new_srs
 
     #############################
 
@@ -792,7 +766,7 @@ class Pyramid(object):
 
         res=self.zoom2res(self.base_zoom)
         ul_ll,lr_ll=self.coords2longlat([ul_c,lr_c])
-        ld('base_zoom',self.base_zoom,'size',dst_xsize,dst_ysize,'-tr',res[0],res[1],'-te',ul_c[0],lr_c[1],lr_c[0],ul_c[1])
+        ld('base_zoom',self.base_zoom,'size',dst_xsize,dst_ysize,'-tr',res[0],res[1],'-te',ul_c[0],lr_c[1],lr_c[0],ul_c[1],'-t_srs',self.proj)
         dst_geotr=( ul_c[0], res[0],     0.0,
                     ul_c[1],    0.0, -res[1] )
         ok,dst_igeotr=gdal.InvGeoTransform(dst_geotr)
@@ -932,15 +906,54 @@ class Pyramid(object):
 
     #############################
 
+    def walk_pyramid(self):
+        'generate pyramid'
+    #############################
+
+        if not self.init_map(options.zoom):
+            return
+
+        # reproject to base zoom
+        self.make_base_raster()
+
+        self.tile_map={}
+        for zoom in self.zoom_range:
+            tile_ul,tile_lr=self.corner_tiles(zoom)
+            src_tiles=flatten([[(zoom,x,y) for x in range(tile_ul[1],tile_lr[1]+1)] 
+                                           for y in range(tile_ul[2],tile_lr[2]+1)])
+            zoom_dim=self.zoom_tiles(zoom)
+            
+            # map 'logical' tiles to 'physical' tiles
+            level_map=dict([((t[0],t[1]%zoom_dim[0],t[2]),t) for t in src_tiles]) # normalize tile coords
+            
+            self.tile_map.update(level_map)
+        ld('min_zoom',zoom,'tile_ul',tile_ul,'tile_lr',tile_lr,'tiles',level_map)
+        self.all_tiles=frozenset(self.tile_map)
+        top_results=filter(None,map(self.proc_tile,level_map.keys()))
+
+        # write top-level metadata (html/kml)
+        self.write_metadata(None,[ch for img,ch,opacities in top_results])
+        
+        # cache back tiles opacity
+        file_opacities=[(self.tile_path(tile),opc)
+            for tile,opc in flatten([opacities for img,ch,opacities in top_results])]
+        try:
+            pickle.dump(dict(file_opacities),open(os.path.join(self.dest, 'merge-cache'),'w'))
+        except:
+            logging.warning("opacity cache save failed")
+
+    #############################
+
     def proc_tile(self,tile):
 
     #############################
 
         ch_opacities=[]
-        ch_tiles=[]
+        ch_results=[]
         zoom,x,y=tile
-        if zoom==self.zoom_range[0]: # get from the base image
-            tile_img,opacity=self.base_img.tile(*tile[1:])
+        if zoom==self.base_zoom: # get from the base image
+            src_tile=self.tile_map[tile]
+            tile_img,opacity=self.base_img.tile(*src_tile[1:])
             if tile_img and self.palette:
                 tile_img.putpalette(self.palette)
         else: # merge children
@@ -948,13 +961,14 @@ class Pyramid(object):
             cz=self.zoom_range[self.zoom_range.index(zoom)-1] # child's zoom
             dz=int(2**(cz-zoom))
 
-            children_ofs=dict(flatten(
+            ch_mozaic=dict(flatten(
                 [[((cz,x*dz+dx,y*dz+dy),(dx*self.tile_sz[0]//dz,dy*self.tile_sz[1]//dz))
                                for dx in range(dz)]
                                    for dy in range(dz)]))
-
-            ch_tiles=filter(None,map(self.proc_tile,self.all_tiles & set(children_ofs)))
-            if len(ch_tiles) == 4 and all([opacities[0][1]==1 for img,ch,opacities in ch_tiles]):
+            children=self.all_tiles & frozenset(ch_mozaic)
+            ch_results=filter(None,map(self.proc_tile,children))
+            #ld('tile',tile,'children',children,'ch_results',ch_results)
+            if len(ch_results) == 4 and all([opacities[0][1]==1 for img,ch,opacities in ch_results]):
                 opacity=1
                 mode_opacity=''
             else:
@@ -962,7 +976,7 @@ class Pyramid(object):
                 mode_opacity='A'
 
             tile_img=None
-            for img,ch,opacity_lst in ch_tiles:
+            for img,ch,opacity_lst in ch_results:
                 ch_img=img.resize([i//dz for i in img.size],self.resampling)
                 ch_mask=ch_img.split()[-1] if 'A' in ch_img.mode else None
                 
@@ -979,14 +993,14 @@ class Pyramid(object):
                     if self.palette is not None:
                         tile_img.putpalette(self.palette)
 
-                tile_img.paste(ch_img,children_ofs[ch],ch_mask)
+                tile_img.paste(ch_img,ch_mozaic[ch],ch_mask)
                 ch_opacities.extend(opacity_lst)
 
         if tile_img is not None and opacity != 0:
             self.write_tile(tile,tile_img)
             
             # write tile-level metadata (html/kml)            
-            self.write_metadata(tile,[ch for img,ch,opacities in ch_tiles])
+            self.write_metadata(tile,[ch for img,ch,opacities in ch_results])
             return tile_img,tile,[(tile,opacity)]+ch_opacities
 
     #############################
@@ -1016,10 +1030,18 @@ class Pyramid(object):
 
     #############################
 
+    def map_tiles2longlat_boxes(self,tiles):
+        'translate "logical" tiles to latlong boxes'
+    #############################
+        # via 'logical' to 'physical' tile mapping
+        return self.boxes2longlat([self.tile2coord_box(self.tile_map[t]) for t in tiles])
+
+    #############################
+
     def tile_path(self,tile):
         'relative path to a tile'
     #############################
-        z,x,y=self.tile_norm(tile)
+        z,x,y=tile
         return '%i/%i/%i%s' % (z,x,y,self.tile_ext)
 
     #############################
@@ -1027,9 +1049,8 @@ class Pyramid(object):
     def tms_tile_path(self,tile):
         'relative path to a tile, TMS style'
     #############################
-        z,x,y=self.tile_norm(tile)
-        y_tiles=self.zoom0_tiles[1]*2**z
-        return '%i/%i/%i%s' % (z,x,y_tiles-y-1,self.tile_ext)
+        z,x,y=tile
+        return '%i/%i/%i%s' % (z,x,self.zoom_tiles(z)-y-1,self.tile_ext)
 
     #############################
 
@@ -1038,6 +1059,15 @@ class Pyramid(object):
     #############################
         pass # 'virtual'
 
+    tick_rate=50
+    count=0
+    def counter(self):
+        self.count+=1
+        if self.count % self.tick_rate == 0:
+            pf('.',end='')
+            return True
+        else:
+            return False
 
     #############################
     #
@@ -1103,12 +1133,6 @@ class Pyramid(object):
 
     def zoom_tiles(self,zoom):
         return map(lambda v: v*2**zoom,self.zoom0_tiles)
-
-    def tile_norm(self,tile):
-        'x,y of a tile do not exceed max values'
-        z,x,y=tile
-        nztiles=self.zoom_tiles(z)
-        return [z,x%nztiles[0],y%nztiles[1]]
 
     def coords2longlat(self, coords): # redefined in PlateCarree
         longlat=[i[:2] for i in self.proj2geog.transform(coords)]
@@ -1215,18 +1239,6 @@ class Pyramid(object):
             else:
                 zrange+=range(min(z),max(z)+1)
         self.zoom_range=list(reversed(sorted(set(zrange))))
-    
-    tick_rate=50
-    count=0
-
-    def counter(self):
-        self.count+=1
-        if self.count % self.tick_rate == 0:
-            pf('.',end='')
-            return True
-        else:
-            return False
-
 # Pyramid        
 
 #############################
@@ -1272,9 +1284,9 @@ class PlateCarree(Pyramid):
     def kml_child_links(self,children,parent=None,path_prefix=''):
         kml_links=[]
         # convert tiles to degree boxes
-        longlat_lst=self.boxes2longlat([self.tile2coord_box(t) for t in children])
+        longlat_boxes=self.map_tiles2longlat_boxes(children)
         
-        for tile,longlat in zip(children,longlat_lst):
+        for tile,longlat in zip(children,longlat_boxes):
             #ld(tile,longlat)
             w,n,e,s=['%.11f'%v for v in flatten(longlat)]
             name=os.path.splitext(self.tile_path(tile))[0]
@@ -1307,7 +1319,7 @@ class PlateCarree(Pyramid):
         rel_path=self.tile_path(tile)
         name=os.path.splitext(rel_path)[0]
         kml_links=self.kml_child_links(children,tile,'../../')
-        tile_box=self.boxes2longlat([self.tile2coord_box(tile)])[0]
+        tile_box=self.map_tiles2longlat_boxes([tile])[0]
         w,n,e,s=['%.11f'%v for v in flatten(tile_box)]
         kml_overlay = kml_overlay_templ % {
             'name':    name,
