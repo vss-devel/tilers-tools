@@ -674,13 +674,13 @@ class Pyramid(object):
         if lr[0] <= 180 and ul[0] >=-180 and ul[0] < lr[0]:
             return self.proj
 
-        left_lon=int(math.floor(ul[0]))
-        left_xy=self.proj2geog.transform_point((left_lon,0),inv=True)
+        left_lon=ul[0]
         if zoom is not None: # adjust to a tile boundary
-            left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
-            left_lon=int(math.floor(self.proj2geog.transform_point(left_xy)[0]))
+            left_xy=self.proj2geog.transform_point((left_lon,0),inv=True)
+            tile_left_xy=self.tile2coord_box(self.coord2tile(zoom,left_xy))[0]
+            left_lon=self.proj2geog.transform_point(tile_left_xy)[0]
         lon_0=left_lon+180
-        ld('left_lon',left_lon,'left_xy',left_xy,'lon_0',lon_0)
+        ld('left_lon',left_lon,'lon_0',lon_0)
         new_srs='%s +lon_0=%d' % (self.proj,lon_0)
         if not (lr[0] <= 180 and ul[0] >=-180):
             new_srs+=' +over +wktext' # allow for a map to span beyond -180 -- +180 range
