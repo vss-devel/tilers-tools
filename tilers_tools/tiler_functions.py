@@ -28,7 +28,7 @@
 from __future__ import with_statement
 from __future__ import print_function
 
-version='%prog version 2.2'
+version='%prog version 2.3pre'
 
 import sys
 import os
