@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-07-05 15:43:48
+# 2011-07-11 15:47:12 
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -91,202 +91,62 @@ def sasplanet_hlg2ogr(fname):
 
 #############################
 
-class TiledTiff(object):
+class BaseImg(object):
     '''Tile feeder for a base zoom level'''
 #############################
 
-    def __init__(self,img_fname,tile_first,tile_last,transparency=None):
-        self.fname=img_fname
+    def __init__(self,dataset,tile_size,tile_first,tile_last,transparency=None):
+        self.ds=dataset
         self.tile_first=tile_first
         self.tile_last=tile_last
         self.transparency=transparency
-        self.file=open(img_fname,'r+b')
-        self.mmap=mmap.mmap(self.file.fileno(),0,access=mmap.ACCESS_READ)
 
-        self.read_hdr() # in child class
-        self.IFD0,next_IFD=self.read_IFD(self.IFD0_ofs)
+        self.size=self.ds.RasterXSize,self.ds.RasterYSize
+        self.tile_sz=tile_size
 
-        assert self.tag_data('PlanarConfiguration')[0] == 2
-        self.size=self.tag_data('ImageWidth')[0],self.tag_data('ImageLength')[0]
-        self.tile_sz=self.tag_data('TileWidth')[0],self.tag_data('TileLength')[0]
-        self.tile_range=map(lambda sz,tsz: (sz-1)//tsz+1,self.size,self.tile_sz)
-        self.ntiles=self.tile_range[0]*self.tile_range[1]
-
-        self.tile_ofs=self.tag_data('TileOffsets')
-        self.tile_lengths=self.tag_data('TileByteCounts')
-        self.samples_pp=self.tag_data('SamplesPerPixel')[0]
+        self.bands=[self.ds.GetRasterBand(i+1) for i in range(self.ds.RasterCount)]
 
     def __del__(self):
-        self.mmap.close()
-        self.file.close()
+        del self.bands
+        del self.ds
                 
-    def tile(self,tile_x,tile_y):
+    def get_tile(self,tile):
         tile_sz=self.tile_sz
-        ntiles=self.ntiles
-        src=self.mmap
-        ofs=self.tile_ofs
-        lns=self.tile_lengths
-        d_x,d_y=self.tile_first
-        idx=tile_x-d_x+(tile_y-d_y)*self.size[0]//tile_sz[0]
-        assert idx >= 0 and idx < ntiles, 'tile: %s range: %s' % ((tile_x,tile_y),self.tile_range)
+        n_bands=len(self.bands)
+
+        assert (tile[0] >= self.tile_first[0] and tile[0] <= self.tile_last[0] and 
+                tile[1] >= self.tile_first[1] and tile[1] <= self.tile_last[1]
+                ), 'tile %s is out of range' % (tile,) 
         
-        bands=[ src[ofs[idx+i*ntiles] : ofs[idx+i*ntiles] + lns[idx+i*ntiles]] 
-                for i in range(self.samples_pp)]
-        if self.samples_pp == 1:
+        ul_pix=[(tile[0]-self.tile_first[0])*tile_sz[0],(tile[1]-self.tile_first[1])*tile_sz[1]]
+        tile_bands=[band.ReadRaster(ul_pix[0],ul_pix[1],tile_sz[0],tile_sz[1],tile_sz[0],tile_sz[1],GDT_Byte)
+                    for band in self.bands]
+        if n_bands == 1:
             opacity=1
             mode='L'
             if self.transparency is not None:
-                if chr(self.transparency) in bands[0]:
-                    colorset=set(bands[0])
+                if chr(self.transparency) in tile_bands[0]:
+                    colorset=set(tile_bands[0])
                     if len(colorset) == 1:  # fully transparent
                         return None,0
                     else:                   # semi-transparent
                         opacity=-1
-            img=Image.frombuffer('L',tile_sz,bands[0],'raw','L',0,1)
+            img=Image.frombuffer('L',tile_sz,tile_bands[0],'raw','L',0,1)
         else:
-            aplpha=bands[-1]
+            aplpha=tile_bands[-1]
             if min(aplpha) == '\xFF':       # fully opaque
                 opacity=1
-                bands=bands[:-1]
-                mode='RGB' if self.samples_pp > 2 else 'L'
+                tile_bands=tile_bands[:-1]
+                mode='RGB' if n_bands > 2 else 'L'
             elif max(aplpha) == '\x00':     # fully transparent
                 return None,0
             else:                           # semi-transparent
                 opacity=-1
-                mode='RGBA' if self.samples_pp > 2 else 'LA'
-            img=Image.merge(mode,[Image.frombuffer('L',tile_sz,b,'raw','L',0,1) for b in bands])
+                mode='RGBA' if n_bands > 2 else 'LA'
+            img=Image.merge(mode,[Image.frombuffer('L',tile_sz,b,'raw','L',0,1) for b in tile_bands])
         return img,opacity
 
-    def unpack(self,fmt,start,len,src=None):
-        if not src: 
-            src=self.mmap
-        #ld(self.order+fmt,src[start:start+len])
-        r=struct.unpack_from(self.order+fmt,src,start)
-        #ld(r)
-        return r
-
-    def tag_in(self,name,tag_dict):
-        return self.tag_map[name] in tag_dict
-
-    tag_map={
-        'ImageWidth':                   (256, 'LONG'),      # SHORT or LONG
-        'ImageLength':                  (257, 'LONG'),      # SHORT or LONG
-        'BitsPerSample':                (258, 'SHORT'),     # 4 or 8
-        'Compression':                  (259, 'SHORT'),     # 1 or 32773
-        'PhotometricInterpretation':    (262, 'SHORT'),     # 3
-        'StripOffsets':                 (273, 'LONG'),
-        'SamplesPerPixel':              (277, 'SHORT'),
-        'RowsPerStrip':                 (278, 'LONG'),      # SHORT or LONG
-        'StripByteCounts':              (279, 'LONG'),      # SHORT or LONG
-        'XResolution':                  (282, 'RATIONAL'),
-        'YResolution':                  (283, 'RATIONAL'),  
-        'PlanarConfiguration':          (284, 'SHORT'),
-        'ResolutionUnit':               (296, 'SHORT'),     # 1 or 2 or 3
-        'ColorMap':                     (320, 'SHORT'),
-        'TileWidth':                    (322, 'LONG'),      # SHORT or LONG
-        'TileLength':                   (323, 'LONG'),      # SHORT or LONG
-        'TileOffsets':                  (324, 'LONG'),
-        'TileByteCounts':               (325, 'LONG'),      # SHORT or LONG
-        'SampleFormat':                 (339, 'SHORT'),
-        }
-    tag_types={
-        1: (1,'B'), # BYTE
-        2: (1,'c'), # ASCII
-        3: (2,'H'), # SHORT
-        4: (4,'I'), # LONG
-        5: (8,'II'), # RATIONAL
-        # ...
-        16:(8,"Q"), # TIFF_LONG8
-        17:(8,"q"), # TIFF_SLONG8
-        18:(8,"Q"), # TIFF_IFD8        
-        }
-
-    def tag_data(self,name):
-        tag_id=self.tag_map[name][0]
-        try:
-            tag,datatype,data_cnt,data_ofs=self.IFD0[tag_id]
-        except IndexError:
-            raise Exception('Tiff tag not found: %s' % name)        
-        type_len,code=self.tag_types[datatype]
-        nbytes=type_len*data_cnt       
-        if nbytes <= self.ptr_len:
-            data_src=struct.pack(self.order+self.ptr_code,data_ofs)[0:nbytes]
-            data_ofs=0
-        else:
-            data_src=self.mmap
-        data=self.unpack(str(data_cnt)+code,data_ofs,nbytes,data_src)
-        return data
-                
-    def read_IFD(self,IFD_ofs):
-        tag_count=self.unpack(self.IFD_cnt_code,IFD_ofs,self.IFD_cnt_len)[0]
-        IFD_ofs+=self.IFD_cnt_len
-        tags_end=IFD_ofs+self.tag_len*tag_count
-        next_IFD=self.unpack(self.ptr_code,tags_end,self.ptr_len)[0]
-        tag_lst=[self.unpack('HH'+2*self.ptr_code,i,self.tag_len) 
-            for i in range(IFD_ofs,tags_end,self.tag_len)] # tag,datatype,data_cnt,data_ofs
-        tag_ids=zip(*tag_lst)[0] 
-        tag_dict=dict(zip(tag_ids,tag_lst)) # tag: tag, datatype,data_cnt,data_ofs
-        ld('tag_dict',tag_dict)
-        return tag_dict, next_IFD
-
-# TiledTiff
-
-class TiffLE(TiledTiff):
-    signature='II*\x00'
-    order  = '<' # little endian
-    tag_len= 12
-    ptr_len = 4
-    ptr_code='L'
-    IFD_cnt_len=2
-    IFD_cnt_code='H'
-    
-    def read_hdr(self):
-        self.IFD0_ofs=self.unpack('2sH'+self.ptr_code,0,4+self.ptr_len)[-1]
-
-class TiffBE(TiffLE):
-    signature='MM\x00*'
-    order  = '>' # big endian
-
-class BigTiffLE(TiledTiff):
-    signature='II+\x00'
-    order  = '<' # little endian
-    tag_len= 20
-    ptr_len = 8
-    ptr_code='Q'
-    IFD_cnt_len=8
-    IFD_cnt_code='Q'
-    
-    def read_hdr(self):
-        endian,version,plen,resr,self.IFD0_ofs=self.unpack('2sHHH'+self.ptr_code,0,8+self.ptr_len)
-        assert plen==self.ptr_len and resr==0
-
-class BigTiffBE(BigTiffLE):
-    signature='MM\x00+'
-    order  = '>' # big endian
-
-img_type_map=(
-    TiffLE,
-    TiffBE,
-    BigTiffLE,
-    BigTiffBE,
-    )
-
-#############################
-
-def BaseImg(img_fname,tile_ul,tile_lr,transparency_color=None):
-
-#############################
-
-    with open(img_fname,'r+b') as f:
-        magic=f.read(4)
-    ld('tiff magic',magic)
-    for img_cls in img_type_map:
-        if magic == img_cls.signature:
-            break
-    else:
-        raise Exception('Invalid base image')
-
-    return img_cls(img_fname,tile_ul,tile_lr,transparency_color)
+# BaseImg
     
 #############################
 
@@ -849,27 +709,14 @@ class Pyramid(object):
             f.write(vrt_text)
 
         # warp base raster
-        tmp_ds = gdal.Open(vrt_text,GA_ReadOnly)
-        dst_drv = gdal.GetDriverByName('Gtiff')
-        base_tiff=os.path.join(self.dest,self.base+'.tmp_%i.tiff' % self.base_zoom) # img for the base zoom
-        self.temp_files.append(base_tiff)
-            
-        pf('...',end='')
-        dst_ds = dst_drv.CreateCopy(base_tiff,tmp_ds,0,[
-			'TILED=YES',
-            'INTERLEAVE=BAND',
-            'BLOCKXSIZE=%i' % self.tile_sz[0],
-            'BLOCKYSIZE=%i' % self.tile_sz[1],
-            ])#, gdal.TermProgress)
+        base_ds = gdal.Open(vrt_text,GA_ReadOnly)
         pf('.',end='')
         
         # close datasets in a proper order
-        del dst_ds
-        del tmp_ds
         del self.src_ds
 
         # create base_image raster
-        self.base_img=BaseImg(base_tiff,tile_ul[1:],tile_lr[1:],self.transparency)
+        self.base_img=BaseImg(base_ds,self.tile_sz,tile_ul[1:],tile_lr[1:],self.transparency)
 
     #############################
 
@@ -953,7 +800,7 @@ class Pyramid(object):
         zoom,x,y=tile
         if zoom==self.base_zoom: # get from the base image
             src_tile=self.tile_map[tile]
-            tile_img,opacity=self.base_img.tile(*src_tile[1:])
+            tile_img,opacity=self.base_img.get_tile(src_tile[1:])
             if tile_img and self.palette:
                 tile_img.putpalette(self.palette)
         else: # merge children
