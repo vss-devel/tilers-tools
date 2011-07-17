@@ -159,7 +159,6 @@ def xml_txt(elm_name,elm_value=None,elm_indent=0,**attr_dict):
     val_txt=('>%s</%s' % (elm_value,elm_name)) if elm_value else '/'
     return '%s<%s%s%s>' % (' '*elm_indent,elm_name,attr_txt,val_txt)
 
-#    <WarpMemoryLimit>2.68435e+08</WarpMemoryLimit>
 warp_vrt='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d" subClass="VRTWarpedDataset">
   <SRS>%(srs)s</SRS>
 %(geotr)s%(band_list)s
@@ -897,7 +896,7 @@ class Pyramid(object):
         'relative path to a tile, TMS style'
     #############################
         z,x,y=tile
-        return '%i/%i/%i%s' % (z,x,self.zoom_tiles(z)-y-1,self.tile_ext)
+        return '%i/%i/%i%s' % (z,x,self.zoom_tiles(z)[1]-y-1,self.tile_ext)
 
     #############################
 
