@@ -350,8 +350,9 @@ class Pyramid(object):
         pf('\n%s -> %s '%(self.src,self.dest),end='')
 
         if os.path.isdir(self.dest):
-            if options.noclobber and os.path.exists(os.path.join(self.dest,'merge-cache')):
-                pf('*** Pyramid already exists: skipping',end='')
+#            if options.noclobber and os.path.exists(os.path.join(self.dest,'merge-cache')):
+            if options.noclobber and os.path.exists(self.dest):
+                pf('*** Target already exists: skipping',end='')
                 return False
             else:
                 shutil.rmtree(self.dest,ignore_errors=True)
