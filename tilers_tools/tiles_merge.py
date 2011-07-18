@@ -199,7 +199,7 @@ class MergeSet:
                 pf('+',end='')
                 if not src_raster: 
                     src_raster=Image.open(src_path).convert("RGBA")
-                dst_raster=Image.composite(src_raster,Image.open(dst_tile),src_raster)
+                dst_raster=Image.composite(src_raster,Image.open(dst_tile).convert("RGBA"),src_raster)
                 dst_raster.save(dst_tile)
             if options.underlay and transp != 0:
                 self.underlay(tile,src_path,src_raster,options.underlay)
