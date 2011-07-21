@@ -55,35 +55,36 @@ def overlay2vrt(ol,map_dir):
     ld(img_file)
     img_path=find_image(img_file,map_dir)
     base=os.path.splitext(img_path)[0]
+    out_format='VRT'
     if options.long_name:
-        out_vrt= '%s - %s.vrt' % (base,name) # output VRT file
+        dst_file= '%s - %s.vrt' % (base,name) # output VRT file
     else:
-        out_vrt= name + '.vrt'# output VRT file
+        dst_file= name + '.vrt'# output VRT file
 
-    pf('%s -> %s' % (img_path,out_vrt))
+    pf('%s -> %s' % (img_path,dst_file))
     
-    if os.path.exists(out_vrt): os.remove(out_vrt)
+    if os.path.exists(dst_file): 
+        os.remove(dst_file)
 
     # http://trac.osgeo.org/proj/wiki/FAQ#ChangingEllipsoidWhycantIconvertfromWGS84toGoogleEarthVirtualGlobeMercator
     out_srs="+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs"
 
-    info_out=command(['gdalinfo',img_path]).splitlines()
-    width, height=eval([i for i in info_out if 'Size is' in i][0].replace('Size is',''))
-    ld((width, height))
-    points=[(0,height), (width,height), (width,0),(0,0)]
+    src_ds = gdal.Open(img_path,GA_ReadOnly)    
+    dst_drv = gdal.GetDriverByName(out_format)
+    dst_ds = dst_drv.CreateCopy(dst_file,src_ds,0)
+    del src_ds
+    dst_ds.SetProjection(out_srs)    
+    
     if '<gx:LatLonQuad>' in ol:
-        refs=[map(float,i.split(',')) for i in kml_parm(ol,'coordinates').split()]
+        src_refs=[map(float,i.split(',')) for i in kml_parm(ol,'coordinates').split()]
     else: # assume LatLonBox
         assert '<LatLonBox>' in ol
         north,south,east,west=[float(kml_parm(ol,parm)) for parm in ('north','south','east','west')]
-        refs=[(west,south),(east,south),(east,north),(west,north)]
-    latlong=''.join(['%r %r\n' % (ref[0],ref[1]) for ref in refs])
-    ld(latlong)
-    refs_proj=[ i.split() for i in 
-        command(['proj'] + out_srs.split(), latlong).splitlines()]
-    ld(refs_proj)
+        src_refs=[(west,south),(east,south),(east,north),(west,north)]
+
+    dst_refs=MyTransformer(SRC_SRS=proj_cs2geog_cs(out_srs),DST_SRS=out_srs).transform(src_refs)
     if '<rotation>' in ol:
-        north,south,east,west=[float(refs_proj[i][j]) for i,j in ((2,1),(0,1),(1,0),(0,0))]
+        north,south,east,west=[float(dst_refs[i][j]) for i,j in ((2,1),(0,1),(1,0),(0,0))]
         angle=math.radians(float(kml_parm(ol,'rotation')))
         dx=east-west
         dy=north-south
@@ -100,14 +101,19 @@ def overlay2vrt(ol,map_dir):
         ld('dx dy',dx,dy)
         ld('xc x0 x1 x2',xc,x0,x1,x2)
         ld('yc y0 y1 y2',yc,y0,y1,y2)
-        refs_proj=[(x0+x1,y0),(x0+x1+x2,y0+y2),(x0+x2,y0+y1+y2),(x0,y0+y1)]
-    gcps=flatten([map(str,('-gcp',i[0][0],i[0][1],i[1][0],i[1][1])) for i in zip(points, refs_proj)])
-    ld('gcps',gcps)
-    transl_cmd=['gdal_translate','-of','VRT',img_path, out_vrt,'-a_srs', out_srs]
-#    if 'Color Table' in info_out:
-#        transl_cmd=transl_cmd+['-expand','rgb']
-    transl_out=command(transl_cmd + gcps)
-    ld( '"%s" %s' % (img_path,transl_out.strip()))
+        dst_refs=[(x0+x1,y0),(x0+x1+x2,y0+y2),(x0+x2,y0+y1+y2),(x0,y0+y1)]
+    ld(dst_refs)
+
+    w, h=dst_ds.RasterXSize,dst_ds.RasterYSize
+    ld('w, h',w, h)
+    corners=[(0,h),(w,h),(w,0),(0,0)]
+    ids=[str(i+1) for i in range(4)]
+    gcps=[gdal.GCP(c[0],c[1],0,p[0],p[1],'',i) for i,p,c in zip(ids,corners,dst_refs)]
+
+    dst_ds.SetGCPs(gcps,out_srs)
+    dst_ds.SetGeoTransform(gdal.GCPsToGeoTransform(gcps))
+
+    del dst_ds
 
 def kml2vrt(map_path):
     map_dir, map_fname=os.path.split(map_path)
