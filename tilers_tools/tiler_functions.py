@@ -194,4 +194,92 @@ class MyTransformer(gdal.Transformer):
 
     def transform_point(self,point,inv=False):
         return self.transform([point],inv=inv)[0]
+# MyTransformer
+
+def sasplanet_hlg2ogr(fname):
+    with open(fname) as f:
+        lines=f.readlines(4096)
+        if not lines[0].startswith('[HIGHLIGHTING]'):
+            return None
+        coords=[[],[]]
+        for l in lines[2:]:
+            val=float(l.split('=')[1].replace(',','.'))
+            coords[1 if 'Lat' in l else 0].append(val)
+        points=zip(*coords)
+        ld('points',points)
+
+    ring = ogr.Geometry(ogr.wkbLinearRing)
+    for p in points:
+        ring.AddPoint(*p)
+    polygon = ogr.Geometry(ogr.wkbPolygon)
+    polygon.AddGeometry(ring)
+
+    ds = ogr.GetDriverByName('Memory').CreateDataSource( 'wrk' )
+    assert ds is not None, 'Unable to create datasource'
+
+    src_srs = osr.SpatialReference()
+    src_srs.ImportFromProj4('+proj=latlong +a=6378137 +b=6378137 +nadgrids=@null +wktext')
+
+    layer = ds.CreateLayer('sasplanet_hlg',srs=src_srs)
+
+    feature = ogr.Feature(layer.GetLayerDefn())
+    feature.SetGeometry(polygon)
+    layer.CreateFeature(feature)
+    
+    del feature
+    del polygon
+    del ring
+    
+    return ds
+
+def shape2mpointlst(datasource,target_srs,feature_name=None):
+    ds=ogr.Open(datasource)
+    if not ds:
+        ds=sasplanet_hlg2ogr(datasource)
+    assert ds, 'Invalid datasource %s' % datasource
+
+    layer=ds.GetLayer()
+    n_features=layer.GetFeatureCount()
+
+    if feature_name is None or n_features == -1:
+        feature=layer.GetFeature(0)
+    else: # Try to find a feature with the same name as feature_name otherwise return
+        for i in range(n_features-1,-1,-1):
+            feature=layer.GetFeature(i)
+            i_name=feature.GetFieldIndex('Name')
+            if i_name != -1 and feature.GetFieldAsString(i_name) == feature_name:
+                ld('feature',feature_name)
+                break
+            feature.Destroy()
+        else:
+            return []
+            
+    geom=feature.GetGeometryRef()
+    geom_name=geom.GetGeometryName()
+    geom_lst={
+        'MULTIPOLYGON':(geom.GetGeometryRef(i) for i in range(geom.GetGeometryCount())),
+        'POLYGON': (geom,),
+        }[geom_name]
+    
+    layer_srs=layer.GetSpatialRef()
+    if layer_srs:
+        layer_proj=layer_srs.ExportToProj4()
+    else:
+        layer_proj=target_srs
+    srs_tr=MyTransformer(SRC_SRS=layer_proj,DST_SRS=target_srs)
+    if layer_proj == target_srs:
+        srs_tr.transform=lambda x:x
+
+    mpointlst=[]
+    for pl in geom_lst:
+        assert pl.GetGeometryName() == 'POLYGON'
+        for ln in (pl.GetGeometryRef(j) for j in range(pl.GetGeometryCount())):
+            assert ln.GetGeometryName() == 'LINEARRING'
+            points=[ln.GetPoint(n) for n in range(ln.GetPointCount())]
+            transformed_points=srs_tr.transform(points)
+            mpointlst.append(transformed_points)
+    ld('mpointlst',mpointlst,target_srs)
+
+    feature.Destroy()
+    return mpointlst
 

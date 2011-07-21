@@ -53,42 +53,6 @@ except ImportError:
 
 from tiler_functions import *
 
-def sasplanet_hlg2ogr(fname):
-    with open(fname) as f:
-        lines=f.readlines(4096)
-        if not lines[0].startswith('[HIGHLIGHTING]'):
-            return None
-        coords=[[],[]]
-        for l in lines[2:]:
-            val=float(l.split('=')[1].replace(',','.'))
-            coords[1 if 'Lat' in l else 0].append(val)
-        points=zip(*coords)
-        ld('points',points)
-
-    ring = ogr.Geometry(ogr.wkbLinearRing)
-    for p in points:
-        ring.AddPoint(*p)
-    polygon = ogr.Geometry(ogr.wkbPolygon)
-    polygon.AddGeometry(ring)
-
-    ds = ogr.GetDriverByName('Memory').CreateDataSource( 'wrk' )
-    assert ds is not None, 'Unable to create datasource'
-
-    src_srs = osr.SpatialReference()
-    src_srs.ImportFromProj4('+proj=latlong +a=6378137 +b=6378137 +nadgrids=@null +wktext')
-
-    layer = ds.CreateLayer('sasplanet_hlg',srs=src_srs)
-
-    feature = ogr.Feature(layer.GetLayerDefn())
-    feature.SetGeometry(polygon)
-    layer.CreateFeature(feature)
-    
-    del feature
-    del polygon
-    del ring
-    
-    return ds
-
 #############################
 
 class BaseImg(object):
@@ -745,10 +709,11 @@ class Pyramid(object):
         if not src_proj:
             src_proj=wkt2proj4(src_ds.GetGCPProjection())
 
-        for points in self.shape2mpointlst(cut_file,src_proj):
+        feature_name=self.base if self.options.cutline_match_name else None
+        for points in shape2mpointlst(cut_file,src_proj,feature_name):
             p_pix=pix_tr.transform(points,inv=True)
             mpoly.append(','.join(['%r %r' % (p[0],p[1]) for p in p_pix]))
-        cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly])
+        cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly]) if mpoly else None
         return cutline
 
     #############################
@@ -1020,42 +985,6 @@ class Pyramid(object):
             return False
         t_ul,t_lr=self.corner_tiles(zoom)
         return x>=t_ul[1] and y>=t_ul[2] and x<=t_lr[1] and y<=t_lr[2]
-
-    def shape2mpointlst(self,datasource,target_srs):
-        ds=ogr.Open(datasource)
-        if not ds:
-            ds=sasplanet_hlg2ogr(datasource)
-        assert ds, 'Invalid datasource %s' % datasource
-
-        layer=ds.GetLayer()
-        feature=layer.GetFeature(0)
-        geom=feature.GetGeometryRef()
-        geom_name=geom.GetGeometryName()
-        geom_lst={
-            'MULTIPOLYGON':(geom.GetGeometryRef(i) for i in range(geom.GetGeometryCount())),
-            'POLYGON': (geom,),
-            }[geom_name]
-
-        l_srs=layer.GetSpatialRef()
-        if l_srs:
-            layer_proj=l_srs.ExportToProj4()
-        else:
-            layer_proj=target_srs
-        srs_tr=MyTransformer(SRC_SRS=layer_proj,DST_SRS=target_srs)
-        if layer_proj == target_srs:
-            srs_tr.transform=lambda x:x
-
-        mpointlst=[]
-        for pl in geom_lst:
-            assert pl.GetGeometryName() == 'POLYGON'
-            for ln in (pl.GetGeometryRef(j) for j in range(pl.GetGeometryCount())):
-                assert ln.GetGeometryName() == 'LINEARRING'
-                points=[ln.GetPoint(n) for n in range(ln.GetPointCount())]
-                transformed_points=srs_tr.transform(points)
-                mpointlst.append(transformed_points)
-                
-        ld('mpointlst',mpointlst,target_srs)
-        return mpointlst
 
     def set_region(self,point_lst,source_srs=None):
         if source_srs and source_srs != self.proj:
@@ -1480,6 +1409,8 @@ def main(argv):
         help='cut the raster as per cutline provided')
     parser.add_option("--cutline", default=None, metavar="DATASOURCE",
         help='cutline data: OGR datasource')
+    parser.add_option("--cutline-match-name",  action="store_true", 
+        help='match OGR feature field "Name" against source name')
     parser.add_option("--cutline-blend", dest="blend_dist",default=None,metavar="N",
         help='CUTLINE_BLEND_DIST in pixels')
     parser.add_option("--src-nodata", dest="src_nodata", metavar='N[,N]...',
