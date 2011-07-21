@@ -641,7 +641,7 @@ class Pyramid(object):
         warp_options.append(w_option('INIT_DEST','NO_DATA'))
 
         # generate cut line
-        if self.options.cut:
+        if self.options.cut or self.options.cutline:
             cut_wkt=self.get_cutline()
         else:
             cut_wkt=None
@@ -724,31 +724,31 @@ class Pyramid(object):
 
     #############################
         src_ds=self.src_ds
-        src_proj=wkt2proj4(src_ds.GetProjection())
         cutline=src_ds.GetMetadataItem('CUTLINE')
         ld('cutline',cutline)
+        if cutline and not self.options.cutline:
+            return cutline
+
         if self.options.cutline:
             cut_file=self.options.cutline
         else: # try to find a file with a cut shape
-            if cutline:
-                return cutline
-            for ext in ('.gmt','.shp'):
+            for ext in ('.gmt','.shp','.kml'):
                 cut_file=os.path.join(self.src_dir,self.base+ext)
                 if os.path.exists(cut_file):
                     break
             else:
-                cut_file=None
+                return None
 
-        if cut_file:
-            multipoint_lst=self.shape2mpointlst(cut_file,src_proj)
+        mpoly=[]
+        pix_tr=MyTransformer(src_ds)
+        src_proj=wkt2proj4(src_ds.GetProjection())
+        if not src_proj:
+            src_proj=wkt2proj4(src_ds.GetGCPProjection())
 
-            p_pix=MyTransformer(src_ds).transform_point(point_lst,inv=True)
-
-            mpoly=[]
-            for points in multipoint_lst:
-                p_pix=pix_tr.transform_point(points,inv=True)
-                mpoly.append(','.join(['%r %r' % (p[0],p[1]) for p in p_pix]))
-            cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly])
+        for points in self.shape2mpointlst(cut_file,src_proj):
+            p_pix=pix_tr.transform(points,inv=True)
+            mpoly.append(','.join(['%r %r' % (p[0],p[1]) for p in p_pix]))
+        cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly])
         return cutline
 
     #############################
@@ -1054,7 +1054,7 @@ class Pyramid(object):
                 transformed_points=srs_tr.transform(points)
                 mpointlst.append(transformed_points)
                 
-        ld('mpointlst',mpointlst)
+        ld('mpointlst',mpointlst,target_srs)
         return mpointlst
 
     def set_region(self,point_lst,source_srs=None):
