@@ -687,12 +687,12 @@ class Pyramid(object):
     def get_cutline(self):
 
     #############################
-        src_ds=self.src_ds
-        cutline=src_ds.GetMetadataItem('CUTLINE')
+        cutline=self.src_ds.GetMetadataItem('CUTLINE')
         ld('cutline',cutline)
         if cutline and not self.options.cutline:
             return cutline
 
+        # try to find an external cut line
         if self.options.cutline:
             cut_file=self.options.cutline
         else: # try to find a file with a cut shape
@@ -703,18 +703,8 @@ class Pyramid(object):
             else:
                 return None
 
-        mpoly=[]
-        pix_tr=MyTransformer(src_ds)
-        src_proj=wkt2proj4(src_ds.GetProjection())
-        if not src_proj:
-            src_proj=wkt2proj4(src_ds.GetGCPProjection())
-
         feature_name=self.base if self.options.cutline_match_name else None
-        for points in shape2mpointlst(cut_file,src_proj,feature_name):
-            p_pix=pix_tr.transform(points,inv=True)
-            mpoly.append(','.join(['%r %r' % (p[0],p[1]) for p in p_pix]))
-        cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly]) if mpoly else None
-        return cutline
+        return shape2cutline(cut_file,self.src_ds,feature_name)
 
     #############################
 

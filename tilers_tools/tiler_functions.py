@@ -283,3 +283,16 @@ def shape2mpointlst(datasource,target_srs,feature_name=None):
     feature.Destroy()
     return mpointlst
 
+def shape2cutline(cutline_ds,raster_ds,feature_name=None):
+    mpoly=[]
+    pix_tr=MyTransformer(raster_ds)
+    raster_proj=wkt2proj4(raster_ds.GetProjection())
+    if not raster_proj:
+        raster_proj=wkt2proj4(raster_ds.GetGCPProjection())
+
+    for points in shape2mpointlst(cutline_ds,raster_proj,feature_name):
+        p_pix=pix_tr.transform(points,inv=True)
+        mpoly.append(','.join(['%r %r' % (p[0],p[1]) for p in p_pix]))
+    cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly]) if mpoly else None
+    return cutline
+
