@@ -55,8 +55,13 @@ def overlay2vrt(ol,map_dir):
     ld(img_file)
     img_path=find_image(img_file,map_dir)
     base=os.path.splitext(img_path)[0]
-    pf('%s - %s' % (base,name))
-    out_vrt= '%s - %s.vrt' % (base,name) # output VRT file
+    if options.long_name:
+        out_vrt= '%s - %s.vrt' % (base,name) # output VRT file
+    else:
+        out_vrt= name + '.vrt'# output VRT file
+
+    pf('%s -> %s' % (img_path,out_vrt))
+    
     if os.path.exists(out_vrt): os.remove(out_vrt)
 
     # http://trac.osgeo.org/proj/wiki/FAQ#ChangingEllipsoidWhycantIconvertfromWGS84toGoogleEarthVirtualGlobeMercator
@@ -121,6 +126,8 @@ if __name__=='__main__':
     parser.add_option("-d", "--debug", action="store_true", dest="debug")
     parser.add_option("-t", "--dest-dir", dest="dest_dir", default='',
         help='destination directory (default: current)')
+    parser.add_option("-l", "--long-name", action="store_true", 
+        help='give an output file a long name')
 
     options, args = parser.parse_args()
     if not args:
