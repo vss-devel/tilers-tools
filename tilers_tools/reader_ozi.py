@@ -150,7 +150,7 @@ class OziMap(MapTranslator):
         
     def get_refs(self):
         'get a list of geo refs in tuples'
-        points=[i for i in self.hdr_parms('Point') if len(i) > 2 and i[2] != ''] # Get a list of geo refs
+        points=[i for i in self.hdr_parms('Point') if len(i) > 5 and i[4] == 'in' and i[2] != ''] # Get a list of geo refs
         if points[0][14] != '': # refs are cartesian
             refs=OziRefPoints(self,[(
                     i[0],                               # id
