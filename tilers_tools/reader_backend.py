@@ -249,7 +249,7 @@ class MapTranslator(object):
             #double line = 0.0, char info = "", char id = ""
             gcps=[gdal.GCP(c[0],c[1],0,p[0],p[1],'',i) for i,p,c in self.refs]
             dst_ds.SetGCPs(gcps,self.refs.srs())
-            dst_geotr=gdal.GCPsToGeoTransform(gcps)
+            dst_geotr=gdal.GCPsToGeoTransform(gcps) if len(gcps) < 5 else (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
             dst_ds.SetGeoTransform(dst_geotr)
             poly,gmt_data=self.cut_poly(dst_ds)
             if poly:
