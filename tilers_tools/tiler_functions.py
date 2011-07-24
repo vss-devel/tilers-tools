@@ -158,6 +158,8 @@ def re_sub_file(fname, subs_list):
 #############################
 
 def wkt2proj4(wkt):
+    if wkt and wkt.startswith('+'):
+        return wkt # already proj4
     srs = osr.SpatialReference()
     srs.ImportFromWkt(wkt)
     return srs.ExportToProj4()
@@ -232,7 +234,7 @@ def sasplanet_hlg2ogr(fname):
     
     return ds
 
-def shape2mpointlst(datasource,target_srs,feature_name=None):
+def shape2mpointlst(datasource,dst_srs,feature_name=None):
     ds=ogr.Open(datasource)
     if not ds:
         ds=sasplanet_hlg2ogr(datasource)
@@ -265,34 +267,36 @@ def shape2mpointlst(datasource,target_srs,feature_name=None):
     if layer_srs:
         layer_proj=layer_srs.ExportToProj4()
     else:
-        layer_proj=target_srs
-    srs_tr=MyTransformer(SRC_SRS=layer_proj,DST_SRS=target_srs)
-    if layer_proj == target_srs:
+        layer_proj=dst_srs
+    srs_tr=MyTransformer(SRC_SRS=layer_proj,DST_SRS=dst_srs)
+    if layer_proj == dst_srs:
         srs_tr.transform=lambda x:x
 
-    mpointlst=[]
-    for pl in geom_lst:
-        assert pl.GetGeometryName() == 'POLYGON'
-        for ln in (pl.GetGeometryRef(j) for j in range(pl.GetGeometryCount())):
+    multipoint_lst=[]
+    for geometry in geom_lst:
+        assert geometry.GetGeometryName() == 'POLYGON'
+        for ln in (geometry.GetGeometryRef(j) for j in range(geometry.GetGeometryCount())):
             assert ln.GetGeometryName() == 'LINEARRING'
-            points=[ln.GetPoint(n) for n in range(ln.GetPointCount())]
-            transformed_points=srs_tr.transform(points)
-            mpointlst.append(transformed_points)
-    ld('mpointlst',mpointlst,target_srs)
+            src_points=[ln.GetPoint(n) for n in range(ln.GetPointCount())]
+            dst_points=srs_tr.transform(src_points)
+            ld(src_points)
+            multipoint_lst.append(dst_points)
+    ld('mpointlst',multipoint_lst,layer_proj,dst_srs)
 
     feature.Destroy()
-    return mpointlst
+    return multipoint_lst
 
 def shape2cutline(cutline_ds,raster_ds,feature_name=None):
     mpoly=[]
-    pix_tr=MyTransformer(raster_ds)
     raster_proj=wkt2proj4(raster_ds.GetProjection())
     if not raster_proj:
         raster_proj=wkt2proj4(raster_ds.GetGCPProjection())
+    ld(raster_proj,raster_ds.GetProjection(),raster_ds)
 
+    pix_tr=MyTransformer(raster_ds)
     for points in shape2mpointlst(cutline_ds,raster_proj,feature_name):
         p_pix=pix_tr.transform(points,inv=True)
         mpoly.append(','.join(['%r %r' % (p[0],p[1]) for p in p_pix]))
     cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly]) if mpoly else None
+    ld('cutline',cutline)
     return cutline
-

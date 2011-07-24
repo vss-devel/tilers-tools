@@ -48,7 +48,7 @@ def find_image(img_path, map_dir):
         return os.path.join(map_dir, match[0])
     except IndexError: raise Exception("*** Image file not found: %s" % img_path)
 
-def overlay2vrt(ol,map_dir):
+def overlay2vrt(ol,map_dir,kml_path):
     ld(ol)
     name=kml_parm(ol,'name')
     img_file=kml_parm(ol,'href')
@@ -111,7 +111,14 @@ def overlay2vrt(ol,map_dir):
     gcps=[gdal.GCP(c[0],c[1],0,p[0],p[1],'',i) for i,p,c in zip(ids,corners,dst_refs)]
 
     dst_ds.SetGCPs(gcps,out_srs)
-    dst_ds.SetGeoTransform(gdal.GCPsToGeoTransform(gcps))
+    #dst_ds.SetGeoTransform(gdal.GCPsToGeoTransform(gcps))
+    dst_ds.SetGeoTransform((0,1,0,0,0,1))
+    
+    cutline=shape2cutline(kml_path,dst_ds,name)
+    if cutline:
+        dst_ds.SetMetadataItem('CUTLINE',cutline)
+    if name:
+        dst_ds.SetMetadataItem('DESCRIPTION',name)
 
     del dst_ds
 
@@ -122,7 +129,7 @@ def kml2vrt(map_path):
         raise Exception("*** Incorrect file: <GroundOverlay> required")
     overlay_lst=kml_parm(f,'GroundOverlay', lst=True) # get list of <GroundOverlay> content
     for ol in overlay_lst:
-        overlay2vrt(ol,map_dir)
+        overlay2vrt(ol,map_dir,map_path)
 
 if __name__=='__main__':
     parser = OptionParser(
