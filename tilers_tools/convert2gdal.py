@@ -35,15 +35,15 @@ from optparse import OptionParser
 from tiler_functions import *
 
 from reader_bsb import BsbKapMap
-from reader_geo import GeoNosMap
-from reader_ozi import OziMap
+#from reader_geo import GeoNosMap
+#from reader_ozi import OziMap
 
 class_map=(
     BsbKapMap,
-    OziMap,
-    GeoNosMap,
+#    GeoNosMap,
+#    OziMap,
     )
-    
+
 def proc_src(src):
     with open(src,'rU') as f:
         lines=[f.readline() for i in range(10)]
@@ -53,8 +53,9 @@ def proc_src(src):
             break
     else:
         raise Exception(" Invalid file: %s" % src)
-    
-    cls(src,options=options).convert()
+
+    for overlay in cls(src,options=options).get_layers():
+        overlay.convert()
 
 if __name__=='__main__':
     parser = OptionParser(

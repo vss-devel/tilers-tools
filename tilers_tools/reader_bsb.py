@@ -36,28 +36,28 @@ from optparse import OptionParser
 from tiler_functions import *
 from reader_backend import *
 
-class BsbKapMap(MapTranslator):
+class BsbKapMap(SrcMap):
     magic='KNP/'
     data_file='reader_bsb_data.csv'
 
     def load_data(self):
         'load datum definitions, ellipses, projections from a file'
-        self.datum_map={}
-        self.guess_map={}
-        self.knp_map={}
-        self.knq_map={}
+        self.datum_dict={}
+        self.guess_dict={}
+        self.knp_dict={}
+        self.knq_dict={}
         csv_map={
-            'datum':        (self.datum_map,self.ini_lst),
-            'datum_guess':  (self.guess_map,self.ini_lst),
-            'proj_knp':     (self.knp_map,self.ini_map),
-            'proj_knq':     (self.knq_map,self.ini_map),
+            'datum':        (self.datum_dict,self.ini_lst),
+            'datum_guess':  (self.guess_dict,self.ini_lst),
+            'proj_knp':     (self.knp_dict,self.ini_map),
+            'proj_knq':     (self.knq_dict,self.ini_map),
             }
         self.load_csv(self.data_file,csv_map)
             
     def get_header(self): 
         'read map header'
         header=[]
-        with open(self.map_file,'rU') as f:
+        with open(self.file,'rU') as f:
             for l in f:
                 if '\x1A' in l:
                     break
@@ -68,7 +68,7 @@ class BsbKapMap(MapTranslator):
                     header.append(l.strip())
         ld(header)
         if not (header and any(((s.startswith('BSB/') or s.startswith('KNP/')) for s in header))): 
-            raise Exception(" Invalid file: %s" % self.map_file)
+            raise Exception(" Invalid file: %s" % self.file)
         return header
 
     def hdr_parms(self, patt): 
@@ -90,13 +90,21 @@ class BsbKapMap(MapTranslator):
                 out[key] += ','+i
         return out
         
+    def get_layers(self):
+        bsb_info=self.hdr_parm2dict('BSB') # general BSB parameters
+        bsb_name=bsb_info['NA']
+        return [BsbLayer(self,bsb_name)]
+# BsbKapMap
+
+class BsbLayer(SrcLayer):
+
     def get_dtm(self):
         'get DTM northing, easting'
-        if self.options.dtm_shift is not None:
-            dtm_parm=self.options.dtm_shift.split(',')
+        if self.map.options.dtm_shift is not None:
+            dtm_parm=self.map.options.dtm_shift.split(',')
         else:
             try:
-                dtm_parm=self.hdr_parms2list('DTM')[0]
+                dtm_parm=self.map.hdr_parms2list('DTM')[0]
                 ld('DTM',dtm_parm)
             except IndexError: # DTM not found
                 ld('DTM not found')
@@ -110,7 +118,7 @@ class BsbKapMap(MapTranslator):
             i[0],
             (int(i[1]),int(i[2])),                  # pixel
             (float(i[4]),float(i[3]))               # lat/long
-            ) for i in self.hdr_parms2list('REF')])
+            ) for i in self.map.hdr_parms2list('REF')])
         return refs
 
     def get_plys(self):
@@ -119,7 +127,7 @@ class BsbKapMap(MapTranslator):
             i[0],
             None,                                   # pixel
             (float(i[2]),float(i[1]))               # lat/long
-            ) for i in self.hdr_parms2list('PLY')])
+            ) for i in self.map.hdr_parms2list('PLY')])
         return plys
         
     def assemble_parms(self,parm_map,parm_info):    
@@ -128,23 +136,23 @@ class BsbKapMap(MapTranslator):
                         if  i in parm_info and check_parm(parm_info[i])]
 
     def get_proj_id(self):
-        return self.hdr_parm2dict('KNP')['PR']
+        return self.map.hdr_parm2dict('KNP')['PR']
 
     def get_proj(self):
-        knp_info=self.hdr_parm2dict('KNP')
+        knp_info=self.map.hdr_parm2dict('KNP')
         ld(knp_info)
         proj_id=self.get_proj_id()
         try:            
-            knp_parm=self.knp_map[proj_id.upper()]
+            knp_parm=self.map.knp_dict[proj_id.upper()]
             ld(knp_parm)
         except KeyError: 
             raise Exception(' Unsupported projection %s' % proj_id)
         # get projection and parameters
         proj=[knp_parm['PROJ4']]
         try: # extra projection parameters for BSB 3.xx, put them before KNP parms
-            knq_info=self.hdr_parm2dict('KNQ')
+            knq_info=self.map.hdr_parm2dict('KNQ')
             ld(knq_info)
-            knq_parm=self.knp_map[proj_id.upper()]
+            knq_parm=self.map.knq_dict[proj_id.upper()]
             proj.extend(self.assemble_parms(knq_parm,knq_info))
         except IndexError:  # No KNQ
             pass
@@ -154,18 +162,18 @@ class BsbKapMap(MapTranslator):
         return proj
 
     def get_datum_id(self):
-        return self.hdr_parm2dict('KNP')['GD']
+        return self.map.hdr_parm2dict('KNP')['GD']
 
     def get_datum(self):
         datum_id=self.get_datum_id()
         try:
-            datum=self.datum_map[datum_id.upper()][0]
+            datum=self.map.datum_dict[datum_id.upper()][0]
         except KeyError: 
             # try to guess the datum by comment and copyright string(s)
-            crr=' '.join(self.hdr_parms('!')+self.hdr_parms('CRR'))
+            crr=' '.join(self.map.hdr_parms('!')+self.map.hdr_parms('CRR'))
             try:
-                datum=[self.guess_map[crr_patt][0]
-                    for crr_patt in self.guess_map if crr_patt in crr][0]
+                datum=[self.map.guess_dict[crr_patt][0]
+                    for crr_patt in self.map.guess_dict if crr_patt in crr][0]
                 logging.warning(' Unknown datum "%s", guessed as "%s"' % (datum_id,datum))
             except IndexError:
                 # datum still not found
@@ -178,30 +186,10 @@ class BsbKapMap(MapTranslator):
         return datum.split(' ')
 
     def get_raster(self):
-        return self.map_file
-    
-    def get_band_count(self):
-        return 1
-
-    def get_palette(self):
-        plt=[i+['255'] for i in self.hdr_parms2list('RGB')]
-        return plt
-
-    def get_size(self):
-        bsb_info=self.hdr_parm2dict('BSB') # general BSB parameters
-        return map(int,bsb_info['RA'].split(','))
-
-    def get_block_size(self):
-        return self.get_size()[0],1
-        
-    def get_name(self):
-        bsb_info=self.hdr_parm2dict('BSB') # general BSB parameters
-        bsb_name=bsb_info['NA']
-        return bsb_name
-# BsbKapMap
+        return self.map.file
+# BsbLayer
 
 if __name__=='__main__':
-
     print('\nPlease use convert2gdal.py\n')
     sys.exit(1)
 

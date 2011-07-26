@@ -82,7 +82,7 @@ class RefPoints(object):
             self.transposed=[i if any(i) else None for i in zip(*ref_lst)]
             self.ids,self.pixels,self.latlong=self.transposed[:3]
 
-        items=len(filter(None,(self.pixels,self.latlong))[0])
+        items=len(filter(None,(self.pixels,self.latlong,self.cartesian))[0])
         if not self.ids:
             self.ids=map(str,range(1,items+1))
 
@@ -135,7 +135,7 @@ class RefPoints(object):
 
 ###############################################################################
 
-class MapTranslator(object):
+class SrcMap(object):
 
 ###############################################################################
     def __init__(self,src_file,options=None):
@@ -143,16 +143,8 @@ class MapTranslator(object):
         gdal.UseExceptions()
 
         self.load_data() # load datum definitions, ellipses, projections
-        self.map_file=src_file.decode(locale.getpreferredencoding(),'ignore')
+        self.file=src_file.decode(locale.getpreferredencoding(),'ignore')
         self.header=self.get_header()       # Read map header
-        self.img_file=self.get_raster()
-        self.name=self.get_name()
-        logging.info(' %s : %s (%s)' % (self.map_file,self.name,self.img_file))
-        
-        self.native_datum=self.get_datum_id()
-        self.native_proj=self.get_proj_id()
-        self.refs=self.get_refs()           # fetch reference points
-        self.srs,self.dtm=self.get_srs()    # estimate SRS
 
     def load_csv(self,csv_file,csv_map):
         'load datum definitions, ellipses, projections from a file'
@@ -173,23 +165,45 @@ class MapTranslator(object):
                     pass
         for dct,func in csv_map.values():
             ld(dct)
-            
+
     def ini_lst(self,dct,row):
         dct[row[1]]=row[2:]
 
     def ini_map(self,dct,row):
         dct[row[1]]=dict((i.split(':',1) for i in row[2:] if ':' in i))
 
-    def get_srs(self):
+#    def get_layers(self):
+#        pass
+
+###############################################################################
+
+class SrcLayer(object):
+
+###############################################################################
+    def __init__(self,src_map,layer_name):
+        self.map=src_map
+        self.name=layer_name
+
+        self.img_file=self.get_raster()
+        logging.info(' %s : %s (%s)' % (self.map.file,self.name,self.img_file))
+        self.raster_ds = gdal.Open(self.img_file,GA_ReadOnly)
+        
+        self.refs=self.get_refs()           # fetch reference points
+        self.srs,self.dtm=self.get_srs()    # estimate SRS
+        
+    def __del__(self):
+        del self.raster_ds
+
+    def get_srs(self): # redefined in reader_kml.py
         'returns srs for the map, and DTM shifts if any'
-        options=self.options
+        options=self.map.options
+        if options.srs:
+            return(options.srs,None)
         dtm=None
         proj4=[]
-        logging.info(' %s, %s' % (self.native_datum,self.native_proj))
-        if options.srs:
-            return(self.options.srs,None)
+        logging.info(' %s, %s' % (self.get_datum_id(),self.get_proj_id()))
         
-        # evaluate chart's projection
+        # compute chart's projection
         if options.proj:
             proj4.append(options.proj)
         else:
@@ -200,7 +214,7 @@ class MapTranslator(object):
         if leftmost and '+lon_0=' not in proj4[0]:
             proj4.append(' +lon_0=%i' % int(leftmost))
         
-        # evaluate chart's datum
+        # compute chart's datum
         if options.datum: 
             proj4.append(options.datum)
         elif options.force_dtm or options.dtm_shift:
@@ -216,15 +230,15 @@ class MapTranslator(object):
         return ' '.join(proj4).encode('utf-8'),dtm
 
     def convert(self,dest=None):
-        options=self.options
+        options=self.map.options
         
         if dest:
             base=os.path.split(dest)[0]
         else:
-            name_patt=self.map_file
+            name_patt=self.map.file
             if options.as_image:
                 name_patt=self.img_file
-            base=dst_path(name_patt,self.options.dst_dir)
+            base=dst_path(name_patt,options.dst_dir)
             if options.long_name:
                 ld(self.name)
                 base+=' - ' +  "".join([c for c in self.name 
@@ -233,16 +247,14 @@ class MapTranslator(object):
         out_format='VRT'
         ext='.'+out_format.lower()
         dst_file= os.path.basename(base+ext).encode('utf-8') # output file
-        img_path=os.path.relpath(self.img_file,dst_dir).encode('utf-8')
 
         try:
-            cdir=os.getcwd()
+            start_dir=os.getcwd()
             if dst_dir:
                 os.chdir(dst_dir)
 
-            src_ds = gdal.Open(img_path,GA_ReadOnly)
             dst_drv = gdal.GetDriverByName(out_format)
-            dst_ds = dst_drv.CreateCopy(dst_file,src_ds,0)
+            dst_ds = dst_drv.CreateCopy(dst_file,self.raster_ds,0)
             dst_ds.SetProjection(self.srs)
 
             #double x = 0.0, double y = 0.0, double z = 0.0, double pixel = 0.0, 
@@ -263,12 +275,12 @@ class MapTranslator(object):
                     ('^.*<SRS>.*\n','')
                     ])
         finally:
-            os.chdir(cdir)
+            os.chdir(start_dir)
 
-        if self.options.get_cutline: # print cutline then return
+        if options.get_cutline: # print cutline then return
             print poly
             return
-        if gmt_data and self.options.cut_file: # create shapefile with a cut polygon
+        if gmt_data and options.cut_file: # create shapefile with a cut polygon
             with open(base+'.gmt','w+') as f:
                 f.write(gmt_data)
 
