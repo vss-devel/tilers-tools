@@ -118,10 +118,10 @@ class BaseImg(object):
 
 #############################
 
-def xml_txt(elm_name,elm_value=None,elm_indent=0,**attr_dict):
+def xml_txt(name,value=None,indent=0,**attr_dict):
     attr_txt=''.join((' %s="%s"' % (key,attr_dict[key]) for key in attr_dict))
-    val_txt=('>%s</%s' % (elm_value,elm_name)) if elm_value else '/'
-    return '%s<%s%s%s>' % (' '*elm_indent,elm_name,attr_txt,val_txt)
+    val_txt=('>%s</%s' % (value,name)) if value else '/'
+    return '%s<%s%s%s>' % (' '*indent,name,attr_txt,val_txt)
 
 warp_vrt='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d" subClass="VRTWarpedDataset">
   <SRS>%(srs)s</SRS>
@@ -429,7 +429,7 @@ class Pyramid(object):
 
                 metadata=src_ds.GetMetadata()
                 if metadata:
-                    mtd_lst=[xml_txt('MDI',metadata[mdkey],4,key=mdkey) for mdkey in metadata]
+                    mtd_lst=[xml_txt('MDI',metadata[mdkey].encode('utf-8'),4,key=mdkey) for mdkey in metadata]
                     meta_txt=meta_templ % '\n'.join(mtd_lst)
                 else:
                     meta_txt=''
@@ -444,8 +444,8 @@ class Pyramid(object):
                     'srcband':  1,
                     'xsize':    xsize,
                     'ysize':    ysize,
-                    'blxsize':    blxsize,
-                    'blysize':    blysize,
+                    'blxsize':  blxsize,
+                    'blysize':  blysize,
                     } for band,color in ((1,'Red'),(2,'Green'),(3,'Blue'))))
                 vrt_txt=vrt_templ % {
                     'xsize':    xsize,
