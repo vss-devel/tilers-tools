@@ -37,11 +37,13 @@ from tiler_functions import *
 from reader_bsb import BsbKapMap
 #from reader_geo import GeoNosMap
 #from reader_ozi import OziMap
+from reader_kml import KmlMap
 
 class_map=(
     BsbKapMap,
-#    GeoNosMap,
 #    OziMap,
+#    GeoNosMap,
+    KmlMap
     )
 
 def proc_src(src):
@@ -79,10 +81,12 @@ if __name__=='__main__':
         help='create a .GMT file with a cutline polygon')
     parser.add_option("-t", "--dest-dir", default=None, dest="dst_dir",
         help='destination directory (default: current)')
+    parser.add_option("-e", "--after-description", action="store_true", 
+        help='give an output file name after a description field of a map')
+    parser.add_option("-i", "--after-image", action="store_true",
+        help='give an output file name after a name of an image file')
     parser.add_option("-l", "--long-name", action="store_true", 
         help='give an output file a long name')
-    parser.add_option("-i", "--as-image", action="store_true", 
-        help='give an output file name after a name of an image file (Ozi)')
     parser.add_option("-d", "--debug", action="store_true", dest="debug")
     parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
 #    parser.add_option("--last-column-bug", action="store_true", 

@@ -55,7 +55,7 @@ def dst_path(src,dst_dir,ext='',template='%s'):
         dst_dir=src_dir
     if dst_dir:
         dest='%s/%s' % (dst_dir,dest)
-    ld(base,dest)
+    ld('base',base,'dest',dest,'src',src)
     return dest
 
 class Opt(object):
@@ -235,9 +235,12 @@ class SrcLayer(object):
         if dest:
             base=os.path.split(dest)[0]
         else:
-            name_patt=self.map.file
-            if options.as_image:
+            if options.after_description:
+                name_patt=self.name
+            elif options.after_image:
                 name_patt=self.img_file
+            else:
+                name_patt=self.map.file
             base=dst_path(name_patt,options.dst_dir)
             if options.long_name:
                 ld(self.name)
@@ -312,7 +315,7 @@ class SrcLayer(object):
                                 ['%r %r' % (i[0],i[1]) for i in plys.proj_coords()]))
         poly_wkt='MULTIPOLYGON(((%s)))' % ','.join(['%r %r' % tuple(i) for i in pix_lst]) # Create cutline
         return poly_wkt,poly_shape
+# SrcLayer
 
-# MapTranslator
 ###############################################################################
 
