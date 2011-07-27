@@ -36,34 +36,40 @@ from optparse import OptionParser
 from tiler_functions import *
 from reader_backend import *
 
-class GeoNosMap(MapTranslator):
+class GeoNosMap(SrcMap):
     magic='[MainChart]'
     data_file='reader_geo_data.csv'
     
     def load_data(self):
         'load datum definitions, ellipses, projections from a file'
-        self.datum_map={}
-        self.proj_map={}
+        self.datum_dict={}
+        self.proj_dict={}
         csv_map={
-            'datum': (self.datum_map,self.ini_lst),
-            'proj': (self.proj_map,self.ini_lst),
+            'datum': (self.datum_dict,self.ini_lst),
+            'proj': (self.proj_dict,self.ini_lst),
             }
         self.load_csv(self.data_file,csv_map)
 
     def get_header(self): 
         'read map header'
-        with open(self.map_file, 'rU') as f:
+        with open(self.file, 'rU') as f:
             hdr=[[i.strip() for i in l.decode('cp1252','ignore').split('=')] for l in f]
         if not (hdr and hdr[0][0] == '[MainChart]'): 
-            raise Exception(" Invalid file: %s" % self.map_file)
+            raise Exception(" Invalid file: %s" % self.file)
         ld(hdr)
         return hdr
+
+    def get_layers(self):
+        return [GeoNosLayer(self,self.header)]
+#GeoNosMap
+
+class GeoNosLayer(SrcLayer):
 
     def hdr_parms(self, patt): 
         'filter header for params starting with "patt"'
         plen=len(patt)
         return [('%s %s' % (i[0][plen:],i[1]) if len(i[0]) > plen else i[1])
-                    for i in self.header if i[0].startswith(patt)]
+                    for i in self.data if i[0].startswith(patt)]
 
     def hdr_parms2list(self, patt):
         return [s.split() for s in self.hdr_parms(patt)]
@@ -107,7 +113,7 @@ class GeoNosMap(MapTranslator):
     def get_proj(self):
         proj_id=self.get_proj_id()
         try:
-            proj=[self.proj_map[proj_id][0]]
+            proj=[self.map.proj_dict[proj_id][0]]
         except KeyError: 
             raise Exception("*** Unsupported projection (%s)" % proj_id)
         return proj
@@ -118,7 +124,7 @@ class GeoNosMap(MapTranslator):
     def get_datum(self):
         datum_id=self.get_datum_id()
         try:
-            datum=self.datum_map[datum_id][0]
+            datum=self.map.datum_dict[datum_id][0]
         except KeyError: 
             dtm=self.get_dtm() # get northing, easting to WGS84 if any
             datum='+datum=WGS84'
@@ -130,7 +136,7 @@ class GeoNosMap(MapTranslator):
 
     def get_raster(self):
         name_patt=self.hdr_parms('Bitmap')[0].lower()
-        map_dir,map_fname=os.path.split(self.map_file)
+        map_dir,map_fname=os.path.split(self.map.file)
         dir_lst=[i.decode(locale.getpreferredencoding(),'ignore') 
                     for i in os.listdir(map_dir if map_dir else '.')]
         match=[i for i in dir_lst if i.lower() == name_patt]
@@ -152,7 +158,8 @@ class GeoNosMap(MapTranslator):
 
     def get_name(self):
         return self.hdr_parms('Name')[0]
-# GeoNosMap
+
+# GeoNosLayer
 
 if __name__=='__main__':
 

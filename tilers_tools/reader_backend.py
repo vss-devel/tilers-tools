@@ -180,9 +180,11 @@ class SrcMap(object):
 class SrcLayer(object):
 
 ###############################################################################
-    def __init__(self,src_map,layer_name):
+
+    def __init__(self,src_map,data):
         self.map=src_map
-        self.name=layer_name
+        self.data=data
+        self.name=self.get_name()
 
         self.img_file=self.get_raster()
         logging.info(' %s : %s (%s)' % (self.map.file,self.name,self.img_file))

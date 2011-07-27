@@ -66,10 +66,6 @@ class KmlMap(SrcMap):
 
 class KmlLayer(SrcLayer):
 
-    def __init__(self,src_map,layer_data):
-        self.data=layer_data
-        super(KmlLayer, self).__init__(src_map,kml_parm(self.data,'name'))
-
     def get_refs(self):
         'get a list of geo refs in tuples'
 
@@ -135,6 +131,9 @@ class KmlLayer(SrcLayer):
         try:
             return os.path.join(map_dir, match[0])
         except IndexError: raise Exception("*** Image file not found: %s" % img_path)
+        
+    def get_name(self):
+        return kml_parm(self.data,'name')
 
 # KmlLayer
 

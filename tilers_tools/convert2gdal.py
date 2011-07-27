@@ -35,14 +35,14 @@ from optparse import OptionParser
 from tiler_functions import *
 
 from reader_bsb import BsbKapMap
-#from reader_geo import GeoNosMap
-#from reader_ozi import OziMap
+from reader_geo import GeoNosMap
+from reader_ozi import OziMap
 from reader_kml import KmlMap
 
 class_map=(
     BsbKapMap,
-#    OziMap,
-#    GeoNosMap,
+    GeoNosMap,
+    OziMap,
     KmlMap
     )
 

@@ -70,12 +70,18 @@ class BsbKapMap(SrcMap):
         if not (header and any(((s.startswith('BSB/') or s.startswith('KNP/')) for s in header))): 
             raise Exception(" Invalid file: %s" % self.file)
         return header
+        
+    def get_layers(self):
+        return [BsbLayer(self,self.header)]
+# BsbKapMap
+
+class BsbLayer(SrcLayer):
 
     def hdr_parms(self, patt): 
         'filter header for params starting with "patt/"'
         if patt != '!': 
             patt += '/'
-        return [i[len(patt):] for i in self.header if i.startswith(patt)]
+        return [i[len(patt):] for i in self.data if i.startswith(patt)]
 
     def hdr_parms2list(self, knd):
         return [i.split(',') for i in self.hdr_parms(knd)]
@@ -89,14 +95,6 @@ class BsbKapMap(SrcMap):
             else:
                 out[key] += ','+i
         return out
-        
-    def get_layers(self):
-        bsb_info=self.hdr_parm2dict('BSB') # general BSB parameters
-        bsb_name=bsb_info['NA']
-        return [BsbLayer(self,bsb_name)]
-# BsbKapMap
-
-class BsbLayer(SrcLayer):
 
     def get_dtm(self):
         'get DTM northing, easting'
@@ -104,7 +102,7 @@ class BsbLayer(SrcLayer):
             dtm_parm=self.map.options.dtm_shift.split(',')
         else:
             try:
-                dtm_parm=self.map.hdr_parms2list('DTM')[0]
+                dtm_parm=self.hdr_parms2list('DTM')[0]
                 ld('DTM',dtm_parm)
             except IndexError: # DTM not found
                 ld('DTM not found')
@@ -118,7 +116,7 @@ class BsbLayer(SrcLayer):
             i[0],
             (int(i[1]),int(i[2])),                  # pixel
             (float(i[4]),float(i[3]))               # lat/long
-            ) for i in self.map.hdr_parms2list('REF')])
+            ) for i in self.hdr_parms2list('REF')])
         return refs
 
     def get_plys(self):
@@ -127,7 +125,7 @@ class BsbLayer(SrcLayer):
             i[0],
             None,                                   # pixel
             (float(i[2]),float(i[1]))               # lat/long
-            ) for i in self.map.hdr_parms2list('PLY')])
+            ) for i in self.hdr_parms2list('PLY')])
         return plys
         
     def assemble_parms(self,parm_map,parm_info):    
@@ -136,10 +134,10 @@ class BsbLayer(SrcLayer):
                         if  i in parm_info and check_parm(parm_info[i])]
 
     def get_proj_id(self):
-        return self.map.hdr_parm2dict('KNP')['PR']
+        return self.hdr_parm2dict('KNP')['PR']
 
     def get_proj(self):
-        knp_info=self.map.hdr_parm2dict('KNP')
+        knp_info=self.hdr_parm2dict('KNP')
         ld(knp_info)
         proj_id=self.get_proj_id()
         try:            
@@ -150,7 +148,7 @@ class BsbLayer(SrcLayer):
         # get projection and parameters
         proj=[knp_parm['PROJ4']]
         try: # extra projection parameters for BSB 3.xx, put them before KNP parms
-            knq_info=self.map.hdr_parm2dict('KNQ')
+            knq_info=self.hdr_parm2dict('KNQ')
             ld(knq_info)
             knq_parm=self.map.knq_dict[proj_id.upper()]
             proj.extend(self.assemble_parms(knq_parm,knq_info))
@@ -162,7 +160,7 @@ class BsbLayer(SrcLayer):
         return proj
 
     def get_datum_id(self):
-        return self.map.hdr_parm2dict('KNP')['GD']
+        return self.hdr_parm2dict('KNP')['GD']
 
     def get_datum(self):
         datum_id=self.get_datum_id()
@@ -170,7 +168,7 @@ class BsbLayer(SrcLayer):
             datum=self.map.datum_dict[datum_id.upper()][0]
         except KeyError: 
             # try to guess the datum by comment and copyright string(s)
-            crr=' '.join(self.map.hdr_parms('!')+self.map.hdr_parms('CRR'))
+            crr=' '.join(self.hdr_parms('!')+self.hdr_parms('CRR'))
             try:
                 datum=[self.map.guess_dict[crr_patt][0]
                     for crr_patt in self.map.guess_dict if crr_patt in crr][0]
@@ -187,6 +185,11 @@ class BsbLayer(SrcLayer):
 
     def get_raster(self):
         return self.map.file
+
+    def get_name(self):
+        bsb_info=self.hdr_parm2dict('BSB') # general BSB parameters
+        bsb_name=bsb_info['NA']
+        return bsb_name
 # BsbLayer
 
 if __name__=='__main__':

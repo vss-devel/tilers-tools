@@ -93,7 +93,7 @@ class OziRefPoints(RefPoints):
 
     def grid2coord(self):
         try:
-            conv2cartesian=grid_map[self.owner.native_proj]
+            conv2cartesian=grid_map[self.owner.get_proj_id()]
         except KeyError:
             return self.cartesian
         res=[]
@@ -103,7 +103,7 @@ class OziRefPoints(RefPoints):
 
 ###############################################################################
 
-class OziMap(MapTranslator):
+class OziMap(SrcMap):
 
 ###############################################################################
     magic='OziExplorer Map Data File'
@@ -124,19 +124,19 @@ class OziMap(MapTranslator):
         
     def load_data(self):
         'load datum definitions, ellipses, projections from a file'
-        self.datum_map={}
-        self.ellps_map={}
-        self.proj_map={}
+        self.datum_dict={}
+        self.ellps_dict={}
+        self.proj_dict={}
         csv_map={
-            'datum': (self.datum_map,self.ini_lst),
-            'ellps': (self.ellps_map,self.ini_lst),
-            'proj': (self.proj_map,self.ini_lst),
+            'datum': (self.datum_dict,self.ini_lst),
+            'ellps': (self.ellps_dict,self.ini_lst),
+            'proj': (self.proj_dict,self.ini_lst),
             }
         self.load_csv(self.data_file,csv_map)
 
     def get_header(self): 
         'read map header'
-        with open(self.map_file, 'rU') as f:
+        with open(self.file, 'rU') as f:
             lines=f.readlines()
         if not (lines and lines[0].startswith('OziExplorer Map Data File')): 
             raise Exception(" Invalid file: %s" % self.map_file)
@@ -144,10 +144,16 @@ class OziMap(MapTranslator):
         ld(hdr)
         return hdr
 
+    def get_layers(self):
+        return [OziLayer(self,self.header)]
+# OziMap
+
+class OziLayer(SrcLayer):
+
     def hdr_parms(self, patt): 
         'filter header for params starting with "patt"'
-        return [i for i in self.header if i[0].startswith(patt)]
-        
+        return [i for i in self.data if i[0].startswith(patt)]
+
     def get_refs(self):
         'get a list of geo refs in tuples'
         points=[i for i in self.hdr_parms('Point') if len(i) > 5 and i[4] == 'in' and i[2] != ''] # Get a list of geo refs
@@ -181,7 +187,7 @@ class OziMap(MapTranslator):
 
     def get_dtm(self):
         'get DTM northing, easting'
-        dtm=[float(s)/3600 for s in self.header[4][2:4]]
+        dtm=[float(s)/3600 for s in self.data[4][2:4]]
         return dtm if dtm != [0,0] else None
 
     def get_proj_id(self):
@@ -191,12 +197,12 @@ class OziMap(MapTranslator):
         proj_id=self.get_proj_id()
         parm_lst=self.hdr_parms('Projection Setup')[0]
         try:
-            proj=self.proj_map[proj_id][0:1]
+            proj=self.map.proj_dict[proj_id][0:1]
         except KeyError: 
             raise Exception("*** Unsupported projection (%s)" % proj_id)
         if '+proj=' in proj[0]: # overwise assume it already has a full data defined
             # get projection parameters
-            if self.native_proj == '(UTM) Universal Transverse Mercator':
+            if self.get_proj_id() == '(UTM) Universal Transverse Mercator':
                 assert '+proj=tmerc' in proj[0]
                 if self.refs.cartesian:
                     zone=int(self.refs.zone[0])
@@ -204,23 +210,23 @@ class OziMap(MapTranslator):
                     zone=(self.refs.latlong[0][0]+180) // 6 + 1
                 proj.append('+lon_0=%i' % ((zone - 1) * 6 + 3 - 180))
             else:
-                proj.extend([ i[0]+i[1] for i in zip(self.proj_parms,parm_lst[1:]) 
+                proj.extend([ i[0]+i[1] for i in zip(self.map.proj_parms,parm_lst[1:]) 
                                 if i[1].translate(None,'0.')])
         return proj
 
     def get_datum_id(self):
-        return self.header[4][0]
+        return self.data[4][0]
 
     def get_datum(self):
         datum_id=self.get_datum_id()
         try:
-            datum_def=self.datum_map[datum_id]
+            datum_def=self.map.datum_dict[datum_id]
             if datum_def[5]: # PROJ4 datum defined ?
                 datum=[datum_def[5]]
             else:
                 datum=['+towgs84=%s,%s,%s' % tuple(datum_def[2:5])]               
                 ellps_id=datum_def[1]
-                ellps_def=self.ellps_map[ellps_id]
+                ellps_def=self.map.ellps_dict[ellps_id]
                 ellps=if_set(ellps_def[2])
                 if ellps:
                     datum.append(ellps)
@@ -234,11 +240,11 @@ class OziMap(MapTranslator):
     try_encodings=(locale.getpreferredencoding(),'utf_8','cp1251','cp1252')
 
     def get_raster(self):
-        img_path=self.header[2][0]
+        img_path=self.data[2][0]
         img_path_slashed=img_path.replace('\\','/') # get rid of windows separators
         img_path_lst=os.path.split(img_path_slashed)
         img_fname=img_path_lst[-1]
-        map_dir,map_fname=os.path.split(self.map_file)
+        map_dir,map_fname=os.path.split(self.map.file)
         dir_lst=[i.decode(locale.getpreferredencoding(),'ignore') 
                     for i in os.listdir(map_dir if map_dir else '.')]
         # try a few encodings
@@ -254,11 +260,8 @@ class OziMap(MapTranslator):
             raise Exception("*** Image file not found: %s" % img_path)
         return img_file
 
-    def get_size(self):
-        return map(int,self.hdr_parms( 'IWH')[0][2:])
-
     def get_name(self):
-        ozi_name=self.header[1][0]
+        ozi_name=self.data[1][0]
         # try a few encodings
         for enc in self.try_encodings:
             try:
@@ -273,8 +276,9 @@ class OziMap(MapTranslator):
                 pass
         ld('ozi_name',ozi_name)
         return ozi_name
-                
-# OziMap
+
+# OziLayer
+
 ###############################################################################
 
 if __name__=='__main__':
