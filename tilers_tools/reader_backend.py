@@ -237,12 +237,12 @@ class SrcLayer(object):
         if dest:
             base=os.path.split(dest)[0]
         else:
-            if options.after_description:
+            if options.after_name:
                 name_patt=self.name
-            elif options.after_image:
-                name_patt=self.img_file
-            else:
+            elif options.after_map:
                 name_patt=self.map.file
+            else:
+                name_patt=self.img_file
             base=dst_path(name_patt,options.dst_dir)
             if options.long_name:
                 ld(self.name)

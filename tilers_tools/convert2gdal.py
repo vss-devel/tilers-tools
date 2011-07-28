@@ -81,10 +81,10 @@ if __name__=='__main__':
         help='create a .GMT file with a cutline polygon')
     parser.add_option("-t", "--dest-dir", default=None, dest="dst_dir",
         help='destination directory (default: current)')
-    parser.add_option("-e", "--after-description", action="store_true", 
-        help='give an output file name after a description field of a map')
-    parser.add_option("-i", "--after-image", action="store_true",
-        help='give an output file name after a name of an image file')
+    parser.add_option("-n", "--after-name", action="store_true", 
+        help='give an output file name after a map name (from metadata)')
+    parser.add_option("-m", "--after-map", action="store_true",
+        help='give an output file name  after name of a map file, otherwise after a name of an image file')
     parser.add_option("-l", "--long-name", action="store_true", 
         help='give an output file a long name')
     parser.add_option("-d", "--debug", action="store_true", dest="debug")
