@@ -41,7 +41,7 @@ class KeyboardInterruptError(Exception):
     pass
 
 def modify_htmls(src_dir, dst_dir):
-    'adjusts destination gmaps.html and returns tile style (gmaps,TMS)'
+    'adjusts destination gmaps.html'
     googlemaps='gmaps.html'
 
     s_html,d_html=[os.path.join(d,googlemaps) for d in (src_dir,dst_dir)]
@@ -49,9 +49,6 @@ def modify_htmls(src_dir, dst_dir):
     if not os.path.exists(s_html):
         return False
 
-    # check if it's TMS type
-    tms_tiles= 'true' in [ i for i in open(s_html) if 'var tms_tiles' in i][0]
-    
     if not os.path.exists(d_html):
         shutil.copy(s_html,dst_dir)
     else:
@@ -89,8 +86,6 @@ def modify_htmls(src_dir, dst_dir):
             ('<title>.*</title>','<title>%s</title>' % map_name),
             ('<h1>.*</h1>','<h1>%s</h1>' % map_name)]
         re_sub_file(d_html, subs)
-
-    return tms_tiles
 
 def transparency(img):
     'estimate transparency of an image'
@@ -148,8 +143,8 @@ class MergeSet:
             return
 
         dz,dx,dy=z+1,x*2,y*2
-        dst_tiles=[(dx,dy),  (dx+1,dy),
-                   (dx,dy+1),(dx+1,dy+1)]
+        dst_tiles=[(dx,dy+1),(dx+1,dy+1),
+                   (dx,dy),  (dx+1,dy)]
         for (dst_xy,src_area) in zip(dst_tiles,self.underlay_map):
             dst_tile='%i/%i/%i%s' % (dz,dst_xy[0],dst_xy[1],ext)
             dst_path=os.path.join(self.dest,dst_tile)
@@ -217,12 +212,7 @@ class MergeSet:
         pf('')
 
     def merge_dirs(self):
-        tms_html=modify_htmls(self.src, self.dest)
-
-        if options.tms or tms_html: # rearrange underlay crop map for TMS tiles
-            m=self.underlay_map
-            self.underlay_map=[m[2],m[3],m[0],m[1]]
-
+        modify_htmls(self.src, self.dest)
         src_transparency=parallel_map(self,self.src_lst)
         self.upd_stat(src_transparency)
 
@@ -243,8 +233,6 @@ if __name__=='__main__':
         help='add extension suffix to a source parameter')
     parser.add_option('-u',"--underlay", type='int', default=0,
         help="underlay semitransparent tiles with a zoomed-in raster from a higher level")
-    parser.add_option("--tms", action="store_true",
-        help="force TMS type tiles")
     parser.add_option("--tile-size", default='256,256',metavar="SIZE_X,SIZE_Y",
         help='tile size (default: 256,256)')
     parser.add_option("-q", "--quiet", action="store_true")

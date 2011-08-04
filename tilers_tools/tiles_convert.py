@@ -190,10 +190,10 @@ class TMStiles(TileDir): # see TileMap Diagram at http://wiki.osgeo.org/wiki/Til
 
     def path2coord(self,tile_path):
         z,x,y=map(int,path2list(tile_path)[-4:-1])
-        return (z,x,2**z-1-y)
+        return (z,x,2**z-y-1)
 
     def coord2path(self,z,x,y):
-        return '%d/%d/%d' % (z,x,2**z-1-y)
+        return '%d/%d/%d' % (z,x,2**z-y-1)
 
 class Gmaps(TileDir): # http://code.google.com/apis/maps/documentation/javascript/v2/overlays.html#Google_Maps_Coordinates
     'Google map tiles (mappero-compatible)'
@@ -201,10 +201,11 @@ class Gmaps(TileDir): # http://code.google.com/apis/maps/documentation/javascrip
     dir_pattern='[0-9]*/*/*.*'
 
     def path2coord(self,tile_path):
-        return map(int,path2list(tile_path)[-4:-1])
+        z,x,y=map(int,path2list(tile_path)[-4:-1])
+        return (z,x,-y-1)
 
     def coord2path(self,z,x,y):
-        return '%d/%d/%d' % (z,x,y)
+        return '%d/%d/%d' % (z,x,-y-1)
 
 class MapNav(TileDir): # http://mapnav.spb.ru/site/e107_plugins/forum/forum_viewtopic.php?29047.post
     'MapNav (Global Mapper - compatible)'

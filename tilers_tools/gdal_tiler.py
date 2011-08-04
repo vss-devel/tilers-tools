@@ -844,7 +844,7 @@ class Pyramid(object):
         'relative path to a tile'
     #############################
         z,x,y=tile
-        return '%i/%i/%i%s' % (z,x,y,self.tile_ext)
+        return '%i/%i/%i%s' % (z,x,-y-1,self.tile_ext)
 
     #############################
 
@@ -1258,13 +1258,14 @@ google_templ='''<!DOCTYPE html>
             getTileUrl: function(coord, zoom) {
                 max_x=1<<zoom;
                 max_y=1<<zoom;
-                y=coord.y;
-                if(y >= max_y || y < 0)
+                if(coord.y >= max_y || coord.y < 0)
                     return transparent_url
+                y= -coord.y -1;
+                if (tms_tiles) 
+                    y+=(1<<zoom);
                 x=coord.x %% max_x;
                 if (x < 0)
                     x=max_x+x;
-                if (tms_tiles) y=(1<<zoom)-coord.y-1;
                 url=tiles_root+zoom+"/"+x+"/"+y+tile_ext;
                 //log(url);
                 return url;
