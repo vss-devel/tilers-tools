@@ -1028,7 +1028,7 @@ class GenericMap(Pyramid):
 #############################
 
 class PlateCarree(Pyramid):
-    'Google Earth (plate carrée), Google tile numbering'
+    'Plate Carrée (Google Earth), top-to-bottom tile numbering (google-like)'
 #############################
     profile='earth'
     defaul_ext='.earth'
@@ -1103,7 +1103,7 @@ class PlateCarree(Pyramid):
 #############################
 
 class PlateCarreeTMS(PlateCarree):
-    'Google Earth (plate carrée), TMS tile numbering'
+    'Plate Carrée, TMS tile numbering (Google Earth, global geodetic - compatible tiles)'
 #############################
     profile='earth-tms'
     defaul_ext='.earth-tms'
@@ -1173,7 +1173,7 @@ class Yandex(Pyramid):
 #############################
 
 class Gmaps(Pyramid):
-    'Google Maps (Global Mercator), native tile numbering'
+    'Global Mercator, top-to-bottom tile numbering (google-like)'
 #############################
     profile='gmaps'
     defaul_ext='.gmaps'
@@ -1207,7 +1207,7 @@ class Gmaps(Pyramid):
 #############################
 
 class GMercatorTMS(Gmaps):
-    'Google Maps (Global Mercator), TMS tile numbering'
+    'Global Mercator, TMS tile numbering'
 #############################
     defaul_ext='.tms'
     profile='tms'
