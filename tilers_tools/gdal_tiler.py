@@ -305,7 +305,7 @@ class Pyramid(object):
         # init variables
         self.src_path=self.src
         self.tiles_prefix=options.tiles_prefix
-        self.tile_ext='.'+options.tile_format.lower()
+        self.tile_ext=options.tile_format.lower()        
         self.src_dir,src_f=os.path.split(self.src)
         self.base=os.path.splitext(src_f)[0]
         self.base_resampling=base_resampling_map[options.base_resampling]
@@ -367,6 +367,7 @@ class Pyramid(object):
         # check for source raster type
         src_ds=gdal.Open(self.src_path,GA_ReadOnly)
         self.src_ds=src_ds
+        self.description=self.src_ds.GetMetadataItem('DESCRIPTION')
 
         # source is successfully opened, then create destination dir
         os.makedirs(self.dest)
@@ -718,6 +719,8 @@ class Pyramid(object):
         # reproject to base zoom
         self.make_base_raster()
 
+        self.name=os.path.basename(self.dest)
+
         self.tile_map={}
         for zoom in self.zoom_range:
             tile_ul,tile_lr=self.corner_tiles(zoom)
@@ -816,7 +819,7 @@ class Pyramid(object):
             os.makedirs(os.path.dirname(full_path))
         except: pass
 
-        if self.options.paletted and self.tile_ext == '.png':
+        if self.options.paletted and self.tile_ext == 'png':
             try:
                 tile_img=tile_img.convert('P', palette=Image.ADAPTIVE, colors=255)
             except ValueError:
@@ -844,7 +847,7 @@ class Pyramid(object):
         'relative path to a tile'
     #############################
         z,x,y=tile
-        return '%i/%i/%i%s' % (z,x,-y-1,self.tile_ext)
+        return '%i/%i/%i.%s' % (z,x,-y-1,self.tile_ext)
 
     #############################
 
@@ -852,7 +855,7 @@ class Pyramid(object):
         'relative path to a tile, TMS style'
     #############################
         z,x,y=tile
-        return '%i/%i/%i%s' % (z,x,self.zoom_tiles(z)[1]-y-1,self.tile_ext)
+        return '%i/%i/%i.%s' % (z,x,self.zoom_tiles(z)[1]-y-1,self.tile_ext)
 
     #############################
 
@@ -1176,20 +1179,60 @@ class Gmaps(Pyramid):
     'Global Mercator, top-to-bottom tile numbering (google-like)'
 #############################
     profile='gmaps'
-    defaul_ext='.gmaps'
-    zoom0_tiles=[1,1] # tiles at zoom 0
 
     # Google Maps Global Mercator (epsg:3857)
     proj='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext'
+    zoom0_tiles=[1,1] # tiles at zoom 0
+    tms_srs='OSGEO:41001'
+    tms_profile='global-mercator'
 
+    defaul_ext='.gmaps'
+    zoom0_origin=(0,0)
+    
     def write_metadata(self,tile,children=[]): 
         if not tile: # create top level html
             self.write_html_maps()
+            self.write_xml()
+
+    def write_xml(self):
+
+        tilesets=[tile_set_templ % dict(
+                href=str(zoom),
+                order=zoom,
+                units_per_pixel=self.zoom2res(zoom)[0],
+                ) for zoom in reversed(self.zoom_range)]
+
+        mime_type={
+            'png':  'image/png',
+            'jpeg': 'image/jpeg',
+            'jpg':  'image/jpeg',
+            } [self.tile_ext]
+
+        tms_origin=self.pix2coord(0,self.zoom0_origin)
+
+        xml_txt=xml_templ % dict(
+            title=      self.name,
+            description=self.description,
+            tms_srs=    self.tms_srs,
+            tms_profile=self.tms_profile,
+            tile_width= self.tile_sz[0],
+            tile_height=self.tile_sz[1],
+            extension=  self.tile_ext,
+            mime_type=  mime_type,
+            origin_x=   tms_origin[0],
+            origin_y=   tms_origin[1],
+            min_x=      self.origin[0],
+            min_y=      self.extent[1],
+            max_x=      self.extent[0],
+            max_y=      self.origin[1],
+            tilesets=   '\n'.join(tilesets),
+            )
+        open(os.path.join(self.dest,'tilemap.xml'),'w').write(xml_txt)
 
     def write_html_maps(self):
         ul,lr=self.boxes2longlat([(self.origin,self.extent)])[0]
         googlemaps = google_templ % dict(
-            title=      os.path.basename(self.dest),
+            title=      self.name,
             longlat_ll= '%s, %s' % (lr[1],ul[0]),
             longlat_ur= '%s, %s' % (ul[1],lr[0]),
             minzoom=    self.zoom_range[-1],
@@ -1209,9 +1252,28 @@ class Gmaps(Pyramid):
 class GMercatorTMS(Gmaps):
     'Global Mercator, TMS tile numbering'
 #############################
-    defaul_ext='.tms'
     profile='tms'
+
+    defaul_ext='.tms'
+    zoom0_origin=(0,256)
+
     tile_path=Pyramid.tms_tile_path # method shortcut
+
+tile_set_templ='    <TileSet href="%(href)s" units-per-pixel="%(units_per_pixel)f" order="%(order)d" />'
+
+xml_templ='''<?xml version="1.0" encoding="UTF-8" ?>  
+<TileMap version="1.0.0" tilemapservice="http://tms.osgeo.org/1.0.0">
+  <Title>%(title)s</Title>
+  <Abstract>%(description)s</Abstract>
+  <SRS>%(tms_srs)s</SRS>
+  <BoundingBox minx="%(min_x)f" miny="%(min_y)f" maxx="%(max_x)f" maxy="%(max_y)f" />
+  <Origin x="%(origin_x)f" y="%(origin_y)f" />  
+  <TileFormat width="%(tile_width)d" height="%(tile_height)d" mime-type="%(mime_type)s" extension="%(extension)s" />
+  <TileSets profile=%(tms_profile)s">
+%(tilesets)s
+  </TileSets>
+</TileMap>
+'''
 
 google_templ='''<!DOCTYPE html>
 
@@ -1266,13 +1328,13 @@ google_templ='''<!DOCTYPE html>
                 x=coord.x %% max_x;
                 if (x < 0)
                     x=max_x+x;
-                url=tiles_root+zoom+"/"+x+"/"+y+tile_ext;
+                url=tiles_root+zoom+"/"+x+"/"+y+"."+tile_ext;
                 //log(url);
                 return url;
                 },
             tileSize: tile_size,
             opacity: opacity,
-            isPng: (tile_ext == ".png")
+            isPng: (tile_ext == "png")
             })
         }
 
