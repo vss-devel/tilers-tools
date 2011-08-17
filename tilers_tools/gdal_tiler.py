@@ -213,6 +213,22 @@ vrt_templ='''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d">
 %(metadata)s%(srs)s%(geotr)s%(gcp_list)s%(band_list)s</VRTDataset>
 '''
 
+xml_templ='''<?xml version="1.0" encoding="UTF-8" ?>
+<TileMap version="1.0.0" tilemapservice="http://tms.osgeo.org/1.0.0">
+  <Title>%(title)s</Title>
+  <Abstract>%(description)s</Abstract>
+  <SRS>%(tms_srs)s</SRS>
+  <BoundingBox minx="%(min_x)f" miny="%(min_y)f" maxx="%(max_x)f" maxy="%(max_y)f" />
+  <Origin x="%(origin_x)f" y="%(origin_y)f" />
+  <TileFormat width="%(tile_width)d" height="%(tile_height)d" mime-type="%(tile_mime)s" extension="%(tile_ext)s" />
+  <TileSets profile="%(tms_profile)s">
+%(tilesets)s
+  </TileSets>
+</TileMap>
+'''
+
+tile_set_templ='    <TileSet href="%(href)s" units-per-pixel="%(units_per_pixel)f" order="%(order)d" />'
+
 resampling_map={
     'near':     Image.NEAREST,
     'nearest':  Image.NEAREST,
@@ -738,6 +754,7 @@ class Pyramid(object):
 
         # write top-level metadata (html/kml)
         self.write_metadata(None,[ch for img,ch,opacities in top_results])
+        self.write_xml()
         
         # cache back tiles opacity
         file_opacities=[(self.tile_path(tile),opc)
@@ -847,7 +864,7 @@ class Pyramid(object):
         'relative path to a tile'
     #############################
         z,x,y=tile
-        return '%i/%i/%i.%s' % (z,x,-y-1,self.tile_ext)
+        return '%i/%i/%i.%s' % (z,x,y,self.tile_ext)
 
     #############################
 
@@ -864,15 +881,43 @@ class Pyramid(object):
     #############################
         pass # 'virtual'
 
-    tick_rate=50
-    count=0
-    def counter(self):
-        self.count+=1
-        if self.count % self.tick_rate == 0:
-            pf('.',end='')
-            return True
-        else:
-            return False
+    #############################
+
+    def write_xml(self):
+        '''Generate xml with pseudo-tms tileset description'''
+    #############################
+
+        tilesets=[tile_set_templ % dict(
+                href=str(zoom),
+                order=zoom,
+                units_per_pixel=self.zoom2res(zoom)[0],
+                ) for zoom in reversed(self.zoom_range)]
+
+        tile_mime={
+            'png':  'image/png',
+            'jpeg': 'image/jpeg',
+            'jpg':  'image/jpeg',
+            } [self.tile_ext]
+        coord_origin=self.pix2coord(0,self.zoom0_origin)
+
+        xml_txt=xml_templ % dict(
+            title=      self.name,
+            description=self.description,
+            tms_srs=    self.tms_srs,
+            tms_profile=self.tms_profile,
+            tile_width= self.tile_sz[0],
+            tile_height=self.tile_sz[1],
+            tile_ext=   self.tile_ext,
+            tile_mime=  tile_mime,
+            origin_x=   coord_origin[0],
+            origin_y=   coord_origin[1],
+            min_x=      self.origin[0],
+            min_y=      self.extent[1],
+            max_x=      self.extent[0],
+            max_y=      self.origin[1],
+            tilesets=   '\n'.join(tilesets),
+            )
+        open(os.path.join(self.dest,'tilemap.xml'),'w').write(xml_txt)
 
     #############################
     #
@@ -1008,6 +1053,17 @@ class Pyramid(object):
             else:
                 zrange+=range(min(z),max(z)+1)
         self.zoom_range=list(reversed(sorted(set(zrange))))
+
+    tick_rate=50
+    count=0
+
+    def counter(self):
+        self.count+=1
+        if self.count % self.tick_rate == 0:
+            pf('.',end='')
+            return True
+        else:
+            return False
 # Pyramid        
 
 #############################
@@ -1036,6 +1092,9 @@ class PlateCarree(Pyramid):
     profile='earth'
     defaul_ext='.earth'
     zoom0_tiles=[2,1] # tiles at zoom 0
+    zoom0_origin=(0,0)
+    tms_srs='EPSG:4326'
+    tms_profile='google-geodetic' # non-standard profile
 
     # http://earth.google.com/support/bin/static.py?page=guide.cs&guide=22373&topic=23750
     # "Google Earth uses Simple Cylindrical projection for its imagery base. This is a simple map 
@@ -1080,7 +1139,7 @@ class PlateCarree(Pyramid):
             }
         open(os.path.join(self.dest,rel_path+'.kml'),'w+').write(kml)
 
-    def write_metadata(self,tile,children=[]): #
+    def write_metadata(self,tile,children=[]):
         if not tile: # create top level kml
             self.write_kml(os.path.basename(self.base),os.path.basename(self.base),self.kml_child_links(children))
             return
@@ -1100,7 +1159,6 @@ class PlateCarree(Pyramid):
             'east':    e, 'south':    s,
             }
         self.write_kml(name,name,kml_links,kml_overlay)
-            
 # PlateCarree
 
 #############################
@@ -1110,7 +1168,11 @@ class PlateCarreeTMS(PlateCarree):
 #############################
     profile='earth-tms'
     defaul_ext='.earth-tms'
+    zoom0_origin=(0,256)
+    tms_profile='global-geodetic'
+
     tile_path=Pyramid.tms_tile_path # method shortcut
+# PlateCarreeTMS
 
 kml_templ='''<?xml version="1.0" encoding="utf-8"?>
 <kml xmlns="http://earth.google.com/kml/2.1">
@@ -1179,55 +1241,18 @@ class Gmaps(Pyramid):
     'Global Mercator, top-to-bottom tile numbering (google-like)'
 #############################
     profile='gmaps'
+    defaul_ext='.gmaps'
 
-    # Google Maps Global Mercator (epsg:3857)
+    # Global Mercator (EPSG:3857)
     proj='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext'
     zoom0_tiles=[1,1] # tiles at zoom 0
-    tms_srs='OSGEO:41001'
-    tms_profile='global-mercator'
-
-    defaul_ext='.gmaps'
     zoom0_origin=(0,0)
+    tms_srs='OSGEO:41001'
+    tms_profile='google-mercator' # non-standard profile
     
     def write_metadata(self,tile,children=[]): 
         if not tile: # create top level html
             self.write_html_maps()
-            self.write_xml()
-
-    def write_xml(self):
-
-        tilesets=[tile_set_templ % dict(
-                href=str(zoom),
-                order=zoom,
-                units_per_pixel=self.zoom2res(zoom)[0],
-                ) for zoom in reversed(self.zoom_range)]
-
-        mime_type={
-            'png':  'image/png',
-            'jpeg': 'image/jpeg',
-            'jpg':  'image/jpeg',
-            } [self.tile_ext]
-
-        tms_origin=self.pix2coord(0,self.zoom0_origin)
-
-        xml_txt=xml_templ % dict(
-            title=      self.name,
-            description=self.description,
-            tms_srs=    self.tms_srs,
-            tms_profile=self.tms_profile,
-            tile_width= self.tile_sz[0],
-            tile_height=self.tile_sz[1],
-            extension=  self.tile_ext,
-            mime_type=  mime_type,
-            origin_x=   tms_origin[0],
-            origin_y=   tms_origin[1],
-            min_x=      self.origin[0],
-            min_y=      self.extent[1],
-            max_x=      self.extent[0],
-            max_y=      self.origin[1],
-            tilesets=   '\n'.join(tilesets),
-            )
-        open(os.path.join(self.dest,'tilemap.xml'),'w').write(xml_txt)
 
     def write_html_maps(self):
         ul,lr=self.boxes2longlat([(self.origin,self.extent)])[0]
@@ -1256,24 +1281,10 @@ class GMercatorTMS(Gmaps):
 
     defaul_ext='.tms'
     zoom0_origin=(0,256)
+    tms_profile='global-mercator'
 
     tile_path=Pyramid.tms_tile_path # method shortcut
-
-tile_set_templ='    <TileSet href="%(href)s" units-per-pixel="%(units_per_pixel)f" order="%(order)d" />'
-
-xml_templ='''<?xml version="1.0" encoding="UTF-8" ?>  
-<TileMap version="1.0.0" tilemapservice="http://tms.osgeo.org/1.0.0">
-  <Title>%(title)s</Title>
-  <Abstract>%(description)s</Abstract>
-  <SRS>%(tms_srs)s</SRS>
-  <BoundingBox minx="%(min_x)f" miny="%(min_y)f" maxx="%(max_x)f" maxy="%(max_y)f" />
-  <Origin x="%(origin_x)f" y="%(origin_y)f" />  
-  <TileFormat width="%(tile_width)d" height="%(tile_height)d" mime-type="%(mime_type)s" extension="%(extension)s" />
-  <TileSets profile=%(tms_profile)s">
-%(tilesets)s
-  </TileSets>
-</TileMap>
-'''
+# GMercatorTMS
 
 google_templ='''<!DOCTYPE html>
 
