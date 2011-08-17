@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-27 15:51:39 
-
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
 #
@@ -148,10 +146,8 @@ class SrcMap(object):
 
     def load_csv(self,csv_file,csv_map):
         'load datum definitions, ellipses, projections from a file'
-        data_dir=sys.path[0]
-        ld('data_dir',data_dir)
         csv.register_dialect('strip', skipinitialspace=True)
-        with open(os.path.join(data_dir,csv_file),'rb') as data_f:
+        with open(os.path.join(data_dir(),csv_file),'rb') as data_f:
             data_csv=csv.reader(data_f,'strip')
             for row in data_csv:
                 row=[s.decode('utf-8') for s in row]

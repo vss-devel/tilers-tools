@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-06-28 12:53:09 
-
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
 #
@@ -59,6 +57,9 @@ try:
         pass
 except:
     multiprocessing=None
+
+def data_dir():
+    return sys.path[0]
     
 def set_nothreads():
     global multiprocessing
