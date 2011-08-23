@@ -355,14 +355,15 @@
 
             var tiler_overlay = new OpenLayers.Layer.XYZ( title, "${z}/${x}/${y}."+tile_ext,
                 {
-					sphericalMecator: true,
-					wrapDateLine: true,
-					maxExtent: layer_extent,
-					tileOrigin: tile_origin,
-					tileSize: tile_size,
-					resolutions: layer_resolutions,
-					isBaseLayer: false,
-					profile: layer_profile,
+                    sphericalMecator: true,
+                    wrapDateLine: true,
+                    maxExtent: layer_extent,
+                    tileOrigin: tile_origin,
+                    tileSize: tile_size,
+                    resolutions: layer_resolutions,
+                    isBaseLayer: false,
+                    profile: layer_profile,
+                    displayOutsideMaxExtent: false,
 
                     // openlayers 2.11 and below do not take into account TileOrigin
                     getXYZ: function(bounds) {

@@ -306,11 +306,15 @@ class Pyramid(object):
         # dimentions of a tile at zoom 0
         res0=semi_circ*2/(self.zoom0_tiles[0]*self.tile_sz[0])
         self.zoom0_res=[res0,res0]
+
         # offset from the upper left corner to the origin of the coord system
         self.coord_offset=[semi_circ,
                            self.zoom0_res[1]*self.tile_sz[1]*self.zoom0_tiles[1]/2]
+
         zoom0_tile_dim=[self.zoom0_res[0]*self.tile_sz[0],
                         self.zoom0_res[1]*self.tile_sz[1]]
+
+        self.tile_origin=self.pix2coord(0,self.zoom0_origin)
         ld('zoom0_tiles',self.zoom0_tiles,'zoom0_tile_dim',zoom0_tile_dim,'coord_offset',self.coord_offset)
     
     #############################
@@ -899,7 +903,6 @@ class Pyramid(object):
             'jpeg': 'image/jpeg',
             'jpg':  'image/jpeg',
             } [self.tile_ext]
-        tile_origin=self.pix2coord(0,self.zoom0_origin)
 
         xml_txt=xml_templ % dict(
             title=      self.name,
@@ -910,8 +913,8 @@ class Pyramid(object):
             tile_height=self.tile_sz[1],
             tile_ext=   self.tile_ext,
             tile_mime=  tile_mime,
-            origin_x=   tile_origin[0],
-            origin_y=   tile_origin[1],
+            origin_x=   self.tile_origin[0],
+            origin_y=   self.tile_origin[1],
             min_x=      self.origin[0],
             min_y=      self.extent[1],
             max_x=      self.extent[0],
