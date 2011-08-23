@@ -1253,7 +1253,7 @@ class Gmaps(Pyramid):
             self.write_html()
 
     def write_html(self):
-        shutil.copy(os.path.join(data_dir(),'gmaps.html'),self.dest)
+        shutil.copy(os.path.join(data_dir(),'viewer-google.html'),self.dest)
 # GMaps
 
 #############################

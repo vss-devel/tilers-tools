@@ -26,7 +26,7 @@
 
 <html>
 <head>
-<title>gmaps</title>
+<title>tiles-gmaps</title>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 
 <style type="text/css">
@@ -44,7 +44,6 @@
     var coord_origin = new G.Point(-20037508.342789,-20037508.342789);
     var tile_ext = "png";
     var tile_size = new G.Size(256, 256);
-    var tms_tiles = false;
     var map_type = G.MapTypeId.SATELLITE;
     var opacity = 0.5;
     var profile = 'google-mercator';
@@ -98,7 +97,7 @@
         } catch (e) {
             log(e)
             if (e.code == 101) {
-                alert('Google Chrome requires "--allow-file-access-from-files" switch to load from file://')
+                alert('Google Chrome requires to run with "--allow-file-access-from-files" switch to load XML from local files')
             }
         }
         return request.responseXML;
