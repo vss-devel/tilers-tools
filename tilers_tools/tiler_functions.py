@@ -239,7 +239,9 @@ def shape2mpointlst(datasource,dst_srs,feature_name=None):
     ds=ogr.Open(datasource)
     if not ds:
         ds=sasplanet_hlg2ogr(datasource)
-    assert ds, 'Invalid datasource %s' % datasource
+    if not ds:
+        ld('shape2mpointlst: Invalid datasource %s' % datasource)
+        return []
 
     layer=ds.GetLayer()
     n_features=layer.GetFeatureCount()
