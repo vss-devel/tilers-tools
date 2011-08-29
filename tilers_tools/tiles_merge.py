@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-06-28 14:40:44 
-
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
 #
@@ -34,58 +32,100 @@ import logging
 import optparse
 from PIL import Image
 import pickle
+import xml.dom.minidom
 
 from tiler_functions import *
 
 class KeyboardInterruptError(Exception): 
     pass
 
-def modify_htmls(src_dir, dst_dir):
-    'adjusts destination gmaps.html'
-    googlemaps='gmaps.html'
+def elem0(doc,id):
+    return doc.getElementsByTagName(id)[0]
+    
+def read_map_parameters(src):
+    try:
+        doc=xml.dom.minidom.parse(src)
+    except xml.parsers.expat.ExpatError:
+        raise Exception('Invalid input file: %s' % src)
 
-    s_html,d_html=[os.path.join(d,googlemaps) for d in (src_dir,dst_dir)]
+    box_el = elem0(doc,"BoundingBox")
+    origin_el = elem0(doc,"Origin")
+    tile_format_el=elem0(doc,"TileFormat")
 
-    if not os.path.exists(s_html):
-        return False
+    zooms=set([])
+    tilesets={}
+    tileset_parms={}
+    for tileset in doc.getElementsByTagName("TileSet"):
+        order = int(tileset.getAttribute('order'))
+        res = tileset.getAttribute('units-per-pixel')
+        href = tileset.getAttribute('href')
+        zooms.add(order)
+        tilesets[order] = tileset
+        tileset_parms[order] = (href,res)
 
-    if not os.path.exists(d_html):
-        shutil.copy(s_html,dst_dir)
-    else:
-        # get a list of zoom levels
-        try:
-            cwd=os.getcwd()
-            os.chdir(dst_dir)
-            dzooms=sorted([eval(i) for i in glob.glob('[0-9]*')])
-        finally:
-            os.chdir(cwd)
-        zoom_min=dzooms[0]
-        zoom_max=dzooms[-1]
+    return dict(
+        doc=        doc,
+        profile=    elem0(doc,"TileSets").getAttribute('profile'),
+        srs=        elem0(doc,"SRS").firstChild.data,
+        title=      elem0(doc,"Title").firstChild.data,
+        extent=     [float(box_el.getAttribute(attr)) for attr in ('minx','miny','maxx','maxy')],
+        tile_origin=[float(origin_el.getAttribute(attr)) for attr in ('x','y')],
+        tile_size=  [int(tile_format_el.getAttribute(attr)) for attr in ('width','height')],
+        tile_ext=   tile_format_el.getAttribute('extension'),
+        tile_mime=  tile_format_el.getAttribute('mime-type'),
+        zooms=      zooms,
+        tilesets=   tilesets,
+        tileset_parms=tileset_parms,
+        )
 
-        bounds=[]
-        for f in (s_html,d_html):
-            txt=[ i for i in open(f)
-                if 'var mapBounds = new G.LatLngBounds' in i][0]
-            num_str=re.sub('[^-,.0-9]*','',re.sub('\.Lat*','',txt)) # leave only numbers there
-            bounds.append(map(float,num_str.split(',')))
-        s_bounds,d_bounds=bounds
-        ld((s_bounds,d_bounds))
+def merge_matadata(src_dir, dst_dir):
+    'adjust destination metadata'
+    
+    xml_file='tilemap.xml'
+    
+    for n in ['viewer-google.html','viewer-openlayers.html',xml_file]:
+        src_f=os.path.join(src_dir,n)
+        dst_f=os.path.join(dst_dir,n)
+        if os.path.exists(src_f) and not os.path.exists(dst_f):
+            shutil.copy(src_f,dst_f)
 
-        if s_bounds[0] < d_bounds[0]: d_bounds[0]=s_bounds[0]
-        if s_bounds[1] < d_bounds[1]: d_bounds[1]=s_bounds[1]
-        if s_bounds[2] > d_bounds[2]: d_bounds[2]=s_bounds[2]
-        if s_bounds[3] > d_bounds[3]: d_bounds[3]=s_bounds[3]
-        ld(d_bounds)
+    src=read_map_parameters(src_f)
+    dst=read_map_parameters(dst_f)
+    doc=dst['doc']
 
-        # write back modified googlemaps.html
-        map_name=os.path.split(dst_dir)[1]
-        subs=[("(var mapBounds = new G.LatLngBounds).*;",
-                "\\1( new G.LatLng(%f, %f), new G.LatLng(%f, %f));" % tuple(d_bounds)),
-            ('(var mapMinZoom =).*;','\\1 %i;' % zoom_min),
-            ('(var mapMaxZoom =).*;','\\1 %i;' % zoom_max),
-            ('<title>.*</title>','<title>%s</title>' % map_name),
-            ('<h1>.*</h1>','<h1>%s</h1>' % map_name)]
-        re_sub_file(d_html, subs)
+    for prop in ['profile','srs','tile_origin','tile_size','tile_ext','tile_mime']:
+        assert src[prop] == dst[prop]
+
+    title_el=elem0(doc,"Title")
+    title_el.replaceChild(doc.createTextNode(os.path.split(dst_dir)[1]),title_el.firstChild)
+    abstract_el=elem0(doc,"Abstract")
+    if abstract_el.hasChildNodes():
+        abstract_el.removeChild(abstract_el.firstChild).unlink()
+    abstract_el.appendChild(doc.createTextNode('merged tileset'))
+       
+    ld([round(i/1000) for i in src['extent']],[round(i/1000) for i in dst['extent']])
+    box_el = elem0(doc,"BoundingBox")
+    for i,name,func in zip(range(4),('minx','miny','maxx','maxy'),(min,min,max,max)):
+        box_el.setAttribute(name, repr(func(src['extent'][i],dst['extent'][i])))
+    
+    new_zooms=src['zooms'] - dst['zooms']
+    if new_zooms:
+        tilesets_el=elem0(doc,"TileSets")
+        new_tilesets={}
+        for z in dst['zooms'] & src['zooms']:
+            assert dst['tileset_parms'][z] == src['tileset_parms'][z]
+        for z in dst['zooms']: # unlink tilesets from the destination
+            new_tilesets[z]=tilesets_el.removeChild(dst['tilesets'][z])
+        for z in new_zooms: # clone new tilesets from the source
+            new_tilesets[z]=src['tilesets'][z].cloneNode(False)
+        for z in sorted(src['zooms'] | dst['zooms']): # sorted merge of new and old tilsets
+            tilesets_el.appendChild(new_tilesets[z])
+    
+    with open(dst_f,'w') as f:
+        doc.writexml(f,encoding='UTF-8')
+    
+    src['doc'].unlink()
+    dst['doc'].unlink()
 
 def transparency(img):
     'estimate transparency of an image'
@@ -110,7 +150,7 @@ class MergeSet:
             self.max_zoom=max([int(i) for i in glob.glob('[0-9]*')])
         finally:
             os.chdir(cwd)
-        ld(self.src_lst)
+        #ld(self.src_lst)
         
         # load cached tile transparency data if any
         self.src_transp=dict.fromkeys(self.src_lst,None)
@@ -119,7 +159,7 @@ class MergeSet:
             self.src_transp.update(pickle.load(open(self.src_cache_path,'r')))
         except:
             ld("cache load failed")
-        ld(repr(self.src_transp))
+        #ld(repr(self.src_transp))
         
         # define crop map for underlay function
         tsx,tsy=self.tile_sz
@@ -212,7 +252,7 @@ class MergeSet:
         pf('')
 
     def merge_dirs(self):
-        modify_htmls(self.src, self.dest)
+        merge_matadata(self.src, self.dest)
         src_transparency=parallel_map(self,self.src_lst)
         self.upd_stat(src_transparency)
 
