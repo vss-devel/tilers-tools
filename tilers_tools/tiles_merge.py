@@ -32,51 +32,11 @@ import logging
 import optparse
 from PIL import Image
 import pickle
-import xml.dom.minidom
 
 from tiler_functions import *
 
 class KeyboardInterruptError(Exception): 
     pass
-
-def elem0(doc,id):
-    return doc.getElementsByTagName(id)[0]
-    
-def read_map_parameters(src):
-    try:
-        doc=xml.dom.minidom.parse(src)
-    except xml.parsers.expat.ExpatError:
-        raise Exception('Invalid input file: %s' % src)
-
-    box_el = elem0(doc,"BoundingBox")
-    origin_el = elem0(doc,"Origin")
-    tile_format_el=elem0(doc,"TileFormat")
-
-    zooms=set([])
-    tilesets={}
-    tileset_parms={}
-    for tileset in doc.getElementsByTagName("TileSet"):
-        order = int(tileset.getAttribute('order'))
-        res = tileset.getAttribute('units-per-pixel')
-        href = tileset.getAttribute('href')
-        zooms.add(order)
-        tilesets[order] = tileset
-        tileset_parms[order] = (href,res)
-
-    return dict(
-        doc=        doc,
-        profile=    elem0(doc,"TileSets").getAttribute('profile'),
-        srs=        elem0(doc,"SRS").firstChild.data,
-        title=      elem0(doc,"Title").firstChild.data,
-        extent=     [float(box_el.getAttribute(attr)) for attr in ('minx','miny','maxx','maxy')],
-        tile_origin=[float(origin_el.getAttribute(attr)) for attr in ('x','y')],
-        tile_size=  [int(tile_format_el.getAttribute(attr)) for attr in ('width','height')],
-        tile_ext=   tile_format_el.getAttribute('extension'),
-        tile_mime=  tile_format_el.getAttribute('mime-type'),
-        zooms=      zooms,
-        tilesets=   tilesets,
-        tileset_parms=tileset_parms,
-        )
 
 def merge_matadata(src_dir, dst_dir):
     'adjust destination metadata'
@@ -89,8 +49,8 @@ def merge_matadata(src_dir, dst_dir):
         if os.path.exists(src_f) and not os.path.exists(dst_f):
             shutil.copy(src_f,dst_f)
 
-    src=read_map_parameters(src_f)
-    dst=read_map_parameters(dst_f)
+    src=read_tilemap_parameters(src_f)
+    dst=read_tilemap_parameters(dst_f)
     doc=dst['doc']
 
     for prop in ['profile','srs','tile_origin','tile_size','tile_ext','tile_mime']:

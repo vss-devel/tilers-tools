@@ -38,6 +38,8 @@ import re
 import shutil
 #from optparse import OptionParser
 
+import xml.dom.minidom
+
 try:
     from osgeo import gdal
     from osgeo import osr
@@ -303,3 +305,43 @@ def shape2cutline(cutline_ds,raster_ds,feature_name=None):
     cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly]) if mpoly else None
     ld('cutline',cutline)
     return cutline
+    
+def elem0(doc,id):
+    return doc.getElementsByTagName(id)[0]
+    
+def read_tilemap_parameters(src):
+    try:
+        doc=xml.dom.minidom.parse(src)
+    except xml.parsers.expat.ExpatError:
+        raise Exception('Invalid input file: %s' % src)
+
+    box_el = elem0(doc,"BoundingBox")
+    origin_el = elem0(doc,"Origin")
+    tile_format_el=elem0(doc,"TileFormat")
+
+    zooms=set([])
+    tilesets={}
+    tileset_parms={}
+    for tileset in doc.getElementsByTagName("TileSet"):
+        order = int(tileset.getAttribute('order'))
+        res = float(tileset.getAttribute('units-per-pixel'))
+        href = tileset.getAttribute('href')
+        zooms.add(order)
+        tilesets[order] = tileset
+        tileset_parms[order] = (res,href)
+
+    return dict(
+        doc=        doc,
+        profile=    elem0(doc,"TileSets").getAttribute('profile'),
+        srs=        elem0(doc,"SRS").firstChild.data,
+        title=      elem0(doc,"Title").firstChild.data,
+        extent=     [float(box_el.getAttribute(attr)) for attr in ('minx','miny','maxx','maxy')],
+        tile_origin=[float(origin_el.getAttribute(attr)) for attr in ('x','y')],
+        tile_size=  [int(tile_format_el.getAttribute(attr)) for attr in ('width','height')],
+        tile_ext=   tile_format_el.getAttribute('extension'),
+        tile_mime=  tile_format_el.getAttribute('mime-type'),
+        zooms=      zooms,
+        tilesets=   tilesets,
+        tileset_parms=tileset_parms,
+        )
+
