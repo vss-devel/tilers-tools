@@ -265,15 +265,14 @@ class Pyramid(object):
     #############################
         gdal.UseExceptions()
 
+        self.src=src
+        self.dest=dest
+        self.options=options
+
         self.temp_files=[]
         self.palette=None
         self.transparency=None
         self.zoom_range=None
-        self.shift_x=0
-
-        self.src=src
-        self.dest=dest
-        self.options=options
 
         self.init_tile_grid()
 
@@ -282,11 +281,11 @@ class Pyramid(object):
     def __del__(self):
 
     #############################
-        if self.options and self.options.verbose < 2:
-            try:
+        try:
+            if self.options.verbose < 2:
                 for f in self.temp_files:
                     os.remove(f)
-            except: pass
+        except: pass
 
     #############################
 
@@ -299,21 +298,17 @@ class Pyramid(object):
         ld('proj,longlat',self.proj,self.longlat)
 
         self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
-        self.equator=self.proj2geog.transform_point((180,0),inv=True)[0]*2 # Equator length
+        max_x=self.proj2geog.transform_point((180,0),inv=True)[0] # half Equator length
 
         # dimentions of a tile at zoom 0
-        res0=self.equator/(self.zoom0_tiles[0]*self.tile_sz[0])
-        self.zoom0_res=[res0,res0]
+        res0=max_x*2/(self.zoom0_tiles[0]*self.tile_sz[0])
+        self.zoom0_res=[res0,-res0]
 
         # offset from the upper left corner to the origin of the coord system
-        self.coord_offset=[self.equator/2,
-                           self.zoom0_res[1]*self.tile_sz[1]*self.zoom0_tiles[1]/2]
-
-        zoom0_tile_dim=[self.zoom0_res[0]*self.tile_sz[0],
-                        self.zoom0_res[1]*self.tile_sz[1]]
+        self.pix_origin=[ -max_x, -self.zoom0_res[1]*self.tile_sz[1]*self.zoom0_tiles[1]/2 ]
 
         self.tile_origin=self.pix2coord(0,self.zoom0_origin)
-        ld('zoom0_tiles',self.zoom0_tiles,'zoom0_tile_dim',zoom0_tile_dim,'coord_offset',self.coord_offset)
+        ld('zoom0_tiles',self.zoom0_tiles,'pix_origin',self.pix_origin)
 
         # set self.origin and self.extent to the maximum values
         self.origin=self.pix2coord(0,(0,0))
@@ -356,9 +351,8 @@ class Pyramid(object):
         shifted_srs=self.shift_srs(self.base_zoom)
         shift_x,y=MyTransformer(SRC_SRS=shifted_srs,DST_SRS=self.proj).transform_point((0,0))
         if shift_x != 0:
-            ld('new_srs',shifted_srs,'shift_x',shift_x,'coord_offset',self.coord_offset)
-            self.coord_offset[0]+=shift_x
-            self.shift_x=shift_x
+            ld('new_srs',shifted_srs,'shift_x',shift_x,'pix_origin',self.pix_origin)
+            self.pix_origin[0]+=shift_x
             self.proj=shifted_srs
             self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
 
@@ -550,13 +544,13 @@ class Pyramid(object):
 
             t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
             geotr=t_ds.GetGeoTransform()
-            res=(geotr[1], -geotr[5])
+            res=(geotr[1], geotr[5])
             max_zoom=max(self.res2zoom_xy(res))
 
             # calculate min_zoom
             ul_c=(geotr[0], geotr[3])
             lr_c=gdal.ApplyGeoTransform(geotr,t_ds.RasterXSize,t_ds.RasterYSize)
-            wh=(lr_c[0]-ul_c[0],ul_c[1]-lr_c[1])
+            wh=(lr_c[0]-ul_c[0],lr_c[1]-ul_c[1])
             ld('ul_c,lr_c,wh',ul_c,lr_c,wh)
             min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_sz[i]for i in (0,1)]))
             zoom_parm='%d-%d'%(min_zoom,max_zoom)
@@ -585,7 +579,7 @@ class Pyramid(object):
 
         ld('extent Upper Left',self.origin,ul_c,self.proj2geog.transform([self.origin,ul_c]))
         ld('extent Lower Right',self.extent,lr_c,self.proj2geog.transform([self.extent,lr_c]))
-        ld('coord_offset',self.coord_offset,'ul_c+c_off',map(operator.add,ul_c,self.coord_offset))
+        ld('pix_origin',self.pix_origin,'ul_c+c_off',map(operator.add,ul_c,self.pix_origin))
 
         # create VRT for base image warp
 
@@ -617,8 +611,8 @@ class Pyramid(object):
         res=self.zoom2res(self.base_zoom)
         ul_ll,lr_ll=self.coords2longlat([ul_c,lr_c])
         ld('base_zoom',self.base_zoom,'size',dst_xsize,dst_ysize,'-tr',res[0],res[1],'-te',ul_c[0],lr_c[1],lr_c[0],ul_c[1],'-t_srs',self.proj)
-        dst_geotr=( ul_c[0], res[0],     0.0,
-                    ul_c[1],    0.0, -res[1] )
+        dst_geotr=( ul_c[0], res[0],   0.0,
+                    ul_c[1],    0.0, res[1] )
         ok,dst_igeotr=gdal.InvGeoTransform(dst_geotr)
         assert ok
         dst_transform='%s\n%s' % (warp_dst_geotr % dst_geotr,warp_dst_igeotr % dst_igeotr)
@@ -741,11 +735,12 @@ class Pyramid(object):
         if not self.init_map(options.zoom):
             return
 
-        # reproject to base zoom
+        # create a raster source for a base zoom
         self.make_base_raster()
 
         self.name=os.path.basename(self.dest)
 
+        # map 'logical' tiles to 'physical' tiles
         self.tile_map={}
         for zoom in self.zoom_range:
             tile_ul,tile_lr=self.corner_tiles(zoom)
@@ -753,7 +748,6 @@ class Pyramid(object):
                                            for y in range(tile_ul[2],tile_lr[2]+1)])
             zoom_dim=self.zoom_tiles(zoom)
             
-            # map 'logical' tiles to 'physical' tiles
             level_map=dict([((t[0],t[1]%zoom_dim[0],t[2]),t) for t in src_tiles]) # normalize tile coords
             
             self.tile_map.update(level_map)
@@ -789,11 +783,11 @@ class Pyramid(object):
                 tile_img.putpalette(self.palette)
         else: # merge children
             opacity=0
-            cz=self.zoom_range[self.zoom_range.index(zoom)-1] # child's zoom
-            dz=int(2**(cz-zoom))
+            child_zoom=self.zoom_range[self.zoom_range.index(zoom)-1] # child's zoom
+            dz=int(2**(child_zoom-zoom))
 
             ch_mozaic=dict(flatten(
-                [[((cz,x*dz+dx,y*dz+dy),(dx*self.tile_sz[0]//dz,dy*self.tile_sz[1]//dz))
+                [[((child_zoom,x*dz+dx,y*dz+dy),(dx*self.tile_sz[0]//dz,dy*self.tile_sz[1]//dz))
                                for dx in range(dz)]
                                    for dy in range(dz)]))
             children=self.all_tiles & frozenset(ch_mozaic)
@@ -810,13 +804,13 @@ class Pyramid(object):
             for img,ch,opacity_lst in ch_results:
                 ch_img=img.resize([i//dz for i in img.size],self.resampling)
                 ch_mask=ch_img.split()[-1] if 'A' in ch_img.mode else None
-                
+
                 if tile_img is None:
                     if 'P' in ch_img.mode:
                         tile_mode='P'
                     else:
                         tile_mode=('L' if 'L' in ch_img.mode else 'RGB')+mode_opacity
-                    
+
                     if self.transparency is not None:
                         tile_img=Image.new(tile_mode,self.tile_sz,self.transparency)
                     else:
@@ -956,12 +950,12 @@ class Pyramid(object):
 
     def res2zoom_xy(self,res):
         'resolution to zoom levels (separate for x and y)'
-        z=map(lambda z0r,r: int(math.floor(math.log(z0r/r,2))), self.zoom0_res,res)
+        z=[int(math.floor(math.log(self.zoom0_res[i]/res[i],2))) for i in (0,1)]
         return [v if v>0 else 0 for v in z]
 
     def pix2tile(self,zoom,pix_coord):
         'pixel coordinates to tile (z,x,y)'
-        return [zoom]+map(lambda pc,ts: pc//ts, pix_coord,self.tile_sz)
+        return [zoom]+[pix_coord[i]//self.tile_sz[i] for i in (0,1)]
 
     def tile2pix(self,tile):
         'tile to pixel coordinates'
@@ -983,32 +977,28 @@ class Pyramid(object):
 
     def coord2pix(self,zoom,coord):
         'cartesian coordinates to pixel coordinates'
-        ul_distance=(coord[0]+self.coord_offset[0],self.coord_offset[1]-coord[1])
-        out=tuple([int(dist/res) for dist,res in zip(ul_distance,self.zoom2res(zoom))])
-        return out
+        res=self.zoom2res(zoom)
+        return [int(round((coord[i]-self.pix_origin[i])/res[i]))  for i in (0,1)]
 
     def pix2coord(self,zoom,pix_coord):
-        pix00_ofs=map(operator.mul,pix_coord,self.zoom2res(zoom))
-        return [pix00_ofs[0]-self.coord_offset[0],-(pix00_ofs[1]-self.coord_offset[1])]
+        res=self.zoom2res(zoom)
+        return [pix_coord[i]*res[i]+self.pix_origin[i] for i in (0,1)]
 
     def zoom_tiles(self,zoom):
         return map(lambda v: v*2**zoom,self.zoom0_tiles)
 
-    def coords2longlat(self, coords): # redefined in PlateCarree
+    def coords2longlat(self,coords):
         longlat=[i[:2] for i in self.proj2geog.transform(coords)]
-        #ld('coords',coords)
-        #ld('longlat',longlat)
         return longlat
 
     def boxes2longlat(self,box_lst):
         deg_lst=self.coords2longlat(flatten(box_lst))
         ul_lst=deg_lst[0::2]
         lr_lst=deg_lst[1::2]
-        res=[[
+        return [[
             (ul[0] if ul[0] <  180 else ul[0]-360,ul[1]),
             (lr[0] if lr[0] > -180 else lr[0]+360,lr[1]),
             ] for ul,lr in zip(ul_lst,lr_lst)]
-        return res
 
     def corner_tiles(self,zoom):
         p_ul=self.coord2pix(zoom,self.origin)
@@ -1064,9 +1054,9 @@ class Pyramid(object):
                 zrange+=range(min(z),max(z)+1)
         self.zoom_range=list(reversed(sorted(set(zrange))))
 
+    # progress display
     tick_rate=50
     count=0
-
     def counter(self):
         self.count+=1
         if self.count % self.tick_rate == 0:
@@ -1111,18 +1101,14 @@ class PlateCarree(Pyramid):
     # projection where the meridians and parallels are equidistant, straight lines, with the two sets 
     # crossing at right angles. This projection is also known as Lat/Lon WGS84"    
     
-    # Equirectangular (epsg:32662 aka plate carrée, aka Simple Cylindrical)
+    # Equirectangular (EPSG:32662 aka plate carrée, aka Simple Cylindrical)
     # we use this because the SRS might be shifted later to work around 180 meridian
-    srs='+proj=eqc +datum=WGS84 +ellps=WGS84'
+    srs = '+proj=eqc +datum=WGS84 +ellps=WGS84'
+
     # set units to degrees, this makes this SRS essentially equivalent to EPSG:4326
-    srs+=' +to_meter=%f' % (
+    srs += ' +to_meter=%f' % (
         MyTransformer(DST_SRS=srs,SRC_SRS=proj_cs2geog_cs(srs)
         ).transform_point((1,0))[0])
-
-    def coords2longlat(self, coords):
-        out=[map(lambda c,res0,tsz,c_off: (((c+c_off)/(res0*tsz)*180)+180)%360-180,
-                coord,self.zoom0_res,self.tile_sz,(self.shift_x,0)) for coord in coords]
-        return [(lon,lat) for lon,lat in out]
 
     def kml_child_links(self,children,parent=None,path_prefix=''):
         kml_links=[]

@@ -46,7 +46,7 @@
     var tile_size = new G.Size(256, 256);
     var map_type = G.MapTypeId.SATELLITE;
     var opacity = 0.5;
-    var profile = 'google-mercator';
+    var profile = 'zxy-mercator';
     var srs = 'OSGEO:41001';
     var transparent_url='http://maps.gstatic.com/mapfiles/transparent.png';
     var tileset_lst=[];
@@ -61,6 +61,7 @@
     }
 
     function error(msg) {
+        alert(msg);
         throw new Error(msg);
     }
 
@@ -124,7 +125,7 @@
             return null;
         }
         profile=tilemap.getElementsByTagName("TileSets")[0].getAttribute('profile');
-        if (profile != 'global-mercator' && profile != 'google-mercator') {
+        if (profile != 'global-mercator' && profile != 'zxy-mercator') {
 	        error('tilemap.xml: unsupported profile');
             return null;
         }

@@ -256,7 +256,7 @@
                 return null;
             }
             layer_profile=tilemap.getElementsByTagName("TileSets")[0].getAttribute('profile');
-            if (layer_profile != 'global-mercator' && layer_profile != 'google-mercator') {
+            if (layer_profile != 'global-mercator' && layer_profile != 'zxy-mercator') {
 	            error('unsupported profile in tilemap.xml '+layer_profile);
                 return null;
             }
