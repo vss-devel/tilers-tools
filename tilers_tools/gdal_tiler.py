@@ -220,8 +220,8 @@ tilemap_templ='''<?xml version="1.0" encoding="UTF-8" ?>
   <Title>%(title)s</Title>
   <Abstract>%(description)s</Abstract>
   <SRS>%(tms_srs)s</SRS>
-  <BoundingBox minx="%(min_x)f" miny="%(min_y)f" maxx="%(max_x)f" maxy="%(max_y)f" />
-  <Origin x="%(origin_x)f" y="%(origin_y)f" />
+  <BoundingBox minx="%(minx).11G" miny="%(miny).11G" maxx="%(maxx).11G" maxy="%(maxy).11G" />
+  <Origin x="%(origin_x).11G" y="%(origin_y).11G" />
   <TileFormat width="%(tile_width)d" height="%(tile_height)d" mime-type="%(tile_mime)s" extension="%(tile_ext)s" />
   <TileSets profile="%(tms_profile)s">
 %(tilesets)s
@@ -229,7 +229,7 @@ tilemap_templ='''<?xml version="1.0" encoding="UTF-8" ?>
 </TileMap>
 '''
 
-tile_set_templ='    <TileSet href="%(href)s" units-per-pixel="%(units_per_pixel)f" order="%(order)d" />'
+tile_set_templ='    <TileSet href="%(href)s" units-per-pixel="%(units_per_pixel).11G" order="%(order).11G" />'
 
 resampling_map={
     'near':     Image.NEAREST,
@@ -275,17 +275,7 @@ class Pyramid(object):
         self.dest=dest
         self.options=options
 
-        self.proj=self.srs # self.proj may be changed later to avoid crossing longitude 180 
-        self.longlat=proj_cs2geog_cs(self.proj)
-        ld('proj,longlat',self.proj,self.longlat)
-        self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
-
         self.init_tile_grid()
-        
-        # set self.origin and self.extent to the maximum values
-        self.origin=self.pix2coord(0,(0,0))
-        self.extent=self.pix2coord(0,(self.zoom0_tiles[0]*self.tile_sz[0],
-                                      self.zoom0_tiles[1]*self.tile_sz[1]))
 
     #############################
 
@@ -303,14 +293,20 @@ class Pyramid(object):
     def init_tile_grid(self):
         # init tile grid parameters
     #############################
-        semi_circ,foo=self.proj2geog.transform_point((180,0),inv=True) # Half Equator length
-        ld('semi_circ',semi_circ)
+
+        self.proj=self.srs # self.proj may be changed later to avoid crossing longitude 180 
+        self.longlat=proj_cs2geog_cs(self.proj)
+        ld('proj,longlat',self.proj,self.longlat)
+
+        self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
+        self.equator=self.proj2geog.transform_point((180,0),inv=True)[0]*2 # Equator length
+
         # dimentions of a tile at zoom 0
-        res0=semi_circ*2/(self.zoom0_tiles[0]*self.tile_sz[0])
+        res0=self.equator/(self.zoom0_tiles[0]*self.tile_sz[0])
         self.zoom0_res=[res0,res0]
 
         # offset from the upper left corner to the origin of the coord system
-        self.coord_offset=[semi_circ,
+        self.coord_offset=[self.equator/2,
                            self.zoom0_res[1]*self.tile_sz[1]*self.zoom0_tiles[1]/2]
 
         zoom0_tile_dim=[self.zoom0_res[0]*self.tile_sz[0],
@@ -318,6 +314,11 @@ class Pyramid(object):
 
         self.tile_origin=self.pix2coord(0,self.zoom0_origin)
         ld('zoom0_tiles',self.zoom0_tiles,'zoom0_tile_dim',zoom0_tile_dim,'coord_offset',self.coord_offset)
+
+        # set self.origin and self.extent to the maximum values
+        self.origin=self.pix2coord(0,(0,0))
+        self.extent=self.pix2coord(0,(self.zoom0_tiles[0]*self.tile_sz[0],
+                                      self.zoom0_tiles[1]*self.tile_sz[1]))
     
     #############################
 
@@ -920,10 +921,10 @@ class Pyramid(object):
             tile_mime=  tile_mime,
             origin_x=   self.tile_origin[0],
             origin_y=   self.tile_origin[1],
-            min_x=      origin[0],
-            min_y=      extent[1],
-            max_x=      extent[0],
-            max_y=      origin[1],
+            minx=       origin[0],
+            miny=       extent[1],
+            maxx=       extent[0],
+            maxy=       origin[1],
             tilesets=   '\n'.join(tilesets),
             )
         open(os.path.join(self.dest,'tilemap.xml'),'w').write(tilemap_txt)
@@ -1098,7 +1099,7 @@ class GenericMap(Pyramid):
 class PlateCarree(Pyramid):
     'Plate Carrée, top-to-bottom tile numbering  (a la Google Earth)'
 #############################
-    profile='zxy-geodetic'
+    profile='zxy-geo'
     defaul_ext='.geo'
     zoom0_tiles=[2,1] # tiles at zoom 0
     zoom0_origin=(0,0)
@@ -1109,9 +1110,14 @@ class PlateCarree(Pyramid):
     # "Google Earth uses Simple Cylindrical projection for its imagery base. This is a simple map 
     # projection where the meridians and parallels are equidistant, straight lines, with the two sets 
     # crossing at right angles. This projection is also known as Lat/Lon WGS84"    
-
+    
     # Equirectangular (epsg:32662 aka plate carrée, aka Simple Cylindrical)
+    # we use this because the SRS might be shifted later to work around 180 meridian
     srs='+proj=eqc +datum=WGS84 +ellps=WGS84'
+    # set units to degrees, this makes this SRS essentially equivalent to EPSG:4326
+    srs+=' +to_meter=%f' % (
+        MyTransformer(DST_SRS=srs,SRC_SRS=proj_cs2geog_cs(srs)
+        ).transform_point((1,0))[0])
 
     def coords2longlat(self, coords):
         out=[map(lambda c,res0,tsz,c_off: (((c+c_off)/(res0*tsz)*180)+180)%360-180,
@@ -1157,7 +1163,7 @@ class PlateCarree(Pyramid):
         name=os.path.splitext(rel_path)[0]
         kml_links=self.kml_child_links(children,tile,'../../')
         tile_box=self.map_tiles2longlat_boxes([tile])[0]
-        w,n,e,s=['%.11f'%v for v in flatten(tile_box)]
+        w,n,e,s=['%.11G'%v for v in flatten(tile_box)]
         kml_overlay = kml_overlay_templ % {
             'name':    name,
             'href':    os.path.basename(rel_path),
@@ -1175,7 +1181,7 @@ class PlateCarree(Pyramid):
 class PlateCarreeTMS(PlateCarree):
     'Plate Carrée, TMS tile numbering (bottom-to-top, global-geodetic - compatible tiles)'
 #############################
-    profile='tms-geodetic'
+    profile='tms-geo'
     defaul_ext='.tms-geo'
     zoom0_origin=(0,256)
     tms_profile='global-geodetic'
