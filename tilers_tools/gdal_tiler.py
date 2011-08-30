@@ -1096,14 +1096,14 @@ class GenericMap(Pyramid):
 #############################
 
 class PlateCarree(Pyramid):
-    'Plate Carrée (Google Earth), top-to-bottom tile numbering (google-like)'
+    'Plate Carrée, top-to-bottom tile numbering  (a la Google Earth)'
 #############################
-    profile='earth'
-    defaul_ext='.earth'
+    profile='zxy-geodetic'
+    defaul_ext='.geo'
     zoom0_tiles=[2,1] # tiles at zoom 0
     zoom0_origin=(0,0)
     tms_srs='EPSG:4326'
-    tms_profile='google-geodetic' # non-standard profile
+    tms_profile='zxy-geodetic' # non-standard profile
 
     # http://earth.google.com/support/bin/static.py?page=guide.cs&guide=22373&topic=23750
     # "Google Earth uses Simple Cylindrical projection for its imagery base. This is a simple map 
@@ -1173,10 +1173,10 @@ class PlateCarree(Pyramid):
 #############################
 
 class PlateCarreeTMS(PlateCarree):
-    'Plate Carrée, TMS tile numbering (Google Earth, global geodetic - compatible tiles)'
+    'Plate Carrée, TMS tile numbering (bottom-to-top, global-geodetic - compatible tiles)'
 #############################
-    profile='earth-tms'
-    defaul_ext='.earth-tms'
+    profile='tms-geodetic'
+    defaul_ext='.tms-geo'
     zoom0_origin=(0,256)
     tms_profile='global-geodetic'
 
@@ -1236,30 +1236,30 @@ kml_link_templ='''
             </Link>
         </NetworkLink>'''
 
+##############################
+
+#class Yandex(Pyramid):
+#    'Yandex Maps (WGS 84 / World Mercator, epsg:3395)'
+##############################
+#    profile='yandex'
+#    defaul_ext='.yandex'
+#    srs='+proj=merc +datum=WGS84 +ellps=WGS84'
+## Yandex
+
 #############################
 
-class Yandex(Pyramid):
-    'Yandex Maps (WGS 84 / World Mercator, epsg:3395)'
+class GMercatorZXY(Pyramid):
+    'Global Mercator, top-to-bottom tile numbering (a la Google Maps, OSM etc)'
 #############################
-    profile='yandex'
-    defaul_ext='.yandex'
-    srs='+proj=merc +datum=WGS84 +ellps=WGS84'
-# Yandex
-
-#############################
-
-class Gmaps(Pyramid):
-    'Global Mercator, top-to-bottom tile numbering (google-like)'
-#############################
-    profile='gmaps'
-    defaul_ext='.gmaps'
+    profile='zxy'
+    defaul_ext='.zxy'
 
     # Global Mercator (EPSG:3857)
     srs='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext'
     zoom0_tiles=[1,1] # tiles at zoom 0
     zoom0_origin=(0,0)
-    tms_srs='OSGEO:41001'
-    tms_profile='google-mercator' # non-standard profile
+    tms_srs='OSGEO:41001' # http://wiki.osgeo.org/wiki/Tile_Map_Service_Specification
+    tms_profile='zxy-mercator' # non-standard profile
     
     def write_metadata(self,tile,children=[]): 
         if not tile: # create top level html
@@ -1272,7 +1272,7 @@ class Gmaps(Pyramid):
 
 #############################
 
-class GMercatorTMS(Gmaps):
+class GMercatorTMS(GMercatorZXY):
     'Global Mercator, TMS tile numbering'
 #############################
     profile='tms'
@@ -1285,11 +1285,11 @@ class GMercatorTMS(Gmaps):
 # GMercatorTMS
 
 profile_map=(
-    Gmaps,
+    GMercatorZXY,
     GMercatorTMS,
     PlateCarree,
     PlateCarreeTMS,
-    Yandex,
+#    Yandex,
     GenericMap,
     )
 
@@ -1311,8 +1311,8 @@ def main(argv):
         version=version,
         description='Tile cutter for GDAL-compatible raster maps')
     parser.add_option('-p','--profile','--to',dest="profile",metavar='PROFILE',
-        default='gmaps',choices=Pyramid.profile_lst(),
-        help='output tiles profile (default: gmaps)')
+        default='zxy',choices=Pyramid.profile_lst(),
+        help='output tiles profile (default: zxy)')
     parser.add_option("-l", "--list-profiles", action="store_true",
         help='list tile profiles')
     parser.add_option("--t-srs", default=None,metavar="TARGET_SRS",
