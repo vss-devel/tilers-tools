@@ -298,7 +298,7 @@ class Pyramid(object):
         ld('proj,longlat',self.proj,self.longlat)
 
         self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
-        max_x=self.proj2geog.transform_point((180,0),inv=True)[0] # half Equator length
+        max_x=self.proj2geog.transform_point((180,0),inv=True)[0] # Equator's half length 
 
         # dimentions of a tile at zoom 0
         res0=max_x*2/(self.zoom0_tiles[0]*self.tile_sz[0])
@@ -345,10 +345,10 @@ class Pyramid(object):
 
         # calculate zoom range
         self.calc_zoom(zoom_parm)
-        self.base_zoom=self.zoom_range[0]        
+        self.max_zoom=self.zoom_range[0]        
              
         # shift target SRS to avoid crossing 180 meridian
-        shifted_srs=self.shift_srs(self.base_zoom)
+        shifted_srs=self.shift_srs(self.max_zoom)
         shift_x,y=MyTransformer(SRC_SRS=shifted_srs,DST_SRS=self.proj).transform_point((0,0))
         if shift_x != 0:
             ld('new_srs',shifted_srs,'shift_x',shift_x,'pix_origin',self.pix_origin)
@@ -560,12 +560,12 @@ class Pyramid(object):
 
     #############################
 
-    def make_base_raster(self):
+    def make_raster(self,zoom):
 
     #############################
 
         # adjust raster extents to tile boundaries
-        tile_ul,tile_lr=self.corner_tiles(self.base_zoom)
+        tile_ul,tile_lr=self.corner_tiles(zoom)
         ld('base_raster')
         ld('tile_ul',tile_ul,'tile_lr',tile_lr)
         ul_c=self.tile2coord_box(tile_ul)[0]
@@ -608,9 +608,9 @@ class Pyramid(object):
             #src_transform=warp_src_gcp_transformer % (0,gcp_txt)
             src_transform=warp_src_tps_transformer % gcp_txt
 
-        res=self.zoom2res(self.base_zoom)
+        res=self.zoom2res(zoom)
         ul_ll,lr_ll=self.coords2longlat([ul_c,lr_c])
-        ld('base_zoom',self.base_zoom,'size',dst_xsize,dst_ysize,'-tr',res[0],res[1],'-te',ul_c[0],lr_c[1],lr_c[0],ul_c[1],'-t_srs',self.proj)
+        ld('max_zoom',zoom,'size',dst_xsize,dst_ysize,'-tr',res[0],res[1],'-te',ul_c[0],lr_c[1],lr_c[0],ul_c[1],'-t_srs',self.proj)
         dst_geotr=( ul_c[0], res[0],   0.0,
                     ul_c[1],    0.0, res[1] )
         ok,dst_igeotr=gdal.InvGeoTransform(dst_geotr)
@@ -736,7 +736,7 @@ class Pyramid(object):
             return
 
         # create a raster source for a base zoom
-        self.make_base_raster()
+        self.make_raster(self.max_zoom)
 
         self.name=os.path.basename(self.dest)
 
@@ -744,16 +744,17 @@ class Pyramid(object):
         self.tile_map={}
         for zoom in self.zoom_range:
             tile_ul,tile_lr=self.corner_tiles(zoom)
-            src_tiles=flatten([[(zoom,x,y) for x in range(tile_ul[1],tile_lr[1]+1)] 
+            zoom_tiles=flatten([[(zoom,x,y) for x in range(tile_ul[1],tile_lr[1]+1)] 
                                            for y in range(tile_ul[2],tile_lr[2]+1)])
-            zoom_dim=self.zoom_tiles(zoom)
-            
-            level_map=dict([((t[0],t[1]%zoom_dim[0],t[2]),t) for t in src_tiles]) # normalize tile coords
-            
-            self.tile_map.update(level_map)
-        ld('min_zoom',zoom,'tile_ul',tile_ul,'tile_lr',tile_lr,'tiles',level_map)
+            ntiles_x,ntiles_y=self.tiles_xy(zoom)
+
+            zoom_tiles_map=dict([((z,x%ntiles_x,y),(z,x,y)) for z,x,y in zoom_tiles])
+
+            self.tile_map.update(zoom_tiles_map)
+
+        ld('min_zoom',zoom,'tile_ul',tile_ul,'tile_lr',tile_lr,'tiles',zoom_tiles_map)
         self.all_tiles=frozenset(self.tile_map)
-        top_results=filter(None,map(self.proc_tile,level_map.keys()))
+        top_results=filter(None,map(self.proc_tile,zoom_tiles_map.keys()))
 
         # write top-level metadata (html/kml)
         self.write_metadata(None,[ch for img,ch,opacities in top_results])
@@ -776,7 +777,7 @@ class Pyramid(object):
         ch_opacities=[]
         ch_results=[]
         zoom,x,y=tile
-        if zoom==self.base_zoom: # get from the base image
+        if zoom==self.max_zoom: # get from the base image
             src_tile=self.tile_map[tile]
             tile_img,opacity=self.base_img.get_tile(src_tile[1:])
             if tile_img and self.palette:
@@ -867,15 +868,7 @@ class Pyramid(object):
         'relative path to a tile'
     #############################
         z,x,y=tile
-        return '%i/%i/%i.%s' % (z,x,y,self.tile_ext)
-
-    #############################
-
-    def tms_tile_path(self,tile):
-        'relative path to a tile, TMS style'
-    #############################
-        z,x,y=tile
-        return '%i/%i/%i.%s' % (z,x,self.zoom_tiles(z)[1]-y-1,self.tile_ext)
+        return '%i/%i/%i.%s' % (z,x,y if self.tile_direction[1]==-1 else self.tiles_xy(z)[1]-1-y,self.tile_ext)
 
     #############################
 
@@ -984,7 +977,8 @@ class Pyramid(object):
         res=self.zoom2res(zoom)
         return [pix_coord[i]*res[i]+self.pix_origin[i] for i in (0,1)]
 
-    def zoom_tiles(self,zoom):
+    def tiles_xy(self,zoom):
+        'number of tiles along X and Y axes'
         return map(lambda v: v*2**zoom,self.zoom0_tiles)
 
     def coords2longlat(self,coords):
@@ -1007,7 +1001,7 @@ class Pyramid(object):
         p_lr=self.coord2pix(zoom,self.extent)
         t_lr=self.pix2tile(zoom,(p_lr[0]-1,p_lr[1]-1))
 
-        nztiles=self.zoom_tiles(zoom)
+        nztiles=self.tiles_xy(zoom)
         box_ul,box_lr=[self.tile2coord_box(t) for t in (t_ul,t_lr)]
         ld('corner_tiles zoom',zoom,
             'zoom tiles',nztiles,
@@ -1080,7 +1074,9 @@ class GenericMap(Pyramid):
         self.tile_sz=tuple(map(int,options.tile_size.split(',')))
         self.zoom0_tiles=map(int,options.zoom0_tiles.split(','))
         if options.tms:
-            tile_path=Pyramid.tms_tile_path # method shortcut
+            tile_direction=(1,1)
+        else:
+            tile_direction=(1,-1)
 
         super(GenericMap, self).__init__(src,dest,options)
 
@@ -1093,6 +1089,7 @@ class PlateCarree(Pyramid):
     defaul_ext='.geo'
     zoom0_tiles=[2,1] # tiles at zoom 0
     zoom0_origin=(0,0)
+    tile_direction=(1,-1)
     tms_srs='EPSG:4326'
     tms_profile='zxy-geodetic' # non-standard profile
 
@@ -1170,9 +1167,9 @@ class PlateCarreeTMS(PlateCarree):
     profile='tms-geo'
     defaul_ext='.tms-geo'
     zoom0_origin=(0,256)
+    tile_direction=(1,1)
     tms_profile='global-geodetic'
 
-    tile_path=Pyramid.tms_tile_path # method shortcut
 # PlateCarreeTMS
 
 kml_templ='''<?xml version="1.0" encoding="utf-8"?>
@@ -1250,6 +1247,7 @@ class GMercatorZXY(Pyramid):
     srs='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext'
     zoom0_tiles=[1,1] # tiles at zoom 0
     zoom0_origin=(0,0)
+    tile_direction=(1,-1)
     tms_srs='OSGEO:41001' # http://wiki.osgeo.org/wiki/Tile_Map_Service_Specification
     tms_profile='zxy-mercator' # non-standard profile
     
@@ -1270,10 +1268,10 @@ class GMercatorTMS(GMercatorZXY):
     profile='tms'
 
     defaul_ext='.tms'
+    tile_direction=(1,1)
     zoom0_origin=(0,256)
     tms_profile='global-mercator'
 
-    tile_path=Pyramid.tms_tile_path # method shortcut
 # GMercatorTMS
 
 profile_map=(
