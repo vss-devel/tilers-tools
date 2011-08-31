@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-06-08 16:32:30 
-
 ###############################################################################
-# Copyright (c) 2010, Vadim Shlyakhov
+# Copyright (c) 2010,2011 Vadim Shlyakhov
 #
 #  Permission is hereby granted, free of charge, to any person obtaining a
 #  copy of this software and associated documentation files (the "Software"),
@@ -118,7 +116,7 @@ class TileSet(object):
                     os.remove(self.root)
             if region:
                 from gdal_tiler import Pyramid
-                self.pyramid=Pyramid.domain_class('gmaps')()
+                self.pyramid=Pyramid.domain_class('zxy')()
                 self.pyramid.load_region(region)
                 self.pyramid.set_zoom_range(zoom)
 
@@ -195,9 +193,9 @@ class TMStiles(TileDir): # see TileMap Diagram at http://wiki.osgeo.org/wiki/Til
     def coord2path(self,z,x,y):
         return '%d/%d/%d' % (z,x,2**z-y-1)
 
-class Gmaps(TileDir): # http://code.google.com/apis/maps/documentation/javascript/v2/overlays.html#Google_Maps_Coordinates
-    'Google map tiles (mappero-compatible)'
-    format,ext,input,output='gmaps','.gmaps',True,True
+class ZXYtiles(TileDir): # http://code.google.com/apis/maps/documentation/javascript/v2/overlays.html#Google_Maps_Coordinates
+    'Popular ZXY aka XYZ format (Google Maps, OSM, mappero-compatible)'
+    format,ext,input,output='zxy','.zxy',True,True
     dir_pattern='[0-9]*/*/*.*'
 
     def path2coord(self,tile_path):
@@ -334,7 +332,7 @@ tile_formats=(
     TMStiles,
     MapperSQLite,
     MapperGDBM,
-    Gmaps,
+    ZXYtiles,
     MapNav,
     SASPlanet,
     SASGoogle,
@@ -372,8 +370,8 @@ if __name__=='__main__':
         usage="usage: %prog  <source> [<target>]",
         version=version,
         description="copies map tiles from one structure to another")
-    parser.add_option("--from", dest="in_fmt", default='gmaps',
-        help='input tiles format (default: gmaps)')
+    parser.add_option("--from", dest="in_fmt", default='zxy',
+        help='input tiles format (default: zxy)')
     parser.add_option("--to", dest="out_fmt", default='sqlite',
         help='output tiles format (default: sqlite)')
     parser.add_option("-l", "--list-formats", action="store_true", dest="list_formats",
