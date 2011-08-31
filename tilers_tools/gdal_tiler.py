@@ -352,7 +352,7 @@ class Pyramid(object):
         shift_x,y=MyTransformer(SRC_SRS=shifted_srs,DST_SRS=self.proj).transform_point((0,0))
         if shift_x != 0:
             ld('new_srs',shifted_srs,'shift_x',shift_x,'pix_origin',self.pix_origin)
-            self.pix_origin[0]+=shift_x
+            self.pix_origin[0]-=shift_x
             self.proj=shifted_srs
             self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
 
