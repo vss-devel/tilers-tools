@@ -116,7 +116,7 @@ class TileSet(object):
                     os.remove(self.root)
             if region:
                 from gdal_tiler import Pyramid
-                self.pyramid=Pyramid.domain_class('zxy')()
+                self.pyramid=Pyramid.profile_class('zxy')()
                 self.pyramid.load_region(region)
                 self.pyramid.set_zoom_range(zoom)
 

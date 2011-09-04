@@ -1030,7 +1030,7 @@ class Pyramid(object):
     def load_region(self,datasource):
         if not datasource:
             return
-        point_lst=flatten(self.shape2mpointlst(datasource,self.proj))
+        point_lst=flatten(shape2mpointlst(datasource,self.proj))
         self.set_region(point_lst)
 
     def set_zoom_range(self,zoom_parm):
