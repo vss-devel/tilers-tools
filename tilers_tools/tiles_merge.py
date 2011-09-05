@@ -82,7 +82,8 @@ def merge_matadata(src_dir, dst_dir):
             tilesets_el.appendChild(new_tilesets[z])
     
     with open(dst_f,'w') as f:
-        doc.writexml(f,encoding='UTF-8')
+        #doc.writexml(f,encoding='UTF-8')
+        f.write(doc.toxml('utf-8'))
     
     src['doc'].unlink()
     dst['doc'].unlink()

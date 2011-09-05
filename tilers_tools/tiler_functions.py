@@ -335,6 +335,7 @@ def read_tilemap_parameters(src):
         profile=    elem0(doc,"TileSets").getAttribute('profile'),
         srs=        elem0(doc,"SRS").firstChild.data,
         title=      elem0(doc,"Title").firstChild.data,
+        abstract=   elem0(doc,"Abstract").firstChild.data,
         extent=     [float(box_el.getAttribute(attr)) for attr in ('minx','miny','maxx','maxy')],
         tile_origin=[float(origin_el.getAttribute(attr)) for attr in ('x','y')],
         tile_size=  [int(tile_format_el.getAttribute(attr)) for attr in ('width','height')],

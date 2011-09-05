@@ -93,7 +93,6 @@ class ZoomSet:
                     raise Exception("No tiles in %s" % os.getcwd())
 
                 dest_lst=set([(zoom,src_x/2,src_y/2) for (src_x,src_y) in self.src_lst])
-                ld(dest_lst)
 
                 for i in set([x for z,x,y in dest_lst]):
                     os.makedirs('%i/%i' % (zoom,i))
@@ -102,6 +101,7 @@ class ZoomSet:
 
             # adjust tilemap.xml
             doc=self.tilemap['doc']
+            #ld(self.tilemap['title'],self.tilemap['abstract'])
             tilesets_el=elem0(doc,"TileSets")
             new_tilesets={}
             for z in self.tilemap['zooms']: # unlink old tilesets
@@ -120,7 +120,8 @@ class ZoomSet:
                 tilesets_el.appendChild(new_tilesets[z])
 
             with open(self.tilemap_file,'w') as f:
-                doc.writexml(f,encoding='UTF-8')
+                #doc.writexml(f,encoding='utf-8')
+                f.write(doc.toxml('utf-8'))
 
         finally:
             os.chdir(start_dir)
@@ -136,12 +137,15 @@ if __name__=='__main__':
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose")
     parser.add_option("-z", "--zoom", dest="zoom", type='int', 
         help='target zoom level)')
+    parser.add_option("-q", "--quiet", action="store_true")
+    parser.add_option("-d", "--debug", action="store_true")
         
     (options, args) = parser.parse_args()
+    logging.basicConfig(level=logging.DEBUG if options.debug else 
+        (logging.ERROR if options.quiet else logging.INFO))
+
     if options.zoom == None:
         parser.error('No target zoom specified')
-
-    logging.basicConfig(level=logging.DEBUG if options.verbose else logging.INFO)
 
     start_dir=os.getcwd()
     for tiles_dir in args if len(args)>0 else ['.']:
