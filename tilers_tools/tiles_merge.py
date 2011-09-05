@@ -73,6 +73,7 @@ def merge_matadata(src_dir, dst_dir):
         tilesets_el=elem0(doc,"TileSets")
         new_tilesets={}
         for z in dst['zooms'] & src['zooms']:
+            ld('tileset_parms',dst['tileset_parms'][z],src['tileset_parms'][z])
             assert dst['tileset_parms'][z] == src['tileset_parms'][z]
         for z in dst['zooms']: # unlink tilesets from the destination
             new_tilesets[z]=tilesets_el.removeChild(dst['tilesets'][z])

@@ -111,10 +111,11 @@ class ZoomSet:
             res=self.tilemap['tileset_parms'][top_zoom][0]
             for zoom in new_zooms: # add new tilesets
                 tileset_el=tileset_el.cloneNode(False)
-                res=res/2
-                tileset_el.setAttribute('units-per-pixel', repr(res))
-                tileset_el.setAttribute('order', repr(zoom))
-                tileset_el.setAttribute('href', repr(zoom))
+                ld(zoom,res,res*2)
+                res=res*2
+                tileset_el.setAttribute('units-per-pixel', '%.11G' % res)
+                tileset_el.setAttribute('order', str(zoom))
+                tileset_el.setAttribute('href', str(zoom))
                 new_tilesets[zoom]=tileset_el                
             for z in sorted(new_tilesets): # sorted merge of new and old tilsets
                 tilesets_el.appendChild(new_tilesets[z])
