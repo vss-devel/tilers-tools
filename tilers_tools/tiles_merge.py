@@ -38,6 +38,9 @@ from tiler_functions import *
 class KeyboardInterruptError(Exception): 
     pass
 
+def f_approx_eq(a, b, eps):
+    return (abs(a-b) / (abs(a)+abs(b))/2) < eps
+
 def merge_matadata(src_dir, dst_dir):
     'adjust destination metadata'
     
@@ -67,14 +70,16 @@ def merge_matadata(src_dir, dst_dir):
     box_el = elem0(doc,"BoundingBox")
     for i,name,func in zip(range(4),('minx','miny','maxx','maxy'),(min,min,max,max)):
         box_el.setAttribute(name, repr(func(src['extent'][i],dst['extent'][i])))
-    
+        
     new_zooms=src['zooms'] - dst['zooms']
     if new_zooms:
         tilesets_el=elem0(doc,"TileSets")
         new_tilesets={}
         for z in dst['zooms'] & src['zooms']:
             ld('tileset_parms',dst['tileset_parms'][z],src['tileset_parms'][z])
-            assert dst['tileset_parms'][z] == src['tileset_parms'][z]
+            assert dst['tileset_parms'][z][1] == src['tileset_parms'][z][1]
+            assert f_approx_eq(dst['tileset_parms'][z][0], src['tileset_parms'][z][0], 1.0e-10)
+
         for z in dst['zooms']: # unlink tilesets from the destination
             new_tilesets[z]=tilesets_el.removeChild(dst['tilesets'][z])
         for z in new_zooms: # clone new tilesets from the source
