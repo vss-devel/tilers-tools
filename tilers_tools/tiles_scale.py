@@ -44,7 +44,7 @@ class ZoomSet:
         self.tilemap_file=os.path.join(self.tiles_root,'tilemap.xml')
         self.tilemap=read_tilemap_parameters(self.tilemap_file)
 
-        if self.tilemap['profile'].startswith('google'):
+        if self.tilemap['profile'].startswith('zxy'):
             self.tile_offsets=[
                 (0,0), (128,0),
                 (0,128), (128,128),
@@ -111,7 +111,6 @@ class ZoomSet:
             res=self.tilemap['tileset_parms'][top_zoom][0]
             for zoom in new_zooms: # add new tilesets
                 tileset_el=tileset_el.cloneNode(False)
-                ld(zoom,res,res*2)
                 res=res*2
                 tileset_el.setAttribute('units-per-pixel', '%.11G' % res)
                 tileset_el.setAttribute('order', str(zoom))
