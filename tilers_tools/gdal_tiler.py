@@ -538,28 +538,26 @@ class Pyramid(object):
     def calc_zoom(self,zoom_parm):
         'determine and set a list of zoom levels to generate'
     #############################
-        res=None
-        if not zoom_parm: # calculate "automatic" zoom levels
-            # check raster parameters to find default zoom range
-            # modify target srs to allow charts crossing meridian 180
-            ld('automatic zoom levels')
-            shifted_srs=self.shift_srs()
 
-            t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
-            geotr=t_ds.GetGeoTransform()
-            res=(geotr[1], geotr[5])
-            max_zoom=max(self.res2zoom_xy(res))
+        # check raster parameters to find default zoom range
+        ld('automatic zoom levels')
 
-            # calculate min_zoom
-            ul_c=(geotr[0], geotr[3])
-            lr_c=gdal.ApplyGeoTransform(geotr,t_ds.RasterXSize,t_ds.RasterYSize)
-            wh=(lr_c[0]-ul_c[0],lr_c[1]-ul_c[1])
-            ld('ul_c,lr_c,wh',ul_c,lr_c,wh)
-            min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_sz[i]for i in (0,1)]))
-            zoom_parm='%d-%d'%(min_zoom,max_zoom)
+        # modify target srs to allow charts crossing meridian 180
+        shifted_srs=self.shift_srs()
 
-        self.set_zoom_range(zoom_parm)
-        ld(('res',res,'zoom_range',self.zoom_range,'z0 (0,0)',self.coord2pix(0,(0,0))))
+        t_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
+        geotr=t_ds.GetGeoTransform()
+        res=(geotr[1], geotr[5])
+        max_zoom=max(self.res2zoom_xy(res))
+
+        # calculate min_zoom
+        ul_c=(geotr[0], geotr[3])
+        lr_c=gdal.ApplyGeoTransform(geotr,t_ds.RasterXSize,t_ds.RasterYSize)
+        wh=(lr_c[0]-ul_c[0],lr_c[1]-ul_c[1])
+        ld('ul_c,lr_c,wh',ul_c,lr_c,wh)
+        min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_sz[i]for i in (0,1)]))
+
+        self.set_zoom_range(zoom_parm,(min_zoom,max_zoom))
 
     #############################
 
@@ -1030,6 +1028,27 @@ class Pyramid(object):
             )
         return t_ul,t_lr
 
+    def set_zoom_range(self,zoom_parm,defaults=(0,22)):
+        'set a list of zoom levels from a parameter list'
+
+        if not zoom_parm:
+            zoom_parm='%d:%d' % defaults
+
+        zchunks=[z.split(':') for z in zoom_parm.split(',')]
+        zlist=[]
+        for z in zchunks:
+            if len(z) == 1:
+                zlist.append(int(z[0]))
+            else:
+                # check if either part of the pair is missing
+                zrange=[int(i) if i != '' else d for i,d in zip(z,defaults)]
+                
+                # update range list
+                zlist+=range(min(zrange),max(zrange)+1)
+                
+        self.zoom_range=list(reversed(sorted(set(zlist))))
+        ld('zoom_range',self.zoom_range,defaults)
+
     def belongs_to(self,tile):
         zoom,x,y=tile
         if self.zoom_range and zoom not in self.zoom_range:
@@ -1051,21 +1070,6 @@ class Pyramid(object):
             return
         point_lst=flatten(shape2mpointlst(datasource,self.proj))
         self.set_region(point_lst)
-
-    def set_zoom_range(self,zoom_parm):
-        'set a list of zoom levels from a parameter list'
-
-        if not zoom_parm:
-            return
-
-        zchunks=[map(int,z.split('-')) for z in zoom_parm.split(',')]
-        zrange=[]
-        for z in zchunks:
-            if len(z) == 1:
-                zrange+=z
-            else:
-                zrange+=range(min(z),max(z)+1)
-        self.zoom_range=list(reversed(sorted(set(zrange))))
 
     # progress display
     tick_rate=50
