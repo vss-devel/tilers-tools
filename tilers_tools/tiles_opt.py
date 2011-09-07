@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-# 2011-06-28 12:24:50 
-
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
 #
@@ -126,10 +124,13 @@ if __name__=='__main__':
 
         parallel_map(proc_file,src_lst)
 
-        if options.jpeg: 
-            gmaps=os.path.join(dst_dir,'gmaps.html')
-            if os.path.exists(gmaps):
-                re_sub_file(gmaps,[('tile_ext = .*;','tile_ext = ".jpg";')])
+        if options.jpeg:
+            tilemap=os.path.join(dst_dir,'tilemap.xml')
+            if os.path.exists(tilemap):
+                re_sub_file(tilemap,[
+                    ('mime-type="[^"]*"','mime-type="image/jpeg"'),                    
+                    ('extension="[^"]*"','extension="jpg"'),
+                    ])
 
         pf('')
 
