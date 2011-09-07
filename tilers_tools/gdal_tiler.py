@@ -1013,10 +1013,10 @@ class Pyramid(object):
 
     def corner_tiles(self,zoom):
         p_ul=self.coord2pix(zoom,self.bounds[0])
-        t_ul=self.pix2tile(zoom,(p_ul[0]+1,p_ul[1]+1))
+        t_ul=self.pix2tile(zoom,(p_ul[0],p_ul[1]))
 
         p_lr=self.coord2pix(zoom,self.bounds[1])
-        t_lr=self.pix2tile(zoom,(p_lr[0]-1,p_lr[1]-1))
+        t_lr=self.pix2tile(zoom,(p_lr[0],p_lr[1]))
 
         nztiles=self.tiles_xy(zoom)
         box_ul,box_lr=[self.tile_bounds(t) for t in (t_ul,t_lr)]
