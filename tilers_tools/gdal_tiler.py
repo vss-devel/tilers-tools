@@ -747,10 +747,11 @@ class Pyramid(object):
             tile_ul,tile_lr=self.corner_tiles(zoom)
             zoom_tiles=flatten([[(zoom,x,y) for x in range(tile_ul[1],tile_lr[1]+1)] 
                                            for y in range(tile_ul[2],tile_lr[2]+1)])
+            ld('zoom_tiles',zoom_tiles,tile_ul,tile_lr)
+
             ntiles_x,ntiles_y=self.tiles_xy(zoom)
 
             zoom_tiles_map=dict([((z,x%ntiles_x,y),(z,x,y)) for z,x,y in zoom_tiles])
-
             self.tile_map.update(zoom_tiles_map)
 
         ld('min_zoom',zoom,'tile_ul',tile_ul,'tile_lr',tile_lr,'tiles',zoom_tiles_map)
@@ -951,25 +952,25 @@ class Pyramid(object):
         'pixel coordinates to tile (z,x,y)'
         return [zoom]+[pix_coord[i]//self.tile_sz[i] for i in (0,1)]
 
-    def pix2tile_new(self,zoom,pix_coord):
-        'pixel coordinates to tile (z,x,y)'
-        res=self.zoom2res(zoom)
-        tile_xy=[int(round(
-                (pix_coord[i]*res[i]-self.pix_origin[i]-self.tiles_origin[i])/res[i]
-            )) // self.tile_sz[i]
-            for i in (0,1)]
-        return [zoom]+[(tile_xy[i] if self.tile_direction[i] != -1 else -tile_xy[i]+1) for i in (0,1)]
+#    def pix2tile_new(self,zoom,pix_coord):
+#        'pixel coordinates to tile (z,x,y)'
+#        res=self.zoom2res(zoom)
+#        tile_xy=[int(round(
+#                (pix_coord[i]*res[i]-self.pix_origin[i]-self.tiles_origin[i])/res[i]
+#            )) // self.tile_sz[i]
+#            for i in (0,1)]
+#        return [zoom]+[(tile_xy[i] if self.tile_direction[i] != -1 else -tile_xy[i]+1) for i in (0,1)]
 
     def tile2pix(self,tile):
         'pixel coordinates of the upper left corner of a tile'
         return map(operator.mul,self.tile_sz,tile[1:])
 
-    def tile2pix_new(self,tile):
-        'pixel coordinates of the upper left corner of a tile'
-        res=self.zoom2res(zoom)
-        tile_xy=[xy if d != -1 else -xy+1 for xy,d in zip(tile[1:],self.tile_direction)]
-        pix=[tile_xy[i]*self.tile_sz[i]*res[i] for i in (0,1)]
-        return zzzzz
+#    def tile2pix_new(self,tile):
+#        'pixel coordinates of the upper left corner of a tile'
+#        res=self.zoom2res(zoom)
+#        tile_xy=[xy if d != -1 else -xy+1 for xy,d in zip(tile[1:],self.tile_direction)]
+#        pix=[tile_xy[i]*self.tile_sz[i]*res[i] for i in (0,1)]
+#        return zzzzz
 
     def coord2tile(self,zoom,coord):
         'cartesian coordinates to tile numbers'
