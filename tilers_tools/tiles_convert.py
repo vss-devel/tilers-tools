@@ -199,11 +199,10 @@ class ZXYtiles(TileDir): # http://code.google.com/apis/maps/documentation/javasc
     dir_pattern='[0-9]*/*/*.*'
 
     def path2coord(self,tile_path):
-        z,x,y=map(int,path2list(tile_path)[-4:-1])
-        return (z,x,-y-1)
+        return map(int,path2list(tile_path)[-4:-1])
 
     def coord2path(self,z,x,y):
-        return '%d/%d/%d' % (z,x,-y-1)
+        return '%d/%d/%d' % (z,x,y)
 
 class MapNav(TileDir): # http://mapnav.spb.ru/site/e107_plugins/forum/forum_viewtopic.php?29047.post
     'MapNav (Global Mapper - compatible)'
