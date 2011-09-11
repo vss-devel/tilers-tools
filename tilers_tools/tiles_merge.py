@@ -89,11 +89,18 @@ class MergeSet:
         
         # define crop map for underlay function
         tsx,tsy=self.src['tile_size']
-        self.underlay_map=[ 
-            #  lf    up    rt    lw
-            (   0,    0,tsx/2,tsy/2), (tsx/2,    0,  tsx,tsy/2),
-            (   0,tsy/2,tsx/2,  tsy), (tsx/2,tsy/2,  tsx,  tsy),
-            ]
+        if self.src['profile'].startswith('zxy'):
+            self.underlay_map=[ 
+                #  lf    up    rt    lw
+                (   0,    0,tsx/2,tsy/2), (tsx/2,    0,  tsx,tsy/2),
+                (   0,tsy/2,tsx/2,  tsy), (tsx/2,tsy/2,  tsx,  tsy),
+                ]
+        else:
+            self.underlay_map=[ 
+                #  lf    up    rt    lw
+                (   0,tsy/2,tsx/2,  tsy), (tsx/2,tsy/2,  tsx,  tsy),
+                (   0,    0,tsx/2,tsy/2), (tsx/2,    0,  tsx,tsy/2),
+                ]
 
     def merge_matadata(self):
         'adjust destination metadata'
@@ -153,8 +160,6 @@ class MergeSet:
             return
 
         dz,dx,dy=z+1,x*2,y*2
-#        dst_tiles=[(dx,dy+1),(dx+1,dy+1),
-#                   (dx,dy),  (dx+1,dy)]
         dst_tiles=[(dx,dy),  (dx+1,dy),
                    (dx,dy+1),(dx+1,dy+1)]
         for (dst_xy,src_area) in zip(dst_tiles,self.underlay_map):
@@ -245,8 +250,6 @@ if __name__=='__main__':
         help='add extension suffix to a source parameter')
     parser.add_option('-u',"--underlay", type='int', default=0,
         help="underlay semitransparent tiles with a zoomed-in raster from a higher level")
-#    parser.add_option("--tile-size", default='256,256',metavar="SIZE_X,SIZE_Y",
-#        help='tile size (default: 256,256)')
     parser.add_option("-q", "--quiet", action="store_true")
     parser.add_option("-d", "--debug", action="store_true")
     parser.add_option("--nothreads", action="store_true",
