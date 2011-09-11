@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 ###############################################################################
-# Copyright (c) 2010, Vadim Shlyakhov
+# Copyright (c) 2010,2011 Vadim Shlyakhov
 #
 #  Permission is hereby granted, free of charge, to any person obtaining a
 #  copy of this software and associated documentation files (the "Software"),
@@ -56,19 +56,22 @@ class ZoomSet:
 
     def __del__(self):
         self.tileset['doc'].unlink()
-        
+
     def __call__(self,dest_tile):
-        pf('.',end='')
         (z,x,y)=dest_tile
+        ext=self.tileset['tile_ext']
         im = Image.new("RGBA",(256,256),(0,0,0,0))
+
         tiles_in=[(x*2,y*2),(x*2+1,y*2),
                     (x*2,y*2+1),(x*2+1,y*2+1)]
         for (src_xy,out_loc) in zip(tiles_in,self.tile_offsets):
             if src_xy in self.src_lst:
-                src_path='%i/%i/%i.png' % (z+1,src_xy[0],src_xy[1])
+                src_path='%i/%i/%i.%s' % (z+1,src_xy[0],src_xy[1],ext)
                 im.paste(Image.open(src_path).resize((128,128),Image.ANTIALIAS),out_loc)
-        dst_path='%i/%i/%i.png' % (z,x,y)
+
+        dst_path='%i/%i/%i.%s' % (z,x,y,ext)
         im.save(dst_path)
+        pf('.',end='')
 
     def zoom_out(self,target_zoom):
         start_dir=os.getcwd()
@@ -84,7 +87,9 @@ class ZoomSet:
                 shutil.rmtree('%i' % zoom,ignore_errors=True)
                 os.chdir(os.path.join(self.tiles_root,'%i' % (zoom+1)))
 
-                self.src_lst=set([tuple(map(int,path2list(f)[:-1])) for f in glob.glob('*/*.png')])
+                self.src_lst=set(
+                    [tuple(map(int,path2list(f)[:-1])) 
+                        for f in glob.glob('*/*.%s' % self.tileset['tile_ext'])])
 
                 os.chdir(self.tiles_root)
 
