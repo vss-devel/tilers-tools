@@ -102,7 +102,7 @@ class MergeSet:
                 (   0,    0,tsx/2,tsy/2), (tsx/2,    0,  tsx,tsy/2),
                 ]
 
-    def merge_matadata(self):
+    def merge_metadata(self):
         'adjust destination metadata'
 
         src=self.src
@@ -229,7 +229,7 @@ class MergeSet:
         pf('')
 
     def merge_dirs(self):
-        self.merge_matadata()
+        self.merge_metadata()
         src_transparency=parallel_map(self,self.src_lst)
         self.upd_stat(src_transparency)
 
