@@ -72,7 +72,7 @@ class MergeSet:
         try:
             cwd=os.getcwd()
             os.chdir(self.src['root'])
-            self.src_lst=glob.glob('[0-9]*/*/*.png')
+            self.src_lst=glob.glob('[0-9]*/*/*.%s' % self.src['tile_ext'])
             self.max_zoom=max([int(i) for i in glob.glob('[0-9]*')])
         finally:
             os.chdir(cwd)
