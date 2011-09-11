@@ -331,6 +331,7 @@ def read_tilemap_parameters(src):
         tileset_parms[order] = (res,href)
 
     return dict(
+        file=       src,
         doc=        doc,
         profile=    elem0(doc,"TileSets").getAttribute('profile'),
         srs=        elem0(doc,"SRS").firstChild.data,

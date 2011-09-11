@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 ###############################################################################
-# Copyright (c) 2010, Vadim Shlyakhov
+# Copyright (c) 2010,2011 Vadim Shlyakhov
 #
 #  Permission is hereby granted, free of charge, to any person obtaining a
 #  copy of this software and associated documentation files (the "Software"),
@@ -41,59 +41,6 @@ class KeyboardInterruptError(Exception):
 def f_approx_eq(a, b, eps):
     return (abs(a-b) / (abs(a)+abs(b))/2) < eps
 
-def merge_matadata(src_dir, dst_dir):
-    'adjust destination metadata'
-    
-    xml_file='tilemap.xml'
-    
-    for n in ['viewer-google.html','viewer-openlayers.html',xml_file]:
-        src_f=os.path.join(src_dir,n)
-        dst_f=os.path.join(dst_dir,n)
-        if os.path.exists(src_f) and not os.path.exists(dst_f):
-            shutil.copy(src_f,dst_f)
-
-    src=read_tilemap_parameters(src_f)
-    dst=read_tilemap_parameters(dst_f)
-    doc=dst['doc']
-
-    for prop in ['profile','srs','tile_origin','tile_size','tile_ext','tile_mime']:
-        assert src[prop] == dst[prop]
-
-    title_el=elem0(doc,"Title")
-    title_el.replaceChild(doc.createTextNode(os.path.split(dst_dir)[1]),title_el.firstChild)
-    abstract_el=elem0(doc,"Abstract")
-    if abstract_el.hasChildNodes():
-        abstract_el.removeChild(abstract_el.firstChild).unlink()
-    abstract_el.appendChild(doc.createTextNode('merged tileset'))
-       
-    ld([round(i/1000) for i in src['extent']],[round(i/1000) for i in dst['extent']])
-    box_el = elem0(doc,"BoundingBox")
-    for i,name,func in zip(range(4),('minx','miny','maxx','maxy'),(min,min,max,max)):
-        box_el.setAttribute(name, repr(func(src['extent'][i],dst['extent'][i])))
-        
-    new_zooms=src['zooms'] - dst['zooms']
-    if new_zooms:
-        tilesets_el=elem0(doc,"TileSets")
-        new_tilesets={}
-        for z in dst['zooms'] & src['zooms']:
-            ld('tileset_parms',dst['tileset_parms'][z],src['tileset_parms'][z])
-            assert dst['tileset_parms'][z][1] == src['tileset_parms'][z][1]
-            assert f_approx_eq(dst['tileset_parms'][z][0], src['tileset_parms'][z][0], 1.0e-10)
-
-        for z in dst['zooms']: # unlink tilesets from the destination
-            new_tilesets[z]=tilesets_el.removeChild(dst['tilesets'][z])
-        for z in new_zooms: # clone new tilesets from the source
-            new_tilesets[z]=src['tilesets'][z].cloneNode(False)
-        for z in sorted(src['zooms'] | dst['zooms']): # sorted merge of new and old tilsets
-            tilesets_el.appendChild(new_tilesets[z])
-    
-    with open(dst_f,'w') as f:
-        #doc.writexml(f,encoding='UTF-8')
-        f.write(doc.toxml('utf-8'))
-    
-    src['doc'].unlink()
-    dst['doc'].unlink()
-
 def transparency(img):
     'estimate transparency of an image'
     (r,g,b,a)=img.split()
@@ -101,18 +48,32 @@ def transparency(img):
     return 1 if a_min == 255 else 0 if a_max == 0 else -1
 
 class MergeSet:
+    xml_file='tilemap.xml'
+    
     def __init__(self,src_dir,dst_dir):
-        (self.src,self.dest)=(src_dir,dst_dir)
-        self.tile_sz=tuple(map(int,options.tile_size.split(',')))
+        self.src={'path':src_dir}
+        self.dst={'path':dst_dir}
 
         if options.strip_src_ext:
-            self.src=os.path.splitext(src)[0]
+            self.src['path']=os.path.splitext(src)[0]
         if options.add_src_ext is not None:
-            self.src+=options.add_src_ext
-        pf(self.src+' ',end='')
+            self.src['path']+=options.add_src_ext
+        pf(self.src['path']+' ',end='')
+
+        # read metadata
+        for n in ['viewer-google.html','viewer-openlayers.html',self.xml_file]:
+            src_f=os.path.join(src_dir,n)
+            dst_f=os.path.join(dst_dir,n)
+            if os.path.exists(src_f) and not os.path.exists(dst_f):
+                shutil.copy(src_f,dst_f)
+
+        self.src.update(read_tilemap_parameters(src_f))
+        self.dst.update(read_tilemap_parameters(dst_f))
+
+        # get a list of source tiles
         try:
             cwd=os.getcwd()
-            os.chdir(self.src)
+            os.chdir(self.src['path'])
             self.src_lst=glob.glob('[0-9]*/*/*.png')
             self.max_zoom=max([int(i) for i in glob.glob('[0-9]*')])
         finally:
@@ -121,7 +82,7 @@ class MergeSet:
         
         # load cached tile transparency data if any
         self.src_transp=dict.fromkeys(self.src_lst,None)
-        self.src_cache_path=os.path.join(self.src, 'merge-cache')
+        self.src_cache_path=os.path.join(self.src['path'], 'merge-cache')
         try:
             self.src_transp.update(pickle.load(open(self.src_cache_path,'r')))
         except:
@@ -129,14 +90,58 @@ class MergeSet:
         #ld(repr(self.src_transp))
         
         # define crop map for underlay function
-        tsx,tsy=self.tile_sz
-        self.underlay_map=[          #    lf    up    rt    lw
+        tsx,tsy=self.src['tile_size']
+        self.underlay_map=[ 
+            #  lf    up    rt    lw
             (   0,    0,tsx/2,tsy/2), (tsx/2,    0,  tsx,tsy/2),
             (   0,tsy/2,tsx/2,  tsy), (tsx/2,tsy/2,  tsx,  tsy),
             ]
 
-        # do the thing
-        self.merge_dirs()
+    def merge_matadata(self, src_dir, dst_dir):
+        'adjust destination metadata'
+
+        src=self.src
+        dst=self.dst
+        doc=dst['doc']
+
+        for prop in ['profile','srs','tile_origin','tile_size','tile_ext','tile_mime']:
+            assert src[prop] == dst[prop]
+
+        title_el=elem0(doc,"Title")
+        title_el.replaceChild(doc.createTextNode(os.path.split(dst_dir)[1]),title_el.firstChild)
+        abstract_el=elem0(doc,"Abstract")
+        if abstract_el.hasChildNodes():
+            abstract_el.removeChild(abstract_el.firstChild).unlink()
+        abstract_el.appendChild(doc.createTextNode('merged tileset'))
+
+        ld([round(i/1000) for i in src['extent']],[round(i/1000) for i in dst['extent']])
+        box_el = elem0(doc,"BoundingBox")
+        for i,name,func in zip(range(4),('minx','miny','maxx','maxy'),(min,min,max,max)):
+            box_el.setAttribute(name, repr(func(src['extent'][i],dst['extent'][i])))
+
+        new_zooms=src['zooms'] - dst['zooms']
+        if new_zooms:
+            tilesets_el=elem0(doc,"TileSets")
+            new_tilesets={}
+            for z in dst['zooms'] & src['zooms']:
+                ld('tileset_parms',dst['tileset_parms'][z],src['tileset_parms'][z])
+                assert dst['tileset_parms'][z][1] == src['tileset_parms'][z][1]
+                assert f_approx_eq(dst['tileset_parms'][z][0], src['tileset_parms'][z][0], 1.0e-10)
+
+            for z in dst['zooms']: # unlink tilesets from the destination
+                new_tilesets[z]=tilesets_el.removeChild(dst['tilesets'][z])
+            for z in new_zooms: # clone new tilesets from the source
+                new_tilesets[z]=src['tilesets'][z].cloneNode(False)
+            for z in sorted(src['zooms'] | dst['zooms']): # sorted merge of new and old tilsets
+                tilesets_el.appendChild(new_tilesets[z])
+
+        with open(dst['file'],'w') as f:
+            #doc.writexml(f,encoding='UTF-8')
+            f.write(doc.toxml('utf-8'))
+
+    def __del__(self):    
+        self.src['doc'].unlink()
+        self.dst['doc'].unlink()
 
     def underlay(self,tile,src_path,src_raster,level):
         if level <= 0:
@@ -156,7 +161,7 @@ class MergeSet:
                    (dx,dy+1),(dx+1,dy+1)]
         for (dst_xy,src_area) in zip(dst_tiles,self.underlay_map):
             dst_tile='%i/%i/%i%s' % (dz,dst_xy[0],dst_xy[1],ext)
-            dst_path=os.path.join(self.dest,dst_tile)
+            dst_path=os.path.join(self.dst['path'],dst_tile)
             if not os.path.exists(dst_path):
                 continue
             dst_raster=Image.open(dst_path).convert("RGBA")
@@ -164,7 +169,7 @@ class MergeSet:
                 continue
             if not src_raster: # check if opening was deferred
                 src_raster=Image.open(src_path).convert("RGBA")
-            out_raster=src_raster.crop(src_area).resize(self.tile_sz,Image.BILINEAR)
+            out_raster=src_raster.crop(src_area).resize(self.src['tile_size'],Image.BILINEAR)
             out_raster=Image.composite(dst_raster,out_raster,dst_raster)
             del dst_raster
             out_raster.save(dst_path)
@@ -178,8 +183,8 @@ class MergeSet:
     def __call__(self,tile):
         '''called by map() to merge a source tile into the destination tile set'''
         try:
-            src_path=os.path.join(self.src,tile)
-            dst_tile=os.path.join(self.dest,tile)
+            src_path=os.path.join(self.src['path'],tile)
+            dst_tile=os.path.join(self.dst['path'],tile)
             dpath=os.path.dirname(dst_tile)
             if not os.path.exists(dpath):
                 try: # thread race safety
@@ -221,7 +226,7 @@ class MergeSet:
         pf('')
 
     def merge_dirs(self):
-        merge_matadata(self.src, self.dest)
+        self.merge_matadata(self.src['path'], self.dst['path'])
         src_transparency=parallel_map(self,self.src_lst)
         self.upd_stat(src_transparency)
 
@@ -242,8 +247,8 @@ if __name__=='__main__':
         help='add extension suffix to a source parameter')
     parser.add_option('-u',"--underlay", type='int', default=0,
         help="underlay semitransparent tiles with a zoomed-in raster from a higher level")
-    parser.add_option("--tile-size", default='256,256',metavar="SIZE_X,SIZE_Y",
-        help='tile size (default: 256,256)')
+#    parser.add_option("--tile-size", default='256,256',metavar="SIZE_X,SIZE_Y",
+#        help='tile size (default: 256,256)')
     parser.add_option("-q", "--quiet", action="store_true")
     parser.add_option("-d", "--debug", action="store_true")
     parser.add_option("--nothreads", action="store_true",
@@ -281,5 +286,5 @@ if __name__=='__main__':
 
     for src in src_dirs:
         if not (src.startswith("#") or src.strip() == ''): # ignore sources with names starting with "#" 
-            MergeSet(src, dst_dir)
+            MergeSet(src, dst_dir).merge_dirs()
 
