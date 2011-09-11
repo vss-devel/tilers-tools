@@ -150,8 +150,10 @@ class MergeSet:
             return
 
         dz,dx,dy=z+1,x*2,y*2
-        dst_tiles=[(dx,dy+1),(dx+1,dy+1),
-                   (dx,dy),  (dx+1,dy)]
+#        dst_tiles=[(dx,dy+1),(dx+1,dy+1),
+#                   (dx,dy),  (dx+1,dy)]
+        dst_tiles=[(dx,dy),  (dx+1,dy),
+                   (dx,dy+1),(dx+1,dy+1)]
         for (dst_xy,src_area) in zip(dst_tiles,self.underlay_map):
             dst_tile='%i/%i/%i%s' % (dz,dst_xy[0],dst_xy[1],ext)
             dst_path=os.path.join(self.dest,dst_tile)
