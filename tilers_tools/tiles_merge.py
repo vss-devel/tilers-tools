@@ -48,32 +48,30 @@ def transparency(img):
     return 1 if a_min == 255 else 0 if a_max == 0 else -1
 
 class MergeSet:
-    xml_file='tilemap.xml'
     
     def __init__(self,src_dir,dst_dir):
-        self.src={'path':src_dir}
-        self.dst={'path':dst_dir}
 
         if options.strip_src_ext:
-            self.src['path']=os.path.splitext(src)[0]
+            src_dir = os.path.splitext(src)[0]
         if options.add_src_ext is not None:
-            self.src['path']+=options.add_src_ext
-        pf(self.src['path']+' ',end='')
+            src_dir += options.add_src_ext
+        pf(src_dir+' ',end='')
 
-        # read metadata
-        for n in ['viewer-google.html','viewer-openlayers.html',self.xml_file]:
+        # copy metadata
+        for n in ['viewer-google.html','viewer-openlayers.html','tilemap.xml']:
             src_f=os.path.join(src_dir,n)
             dst_f=os.path.join(dst_dir,n)
             if os.path.exists(src_f) and not os.path.exists(dst_f):
                 shutil.copy(src_f,dst_f)
 
-        self.src.update(read_tilemap_parameters(src_f))
-        self.dst.update(read_tilemap_parameters(dst_f))
+        # read metadata
+        self.src=tileset_params(src_dir)
+        self.dst=tileset_params(dst_dir)
 
         # get a list of source tiles
         try:
             cwd=os.getcwd()
-            os.chdir(self.src['path'])
+            os.chdir(self.src['root'])
             self.src_lst=glob.glob('[0-9]*/*/*.png')
             self.max_zoom=max([int(i) for i in glob.glob('[0-9]*')])
         finally:
@@ -82,7 +80,7 @@ class MergeSet:
         
         # load cached tile transparency data if any
         self.src_transp=dict.fromkeys(self.src_lst,None)
-        self.src_cache_path=os.path.join(self.src['path'], 'merge-cache')
+        self.src_cache_path=os.path.join(self.src['root'], 'merge-cache')
         try:
             self.src_transp.update(pickle.load(open(self.src_cache_path,'r')))
         except:
@@ -97,7 +95,7 @@ class MergeSet:
             (   0,tsy/2,tsx/2,  tsy), (tsx/2,tsy/2,  tsx,  tsy),
             ]
 
-    def merge_matadata(self, src_dir, dst_dir):
+    def merge_matadata(self):
         'adjust destination metadata'
 
         src=self.src
@@ -135,7 +133,7 @@ class MergeSet:
             for z in sorted(src['zooms'] | dst['zooms']): # sorted merge of new and old tilsets
                 tilesets_el.appendChild(new_tilesets[z])
 
-        with open(dst['file'],'w') as f:
+        with open(dst['tilemap'],'w') as f:
             #doc.writexml(f,encoding='UTF-8')
             f.write(doc.toxml('utf-8'))
 
@@ -161,7 +159,7 @@ class MergeSet:
                    (dx,dy+1),(dx+1,dy+1)]
         for (dst_xy,src_area) in zip(dst_tiles,self.underlay_map):
             dst_tile='%i/%i/%i%s' % (dz,dst_xy[0],dst_xy[1],ext)
-            dst_path=os.path.join(self.dst['path'],dst_tile)
+            dst_path=os.path.join(self.dst['root'],dst_tile)
             if not os.path.exists(dst_path):
                 continue
             dst_raster=Image.open(dst_path).convert("RGBA")
@@ -183,8 +181,8 @@ class MergeSet:
     def __call__(self,tile):
         '''called by map() to merge a source tile into the destination tile set'''
         try:
-            src_path=os.path.join(self.src['path'],tile)
-            dst_tile=os.path.join(self.dst['path'],tile)
+            src_path=os.path.join(self.src['root'],tile)
+            dst_tile=os.path.join(self.dst['root'],tile)
             dpath=os.path.dirname(dst_tile)
             if not os.path.exists(dpath):
                 try: # thread race safety
@@ -226,7 +224,7 @@ class MergeSet:
         pf('')
 
     def merge_dirs(self):
-        self.merge_matadata(self.src['path'], self.dst['path'])
+        self.merge_matadata()
         src_transparency=parallel_map(self,self.src_lst)
         self.upd_stat(src_transparency)
 

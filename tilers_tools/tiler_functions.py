@@ -309,7 +309,10 @@ def shape2cutline(cutline_ds,raster_ds,feature_name=None):
 def elem0(doc,id):
     return doc.getElementsByTagName(id)[0]
     
-def read_tilemap_parameters(src):
+def tileset_params(src_dir):
+
+    src=os.path.join(src_dir,'tilemap.xml')
+
     try:
         doc=xml.dom.minidom.parse(src)
     except xml.parsers.expat.ExpatError:
@@ -331,7 +334,8 @@ def read_tilemap_parameters(src):
         tileset_parms[order] = (res,href)
 
     return dict(
-        file=       src,
+        tilemap=    src,
+        root=       src_dir,
         doc=        doc,
         profile=    elem0(doc,"TileSets").getAttribute('profile'),
         srs=        elem0(doc,"SRS").firstChild.data,
