@@ -311,6 +311,7 @@ def elem0(doc,id):
     
 def tileset_params(src_dir):
 
+    src_dir=src_dir.decode('utf-8','ignore')
     src=os.path.join(src_dir,'tilemap.xml')
 
     try:
