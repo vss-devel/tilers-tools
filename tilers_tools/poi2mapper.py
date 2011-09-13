@@ -33,6 +33,7 @@ import optparse
 import xml.dom.minidom
 import sqlite3
 import htmlentitydefs
+import csv
 
 from tiler_functions import *
 
@@ -46,6 +47,8 @@ def strip_html(text):
     
     def replace(match): # pattern replacement function
         text = match.group(0)
+        if text == "<br>":
+            return "\n"
         if text[0] == "<":
             return "" # ignore tags
         if text[0] == "&":
@@ -68,13 +71,13 @@ def attr_update(self,**updates):
         self.__dict__.update(updates)
 
 class Category:
-    def __init__(self,label,enabled=1,desc=None,cat_id=None):
-        attr_update(self,label=label,desc=desc,enabled=enabled,cat_id=cat_id,icons={})
+    def __init__(self,label):
+        attr_update(self,label=label,enabled=1,desc=None,cat_id=None,icons={})
 
     def update(self,enabled=None,desc=None,cat_id=None,icon=None, url=None):
         if icon:
             self.icons[icon]=url
-        if desc and desc != '':
+        if desc:
             self.desc=desc
         if cat_id:
             self.cat_id=cat_id
@@ -82,7 +85,7 @@ class Category:
             self.enabled=enabled
 
 class Poi:
-    def __init__(self,label,lat=None,lon=None,desc=None,categ=None):
+    def __init__(self,label=None,lat=None,lon=None,desc=None,categ=None):
         attr_update(self,label=label,desc=desc,lat=lat,lon=lon,categ=categ.lower())
 
 class Poi2Mapper:
@@ -101,6 +104,8 @@ class Poi2Mapper:
                 raise Exception('Destination already exists: %s' % self.dest_db)
 
     def categ_add_update(self,label=None,enabled=1,desc=None,cat_id=None,icon=None, url=None):
+        if not icon:
+            icon=label+'.jpg'
         if not label:
             label=re.sub(r'\.[^.]*$','',icon)
         categ=label.lower()
@@ -114,7 +119,8 @@ class Poi2Mapper:
         self.categories[categ].update(enabled=enabled,desc=desc,cat_id=cat_id,icon=icon, url=url)
         return categ
 
-    def load_categ_from(self,path):
+    def load_categ(self,src):
+        path=os.path.splitext(src)[0] + '.categories'
         if os.path.exists(path):
             cats_lst=[[unicode(i.strip(),'utf-8') for i in l.split(',',4)] 
                         for l in open(path)]
@@ -127,22 +133,62 @@ class Poi2Mapper:
                     self.categ_add_update(categ,int(enabled),icon=icon,desc=desc)
                 except: pass
 
-    def input_db_from(self,db_path):
+    def read_db(self,path):
         cat_ids={}
-        if os.path.exists(db_path):
-            db=sqlite3.connect(db_path)
+        if os.path.exists(path):
+            db=sqlite3.connect(path)
             dbc=db.cursor()
             dbc.execute('select * from category')
             for (cat_id,label,desc,enabled) in dbc:
-                icon=label+'.jpg'
-                self.categ_add_update(label,enabled,icon=icon,desc=desc)
+                self.categ_add_update(label,enabled,desc=desc)
                 cat_ids[cat_id]=label
 
             dbc.execute('select * from poi')
-            for (poi_id,lat,lon,poi,desc, cat_id) in dbc:
-                self.pois.append(Poi(poi,lat=lat,lon=lon,desc=desc,categ=cat_ids[cat_id]))
+            for (poi_id,lat,lon,name,desc, cat_id) in dbc:
+                self.pois.append(Poi(name,lat=lat,lon=lon,desc=desc,categ=cat_ids[cat_id]))
             db.close()
 
+    def read_csv(self,path):
+        col_id={
+            'name': None,
+            'desc': None,
+            'lat':  None,
+            'lon':  None,
+            'categ':None,
+            }
+        csv.register_dialect('strip', skipinitialspace=True)
+        with open(path,'rb') as data_f:
+            data_csv=csv.reader(data_f,'strip')
+            header=[s.decode('utf-8').lower() for s in data_csv.next()]
+
+            for col in range(len(header)): # find relevant colunm numbers
+                for id in col_id:
+                    if header[col].startswith(id):
+                        col_id[id]=col
+
+            cat_ids={}
+            for row in data_csv:
+                row=[s.decode('utf-8') for s in row]
+                poi_parms={}
+                for col in col_id:
+                    try:
+                        poi_parms[col]=row[col_id[col]]
+                    except:
+                        poi_parms[col]=None                    
+                if poi_parms['categ']:
+                    icon=poi_parms['categ'].lower()+'.jpg'
+                else:
+                    icon='__undefined__.jpg'
+
+                categ=self.categ_add_update(icon=icon)
+                self.pois.append(Poi(
+                    poi_parms['name'],
+                    categ=categ,
+                    lat=poi_parms['lat'],
+                    lon=poi_parms['lon'],
+                    desc=poi_parms['desc']
+                    ))
+                        
     def handleStyle(self,elm):
         url=None
         style_id=elm.getAttribute('id')
@@ -220,21 +266,24 @@ class Poi2Mapper:
 
     def proc_src(self,src):
         pf(src)
+        self.load_categ(src)
         try: # to open as kml file
             self.doc = xml.dom.minidom.parse(src)
             self.name=[n for n in self.doc.getElementsByTagName("Document")[0].childNodes 
                         if n.nodeType == n.ELEMENT_NODE and n.tagName == 'name'][0].firstChild.data
 
-            self.load_categ_from(os.path.splitext(src)[0] + '.categories')
             self.styles=dict(map(self.handleStyle,self.doc.getElementsByTagName("Style")))
             self.pois+=filter(None,map(self.handlePlacemark,self.doc.getElementsByTagName("Placemark")))
         except IOError:
             logging.warning(' No input file: %s' % src)
         except xml.parsers.expat.ExpatError:
             try: # to open as db
-                self.input_db_from(src)
+                self.read_db(src)
             except sqlite3.DatabaseError:
-                raise Exception('Invalid input file: %s' % src)
+                try: # to open as csv
+                    self.read_csv(src)
+                except csv.Error:
+                    raise Exception('Invalid input file: %s' % src)
 
     def proc_all(self):
         map(self.proc_src, self.src)
