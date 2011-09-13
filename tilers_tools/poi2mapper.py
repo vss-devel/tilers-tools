@@ -72,7 +72,7 @@ def attr_update(self,**updates):
 
 class Category:
     def __init__(self,label):
-        attr_update(self,label=label,enabled=1,desc=None,cat_id=None,icons={})
+        attr_update(self,label=label,enabled=1,desc='',cat_id=None,icons={})
 
     def update(self,enabled=None,desc=None,cat_id=None,icon=None, url=None):
         if icon:
@@ -81,11 +81,13 @@ class Category:
             self.desc=desc
         if cat_id:
             self.cat_id=cat_id
-        if enabled:
-            self.enabled=enabled
+        if enabled is not None:
+            self.enabled= 1 if enabled else 0;
 
 class Poi:
-    def __init__(self,label=None,lat=None,lon=None,desc=None,categ=None):
+    def __init__(self,label=None,lat=None,lon=None,desc='',categ=None):
+        if desc is None:
+            desc=''
         attr_update(self,label=label,desc=desc,lat=lat,lon=lon,categ=categ.lower())
 
 class Poi2Mapper:
@@ -174,7 +176,7 @@ class Poi2Mapper:
                     try:
                         poi_parms[col]=row[col_id[col]]
                     except:
-                        poi_parms[col]=None                    
+                        poi_parms[col]=''                  
                 if poi_parms['categ']:
                     icon=poi_parms['categ'].lower()+'.jpg'
                 else:
