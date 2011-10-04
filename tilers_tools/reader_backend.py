@@ -262,7 +262,7 @@ class SrcLayer(object):
             #double line = 0.0, char info = "", char id = ""
             gcps=[gdal.GCP(c[0],c[1],0,p[0],p[1],'',i) for i,p,c in self.refs]
             dst_ds.SetGCPs(gcps,self.refs.srs())
-            dst_geotr=gdal.GCPsToGeoTransform(gcps) if len(gcps) < 5 else (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+            dst_geotr=gdal.GCPsToGeoTransform(gcps) # if len(gcps) < 5 else (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
             dst_ds.SetGeoTransform(dst_geotr)
             poly,gmt_data=self.cut_poly(dst_ds)
             if poly:
@@ -271,10 +271,10 @@ class SrcLayer(object):
                 dst_ds.SetMetadataItem('DESCRIPTION',self.name.encode('utf-8'))
 
             del dst_ds # close dataset
-            re_sub_file(dst_file, [
-                    ('^.*<GeoTransform>.*\n',''),
-                    ('^.*<SRS>.*\n','')
-                    ])
+#            re_sub_file(dst_file, [
+#                    ('^.*<GeoTransform>.*\n',''),
+#                    ('^.*<SRS>.*\n','')
+#                    ])
         finally:
             os.chdir(start_dir)
 
