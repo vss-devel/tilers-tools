@@ -589,7 +589,7 @@ class Pyramid(object):
         src_proj=wkt2proj4(self.src_ds.GetProjection())
         gcp_proj=None
 
-        if src_geotr and src_geotr != (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
+        if not self.options.tps and src_geotr and src_geotr != (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
             ok,src_igeotr=gdal.InvGeoTransform(src_geotr)
             assert ok
             src_transform='%s\n%s' % (warp_src_geotr % src_geotr,warp_src_igeotr % src_igeotr)
@@ -747,7 +747,7 @@ class Pyramid(object):
             tile_ul,tile_lr=self.corner_tiles(zoom)
             zoom_tiles=flatten([[(zoom,x,y) for x in range(tile_ul[1],tile_lr[1]+1)] 
                                            for y in range(tile_ul[2],tile_lr[2]+1)])
-            ld('zoom_tiles',zoom_tiles,tile_ul,tile_lr)
+            #ld('zoom_tiles',zoom_tiles,tile_ul,tile_lr)
 
             ntiles_x,ntiles_y=self.tiles_xy(zoom)
 
@@ -1329,6 +1329,8 @@ def main(argv):
         help='output tiles profile (default: zxy)')
     parser.add_option("-l", "--list-profiles", action="store_true",
         help='list tile profiles')
+    parser.add_option("-z", "--zoom", default=None,metavar="ZOOM_LIST",
+        help='list of zoom ranges to generate')
     parser.add_option("--t-srs", default=None,metavar="TARGET_SRS",
         help='generic profile: PROJ.4 definition for target srs (default: None)')
     parser.add_option("--tile-size", default='256,256',metavar="SIZE_X,SIZE_Y",
@@ -1339,8 +1341,6 @@ def main(argv):
         help='generic profile: generate TMS tiles (default: google)')
     parser.add_option("--srs", default=None,metavar="PROJ4_SRS",
         help="override source's spatial reference system with PROJ.4 definition")
-    parser.add_option("-z", "--zoom", default=None,metavar="ZOOM_LIST",
-        help='list of zoom ranges to generate')
     parser.add_option('--overview-resampling', default='nearest',metavar="METHOD1",
         choices=resampling_lst(),
         help='overview tiles resampling method (default: nearest)')
@@ -1349,6 +1349,8 @@ def main(argv):
         help='base image resampling method (default: nearest)')
     parser.add_option('-r','--release', action="store_true",
         help='set resampling options to (antialias,bilinear)')
+    parser.add_option('--tps', action="store_true",
+        help='Force use of thin plate spline transformer based on available GCPs)')
     parser.add_option("-c", "--cut", action="store_true", 
         help='cut the raster as per cutline provided')
     parser.add_option("--cutline", default=None, metavar="DATASOURCE",
