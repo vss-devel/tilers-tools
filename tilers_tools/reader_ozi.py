@@ -87,9 +87,12 @@ class OziRefPoints(RefPoints):
 
 ###############################################################################
     def __init__(self,owner,ref_lst):
-        ld(ref_lst)
-        super(OziRefPoints,self).__init__(owner,ref_lst)
-        self.cartesian,self.zone,self.hemisphere=self.transposed[3:6]
+        super(OziRefPoints,self).__init__(
+            owner,
+            **dict(zip(
+                ['ids','pixels','latlong','cartesian','zone','hemisphere'],
+                self.transpose(ref_lst)[:6]))
+            )
 
     def grid2coord(self):
         try:

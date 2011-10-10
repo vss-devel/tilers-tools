@@ -69,28 +69,42 @@ class RefPoints(object):
 
 ###############################################################################
     def __init__(self,owner,
-            ref_lst=None,ids=None,pixels=None,latlong=None,cartesian=None):
-        ld('RefPoints',ref_lst,ids,pixels,latlong,cartesian)
+            ref_lst=None,ids=None,pixels=None,latlong=None,cartesian=None,zone=None,hemisphere=None):
         self.owner=owner
         self.ids=ids
         self.pixels=pixels
         self.latlong=latlong
         self.cartesian=cartesian
+        self.zone=zone
+        self.hemisphere=hemisphere
+
         if ref_lst:
-            self.transposed=[i if any(i) else None for i in zip(*ref_lst)]
-            self.ids,self.pixels,self.latlong=self.transposed[:3]
+            self.ids,self.pixels,self.latlong=self.transpose(ref_lst)[:3]
 
-        items=len(filter(None,(self.pixels,self.latlong,self.cartesian))[0])
+        ld('RefPoints',self.__dict__)
+
+        nrefs=len(filter(None,(self.pixels,self.latlong,self.cartesian))[0])
         if not self.ids:
-            self.ids=map(str,range(1,items+1))
+            self.ids=map(str,range(1,nrefs+1))
 
-        if items == 2 and all(self.pixels,self.latlong):
+        if nrefs == 2:
             logging.warning(' Only 2 reference points: assuming the chart is north alligned')
-            for i in (self.pixels,self.latlong):
-                i.append((i[0][0],i[1][1]))
-            self.ids.append('3')
+            self.ids += ['Extra03','Extra04']
+            for i in filter(None,(self.pixels,self.latlong,self.cartesian,self.zone,self.hemisphere)):
+                try: # list of coordinates? -- swap x and y between them
+                    i.append((i[0][0],i[1][1]))
+                    i.append((i[1][0],i[0][1]))
+                except IndexError: # just copy them
+                    i.append(i[0])
+                    i.append(i[1])
+            ld('RefPoints extra',self.__dict__)
+
         self.ids=[s.encode('utf-8') for s in self.ids]
 
+    @staticmethod
+    def transpose(ref_lst):
+        return [list(i) for i in zip(*ref_lst)]
+    
     def srs(self):
         return self.owner.srs
 
@@ -186,6 +200,7 @@ class SrcLayer(object):
         logging.info(' %s : %s (%s)' % (self.map.file,self.name,self.img_file))
         self.raster_ds = gdal.Open(self.img_file,GA_ReadOnly)
         
+        self.dtm=None
         self.refs=self.get_refs()           # fetch reference points
         self.srs,self.dtm=self.get_srs()    # estimate SRS
         
