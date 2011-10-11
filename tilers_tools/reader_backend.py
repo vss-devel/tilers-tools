@@ -209,7 +209,7 @@ class SrcLayer(object):
 
         self.img_file=self.get_raster()
         logging.info(' %s : %s (%s)' % (self.map.file,self.name,self.img_file))
-        self.raster_ds = gdal.Open(self.img_file,GA_ReadOnly)
+        self.raster_ds = gdal.Open(self.img_file.encode(locale.getpreferredencoding()),GA_ReadOnly)
         
         self.dtm=None
         self.refs=self.get_refs()           # fetch reference points
@@ -267,7 +267,6 @@ class SrcLayer(object):
                 name_patt=self.img_file
             base=dst_path(name_patt,options.dst_dir)
             if options.long_name:
-                ld(self.name)
                 base+=' - ' +  "".join([c for c in self.name 
                                     if c .isalpha() or c.isdigit() or c in '-_.() '])
         dst_dir=os.path.split(base)[0]
