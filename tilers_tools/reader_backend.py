@@ -68,8 +68,12 @@ class RefPoints(object):
     'source geo-reference points and polygons'
 
 ###############################################################################
+    @staticmethod
+    def transpose(ref_lst): # helper function for children classes
+        return [list(i) for i in zip(*ref_lst)]
+    
     def __init__(self,owner,
-            ref_lst=None,ids=None,pixels=None,latlong=None,cartesian=None,zone=None,hemisphere=None):
+            ids=None,pixels=None,latlong=None,cartesian=None,zone=None,hemisphere=None):
         self.owner=owner
         self.ids=ids
         self.pixels=pixels
@@ -77,9 +81,6 @@ class RefPoints(object):
         self.cartesian=cartesian
         self.zone=zone
         self.hemisphere=hemisphere
-
-        if ref_lst:
-            self.ids,self.pixels,self.latlong=self.transpose(ref_lst)[:3]
 
         ld('RefPoints',self.__dict__)
 
@@ -101,10 +102,6 @@ class RefPoints(object):
 
         self.ids=[s.encode('utf-8') for s in self.ids]
 
-    @staticmethod
-    def transpose(ref_lst):
-        return [list(i) for i in zip(*ref_lst)]
-    
     def srs(self):
         return self.owner.srs
 
@@ -144,6 +141,20 @@ class RefPoints(object):
             if leftmost[1][0] > rightmost[1][0]:
                 return leftmost[1][0]
         return None
+
+###############################################################################
+
+class LatLonRefPoints(RefPoints):
+    'geo-reference points with geodetic coordinates initialised with a sigle list'
+
+###############################################################################
+    def __init__(self,owner,ref_lst):
+        super(LatLonRefPoints,self).__init__(
+            owner,
+            **dict(zip(
+                ['ids','pixels','latlong'],
+                self.transpose(ref_lst)[:3]))
+            )
 
 ###############################################################################
 

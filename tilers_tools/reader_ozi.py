@@ -38,7 +38,7 @@ from reader_backend import *
 
 ###############################################################################
 
-# Helper functions for class OziRefPoints
+# Helper functions for class OziCartesianRefPoints
 
 ###############################################################################
 
@@ -83,15 +83,15 @@ grid_map={
 
 ###############################################################################
 
-class OziRefPoints(RefPoints):
+class OziCartesianRefPoints(RefPoints):
 
 ###############################################################################
     def __init__(self,owner,ref_lst):
-        super(OziRefPoints,self).__init__(
+        super(OziCartesianRefPoints,self).__init__(
             owner,
             **dict(zip(
-                ['ids','pixels','latlong','cartesian','zone','hemisphere'],
-                self.transpose(ref_lst)[:6]))
+                ['ids','pixels','cartesian','zone','hemisphere'],
+                self.transpose(ref_lst)[:5]))
             )
 
     def grid2coord(self):
@@ -161,16 +161,15 @@ class OziLayer(SrcLayer):
         'get a list of geo refs in tuples'
         points=[i for i in self.hdr_parms('Point') if len(i) > 5 and i[4] == 'in' and i[2] != ''] # Get a list of geo refs
         if points[0][14] != '': # refs are cartesian
-            refs=OziRefPoints(self,[(
+            refs=OziCartesianRefPoints(self,[(
                     i[0],                               # id
                     (int(i[2]),int(i[3])),              # pixel
-                    (0,0),                              # latlong
                     (float(i[14]),float(i[15])),        # cartesian coords
                     i[13],i[16],                        # zone, hemisphere
                     ) for i in points],
                 )
         else:
-            refs=RefPoints(self,[(
+            refs=LatLonRefPoints(self,[(
                 i[0],                                   # id
                 (int(i[2]),int(i[3])),                  # pixel
                 (dms2dec(*i[9:12]), dms2dec(*i[6:9])),  # lat/long

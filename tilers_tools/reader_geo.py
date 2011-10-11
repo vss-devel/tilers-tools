@@ -91,20 +91,18 @@ class GeoNosLayer(SrcLayer):
 
     def get_refs(self):
         'get a list of geo refs in tuples'
-        refs=RefPoints(self,[(i[0],
+        refs=LatLonRefPoints(self,[(
+            i[0],                                   # id
             (int(i[4]),int(i[3])),                  # pixel
             (float(i[1]),float(i[2]))               # lat/long
             ) for i in self.hdr_parms2list('Point')])
-        ld('refs',refs)
         return refs
 
     def get_plys(self):
         'boundary polygon'
-        plys=RefPoints(self,[(
-            i[0],
-            None,                                   # pixel
-            (float(i[2]),float(i[1]))               # lat/long
-            ) for i in self.hdr_parms2list('Vertex')])
+        plys=RefPoints(self,latlong=[
+                (float(i[2]),float(i[1]))           # lat/long
+            for i in self.hdr_parms2list('Vertex')])
         return plys
 
     def get_proj_id(self):

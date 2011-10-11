@@ -112,8 +112,8 @@ class BsbLayer(SrcLayer):
 
     def get_refs(self):
         'get a list of geo refs in tuples'
-        refs=RefPoints(self,[(
-            i[0],
+        refs=LatLonRefPoints(self,[(
+            i[0],                                   # id
             (int(i[1]),int(i[2])),                  # pixel
             (float(i[4]),float(i[3]))               # lat/long
             ) for i in self.hdr_parms2list('REF')])
@@ -121,13 +121,11 @@ class BsbLayer(SrcLayer):
 
     def get_plys(self):
         'boundary polygon'
-        plys=RefPoints(self,[(
-            i[0],
-            None,                                   # pixel
-            (float(i[2]),float(i[1]))               # lat/long
-            ) for i in self.hdr_parms2list('PLY')])
+        plys=RefPoints(self,latlong=[
+                (float(i[2]),float(i[1]))           # lat/long
+            for i in self.hdr_parms2list('PLY')])
         return plys
-        
+
     def assemble_parms(self,parm_map,parm_info):    
         check_parm=lambda s: (s not in ['NOT_APPLICABLE','UNKNOWN']) and s.replace('0','').replace('.','')
         return ['+%s=%s' % (parm_map[i],parm_info[i]) for i in parm_map
