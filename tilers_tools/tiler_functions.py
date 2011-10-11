@@ -36,6 +36,7 @@ from subprocess import *
 import itertools
 import re
 import shutil
+import locale
 #from optparse import OptionParser
 
 import xml.dom.minidom
@@ -238,7 +239,7 @@ def sasplanet_hlg2ogr(fname):
     return ds
 
 def shape2mpointlst(datasource,dst_srs,feature_name=None):
-    ds=ogr.Open(datasource)
+    ds=ogr.Open(datasource.encode(locale.getpreferredencoding()))
     if not ds:
         ds=sasplanet_hlg2ogr(datasource)
     if not ds:

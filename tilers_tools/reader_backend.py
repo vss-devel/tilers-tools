@@ -272,7 +272,7 @@ class SrcLayer(object):
         dst_dir=os.path.split(base)[0]
         out_format='VRT'
         ext='.'+out_format.lower()
-        dst_file= os.path.basename(base+ext).encode('utf-8') # output file
+        dst_file= os.path.basename(base+ext) # output file
 
         try:
             start_dir=os.getcwd()
@@ -280,7 +280,8 @@ class SrcLayer(object):
                 os.chdir(dst_dir)
 
             dst_drv = gdal.GetDriverByName(out_format)
-            dst_ds = dst_drv.CreateCopy(dst_file,self.raster_ds,0)
+            dst_ds = dst_drv.CreateCopy(dst_file.encode(locale.getpreferredencoding()),
+                                        self.raster_ds,0)
             dst_ds.SetProjection(self.srs)
 
             #double x = 0.0, double y = 0.0, double z = 0.0, double pixel = 0.0, 

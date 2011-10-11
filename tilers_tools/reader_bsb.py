@@ -61,7 +61,7 @@ class BsbKapMap(SrcMap):
             for l in f:
                 if '\x1A' in l:
                     break
-                l=l.decode('cp1252','ignore')
+                l=l.decode('iso8859-1','ignore')
                 if l.startswith((' ','\t')):
                     header[-1] += ','+l.strip()
                 else:

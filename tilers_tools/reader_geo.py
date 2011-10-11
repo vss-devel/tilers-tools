@@ -53,7 +53,7 @@ class GeoNosMap(SrcMap):
     def get_header(self): 
         'read map header'
         with open(self.file, 'rU') as f:
-            hdr=[[i.strip() for i in l.decode('cp1252','ignore').split('=')] for l in f]
+            hdr=[[i.strip() for i in l.decode('iso8859-1','ignore').split('=')] for l in f]
         if not (hdr and hdr[0][0] == '[MainChart]'): 
             raise Exception(" Invalid file: %s" % self.file)
         ld(hdr)
@@ -135,8 +135,7 @@ class GeoNosLayer(SrcLayer):
     def get_raster(self):
         name_patt=self.hdr_parms('Bitmap')[0].lower()
         map_dir,map_fname=os.path.split(self.map.file)
-        dir_lst=[i.decode(locale.getpreferredencoding(),'ignore') 
-                    for i in os.listdir(map_dir if map_dir else '.')]
+        dir_lst=os.listdir(map_dir if map_dir else u'.')
         match=[i for i in dir_lst if i.lower() == name_patt]
         try:
             fn=match[0]

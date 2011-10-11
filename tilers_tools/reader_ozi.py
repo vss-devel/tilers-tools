@@ -140,7 +140,7 @@ class OziMap(SrcMap):
     def get_header(self): 
         'read map header'
         with open(self.file, 'rU') as f:
-            lines=f.readlines()
+            lines=f.readlines() # non-Unicode!
         if not (lines and lines[0].startswith('OziExplorer Map Data File')): 
             raise Exception(" Invalid file: %s" % self.map_file)
         hdr=[[l.strip()] for l in lines[:3]] + [[i.strip() for i in l.split(',')] for l in lines[3:]]
@@ -246,9 +246,10 @@ class OziLayer(SrcLayer):
         img_path_slashed=img_path.replace('\\','/') # get rid of windows separators
         img_path_lst=os.path.split(img_path_slashed)
         img_fname=img_path_lst[-1]
+
         map_dir,map_fname=os.path.split(self.map.file)
-        dir_lst=[i.decode(locale.getpreferredencoding(),'ignore') 
-                    for i in os.listdir(map_dir if map_dir else '.')]
+        dir_lst=os.listdir(map_dir if map_dir else u'.')
+
         # try a few encodings
         for enc in self.try_encodings:
             name_patt=img_fname.decode(enc,'ignore').lower()
@@ -264,7 +265,7 @@ class OziLayer(SrcLayer):
 
     def get_name(self):
         ozi_name=self.data[1][0]
-        # try a few encodings
+        # guess .map file encoding
         for enc in self.try_encodings:
             try:
                 if enc == 'cp1251' and any([ # ascii chars ?
