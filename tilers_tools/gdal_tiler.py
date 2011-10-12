@@ -516,7 +516,9 @@ class Pyramid(object):
     def shift_srs(self,zoom=None):
         'change prime meridian to allow charts crossing 180 meridian'
     #############################
-        ul,lr=MyTransformer(self.src_ds,DST_SRS=self.longlat).transform([(0,0),(self.src_ds.RasterXSize,self.src_ds.RasterYSize)])
+        ul,lr=MyTransformer(self.src_ds,DST_SRS=self.longlat).transform([
+            (0,0),
+            (self.src_ds.RasterXSize,self.src_ds.RasterYSize)])
         ld('shift_srs ul',ul,'lr',lr)
         if lr[0] <= 180 and ul[0] >=-180 and ul[0] < lr[0]:
             return self.proj
@@ -1035,14 +1037,24 @@ class Pyramid(object):
         if not zoom_parm:
             zoom_parm='%d:%d' % defaults
 
-        zchunks=[z.split(':') for z in zoom_parm.split(',')]
+        zchunk_lst=[z.split(':') for z in zoom_parm.split(',')]
         zlist=[]
-        for z in zchunks:
-            if len(z) == 1:
-                zlist.append(int(z[0]))
+        for zchunk in zchunk_lst:
+            if len(zchunk) == 1:
+                zlist.append(int(zchunk[0]))
             else:
-                # check if either part of the pair is missing
-                zrange=[int(i) if i != '' else d for i,d in zip(z,defaults)]
+                # calculate zoom range
+                zrange=[]
+                for n,d in zip(zchunk,defaults):
+                    if n == '':              # set to default
+                        z=d
+                    elif n.startswith('-'): # set to default - n
+                        z=d-int(n[1:])
+                    elif n.startswith('+'): # set to default + n
+                        z=d+int(n[1:])
+                    else:                   # set to n
+                        z=int(n)
+                    zrange.append(z)
                 
                 # update range list
                 zlist+=range(min(zrange),max(zrange)+1)
