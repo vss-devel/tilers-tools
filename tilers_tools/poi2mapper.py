@@ -276,6 +276,7 @@ class Poi2Mapper:
 
             self.styles=dict(map(self.handleStyle,self.doc.getElementsByTagName("Style")))
             self.pois+=filter(None,map(self.handlePlacemark,self.doc.getElementsByTagName("Placemark")))
+            self.doc.unlink()
         except IOError:
             logging.warning(' No input file: %s' % src)
         except xml.parsers.expat.ExpatError:
