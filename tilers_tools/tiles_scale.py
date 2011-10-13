@@ -41,9 +41,9 @@ class ZoomSet:
         self.tiles_root=os.getcwd()
         os.chdir(start_dir)
 
-        self.tileset=tileset_params(self.tiles_root)
+        self.tileset=TileSetData(self.tiles_root)
 
-        if self.tileset['profile'].startswith('zxy'):
+        if self.tileset.profile.startswith('zxy'):
             self.tile_offsets=[
                 (0,0), (128,0),
                 (0,128), (128,128),
@@ -54,12 +54,9 @@ class ZoomSet:
                 (0,0), (128,0)
                 ]
 
-    def __del__(self):
-        self.tileset['doc'].unlink()
-
     def __call__(self,dest_tile):
         (z,x,y)=dest_tile
-        ext=self.tileset['tile_ext']
+        ext=self.tileset.tile_ext
         im = Image.new("RGBA",(256,256),(0,0,0,0))
 
         tiles_in=[(x*2,y*2),(x*2+1,y*2),
@@ -77,7 +74,7 @@ class ZoomSet:
         start_dir=os.getcwd()
         try:
 
-            top_zoom=min(self.tileset['zooms'])
+            top_zoom=min(self.tileset.zooms)
             new_zooms=range(top_zoom-1,target_zoom-1,-1)
             if not new_zooms:
                 return
@@ -89,7 +86,7 @@ class ZoomSet:
 
                 self.src_lst=set(
                     [tuple(map(int,path2list(f)[:-1])) 
-                        for f in glob.glob('*/*.%s' % self.tileset['tile_ext'])])
+                        for f in glob.glob('*/*.%s' % self.tileset.tile_ext)])
 
                 os.chdir(self.tiles_root)
 
@@ -104,15 +101,15 @@ class ZoomSet:
                 parallel_map(self,dest_lst)
 
             # adjust tilemap.xml
-            doc=self.tileset['doc']
-            #ld(self.tileset['title'],self.tileset['abstract'])
+            doc=self.tileset.doc
+            #ld(self.tileset.title,self.tileset.abstract)
             tilesets_el=elem0(doc,"TileSets")
             new_tilesets={}
-            for z in self.tileset['zooms']: # unlink old tilesets
-                new_tilesets[z]=tilesets_el.removeChild(self.tileset['tilesets'][z])
+            for z in self.tileset.zooms: # unlink old tilesets
+                new_tilesets[z]=tilesets_el.removeChild(self.tileset.tilesets[z])
 
-            tileset_el=self.tileset['tilesets'][top_zoom]
-            res=self.tileset['tileset_parms'][top_zoom][0]
+            tileset_el=self.tileset.tilesets[top_zoom]
+            res=self.tileset.tileset_parms[top_zoom][0]
             for zoom in new_zooms: # add new tilesets
                 tileset_el=tileset_el.cloneNode(False)
                 res=res*2
@@ -123,7 +120,7 @@ class ZoomSet:
             for z in sorted(new_tilesets): # sorted merge of new and old tilsets
                 tilesets_el.appendChild(new_tilesets[z])
 
-            with open(self.tileset['tilemap'],'w') as f:
+            with open(self.tileset.tilemap,'w') as f:
                 #doc.writexml(f,encoding='utf-8')
                 f.write(doc.toxml('utf-8'))
 

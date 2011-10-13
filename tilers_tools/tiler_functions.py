@@ -310,46 +310,49 @@ def shape2cutline(cutline_ds,raster_ds,feature_name=None):
 def elem0(doc,id):
     return doc.getElementsByTagName(id)[0]
     
-def tileset_params(src_dir):
+class TileSetData(object):
 
-    src_dir=src_dir.decode('utf-8','ignore')
-    src=os.path.join(src_dir,'tilemap.xml')
+    def __init__(self,src_dir):
+        
+        #src_dir=src_dir.decode('utf-8','ignore')
+        src=os.path.join(src_dir,'tilemap.xml')
 
-    try:
-        doc=xml.dom.minidom.parse(src)
-    except xml.parsers.expat.ExpatError:
-        raise Exception('Invalid input file: %s' % src)
+        try:
+            doc=xml.dom.minidom.parse(src)
+        except xml.parsers.expat.ExpatError:
+            raise Exception('Invalid input file: %s' % src)
 
-    box_el = elem0(doc,"BoundingBox")
-    origin_el = elem0(doc,"Origin")
-    tile_format_el=elem0(doc,"TileFormat")
+        box_el = elem0(doc,"BoundingBox")
+        origin_el = elem0(doc,"Origin")
+        tile_format_el=elem0(doc,"TileFormat")
 
-    zooms=set([])
-    tilesets={}
-    tileset_parms={}
-    for tileset in doc.getElementsByTagName("TileSet"):
-        order = int(tileset.getAttribute('order'))
-        res = float(tileset.getAttribute('units-per-pixel'))
-        href = tileset.getAttribute('href')
-        zooms.add(order)
-        tilesets[order] = tileset
-        tileset_parms[order] = (res,href)
+        zooms=set([])
+        tilesets={}
+        tileset_parms={}
+        for tileset in doc.getElementsByTagName("TileSet"):
+            order = int(tileset.getAttribute('order'))
+            res = float(tileset.getAttribute('units-per-pixel'))
+            href = tileset.getAttribute('href')
+            zooms.add(order)
+            tilesets[order] = tileset
+            tileset_parms[order] = (res,href)
 
-    return dict(
-        tilemap=    src,
-        root=       src_dir,
-        doc=        doc,
-        profile=    elem0(doc,"TileSets").getAttribute('profile'),
-        srs=        elem0(doc,"SRS").firstChild.data,
-        title=      elem0(doc,"Title").firstChild.data,
-        abstract=   elem0(doc,"Abstract").firstChild.data,
-        extent=     [float(box_el.getAttribute(attr)) for attr in ('minx','miny','maxx','maxy')],
-        tile_origin=[float(origin_el.getAttribute(attr)) for attr in ('x','y')],
-        tile_size=  [int(tile_format_el.getAttribute(attr)) for attr in ('width','height')],
-        tile_ext=   tile_format_el.getAttribute('extension'),
-        tile_mime=  tile_format_el.getAttribute('mime-type'),
-        zooms=      zooms,
-        tilesets=   tilesets,
-        tileset_parms=tileset_parms,
-        )
+        self.tilemap=    src
+        self.root=       src_dir
+        self.doc=        doc
+        self.profile=    elem0(doc,"TileSets").getAttribute('profile')
+        self.srs=        elem0(doc,"SRS").firstChild.data
+        self.title=      elem0(doc,"Title").firstChild.data
+        self.abstract=   elem0(doc,"Abstract").firstChild.data
+        self.extent=     [float(box_el.getAttribute(attr)) for attr in ('minx','miny','maxx','maxy')]
+        self.tile_origin=[float(origin_el.getAttribute(attr)) for attr in ('x','y')]
+        self.tile_size=  [int(tile_format_el.getAttribute(attr)) for attr in ('width','height')]
+        self.tile_ext=   tile_format_el.getAttribute('extension')
+        self.tile_mime=  tile_format_el.getAttribute('mime-type')
+        self.zooms=      zooms
+        self.tilesets=   tilesets
+        self.tileset_parms=tileset_parms
+
+    def __del__(self):    
+        self.doc.unlink()
 
