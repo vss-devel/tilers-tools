@@ -69,11 +69,17 @@ class FileTile(Tile):
     def get_ext(self):
         return os.path.splitext(self.path)[1]        
 
-    def copy2file(self,dest_path,tile_ext=None):
+    def copy2file(self,dst_path,tile_ext=None,link=False):
         # dest_path is w/o extension!
         if not tile_ext:
             tile_ext=self.get_ext()
-        shutil.copy(self.path,dest_path+tile_ext)
+        dst=dst_path+tile_ext
+        if link and os.name == 'posix':
+            dst_dir=os.path.split(dst)[0]
+            src=os.path.relpath(self.path,dst_dir)
+            os.symlink(src,dst)
+        else:
+            shutil.copy(self.path,dst)
 
 class FileTileNoExt(FileTile):
     def get_ext(self):
@@ -92,33 +98,33 @@ class PixBufTile(Tile):
         ext=ext_from_buffer(self.pixbuf)
         return ext        
 
-    def copy2file(self,dest_path,tile_ext=None):
+    def copy2file(self,dest_path,tile_ext=None,link=False):
         # dest_path is w/o extension!
         if not tile_ext:
             tile_ext=self.get_ext()
         open(dest_path+tile_ext,'wb').write(self.pixbuf)
 
 class TileSet(object):
-    def __init__(self,root,write=False,append=False,region=None,zoom=None):
+    def __init__(self,root,options=None,write=False):
         ld(root)
         self.root=root
         self.write=write
-        self.append=append
+        self.options=options
         self.pyramid=None
 
         if not self.write:
             assert os.path.exists(root), "No file or directory found: %s" % root
         else:
-            if not self.append and os.path.exists(self.root):
+            if not self.options.append and os.path.exists(self.root):
                 if os.path.isdir(self.root):
                     shutil.rmtree(self.root,ignore_errors=True)
                 else:
                     os.remove(self.root)
-            if region:
+            if self.options.region:
                 from gdal_tiler import Pyramid
                 self.pyramid=Pyramid.profile_class('zxy')()
-                self.pyramid.load_region(region)
-                self.pyramid.set_zoom_range(zoom)
+                self.pyramid.load_region(self.options.region)
+                self.pyramid.set_zoom_range(self.options.zoom)
 
         self.child_init()
 
@@ -177,7 +183,7 @@ class TileDir(TileSet):
         try:
             os.makedirs(os.path.split(dest_path)[0])
         except os.error: pass
-        tile.copy2file(dest_path,self.forced_ext)
+        tile.copy2file(dest_path,self.forced_ext,self.options.link)
         self.counter()
 # TileDir
 
@@ -361,7 +367,7 @@ def tiles_convert(src_lst,options):
     for src in src_lst:
         dest=os.path.join(options.dst_dir,os.path.splitext(src)[0]+out_class.ext)
         pf('%s -> %s ' % (src,dest),end='')
-        out_class(dest,write=True,append=options.append,region=options.region,zoom=options.zoom).load_from(in_class(src))
+        out_class(dest,options,write=True).load_from(in_class(src))
         pf('')
 
 if __name__=='__main__':
@@ -373,12 +379,14 @@ if __name__=='__main__':
         help='input tiles format (default: zxy)')
     parser.add_option("--to", dest="out_fmt", default='sqlite',
         help='output tiles format (default: sqlite)')
-    parser.add_option("-l", "--list-formats", action="store_true", dest="list_formats",
+    parser.add_option("--formats", action="store_true", dest="list_formats",
         help='list available formats')
     parser.add_option("-a", "--append", action="store_true", dest="append",
         help="don't delete destination, append to it")
     parser.add_option("-t", "--dest-dir", default='.', dest="dst_dir",
         help='destination directory (default: current)')
+    parser.add_option("-l", "--link", action="store_true", dest="link",
+        help='make links to source tiles instead of copying if possible')
     parser.add_option("--region", default=None, metavar="DATASOURCE",
         help='region to process (OGR shape)')
     parser.add_option("-z", "--zoom", default=None,metavar="ZOOM_LIST",
