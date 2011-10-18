@@ -42,6 +42,8 @@ def re_subs(sub_list,l):
         l=re.sub(pattern,repl,l)
     return l
 
+htmlentitydefs.name2codepoint['apos']=27
+
 def strip_html(text):
     'Removes HTML markup from a text string. http://effbot.org/zone/re-sub.htm#strip-html'
     
