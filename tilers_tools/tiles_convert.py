@@ -32,6 +32,7 @@ import logging
 import optparse
 
 from tiler_functions import *
+from gdal_tiler import Pyramid
 
 ext_map=(
     ('\x89PNG\x0D\x0A\x1A\x0A','.png'),
@@ -51,14 +52,22 @@ def ext_from_file(path):
         buf = f.read(512)
         return ext_from_buffer(buf)
 
+#############################
+
 class Tile(object):
+
+#############################
     def __init__(self,coord):
         self._coord=coord
         
     def coord(self):
         return self._coord
 
+#############################
+
 class FileTile(Tile):
+
+#############################
     def __init__(self,coord,path):
         super(FileTile, self).__init__(coord)
         self.path=path
@@ -69,11 +78,7 @@ class FileTile(Tile):
     def get_ext(self):
         return os.path.splitext(self.path)[1]        
 
-    def copy2file(self,dst_path,tile_ext=None,link=False):
-        # dest_path is w/o extension!
-        if not tile_ext:
-            tile_ext=self.get_ext()
-        dst=dst_path+tile_ext
+    def copy2file(self,dst,link=False):
         if link and os.name == 'posix':
             dst_dir=os.path.split(dst)[0]
             src=os.path.relpath(self.path,dst_dir)
@@ -81,11 +86,19 @@ class FileTile(Tile):
         else:
             shutil.copy(self.path,dst)
 
+#############################
+
 class FileTileNoExt(FileTile):
+
+#############################
     def get_ext(self):
         return ext_from_file(self.path)
 
+#############################
+
 class PixBufTile(Tile):
+
+#############################
     def __init__(self,coord,pixbuf,key):
         super(PixBufTile, self).__init__(coord)
         self.pixbuf=pixbuf
@@ -98,19 +111,20 @@ class PixBufTile(Tile):
         ext=ext_from_buffer(self.pixbuf)
         return ext        
 
-    def copy2file(self,dest_path,tile_ext=None,link=False):
-        # dest_path is w/o extension!
-        if not tile_ext:
-            tile_ext=self.get_ext()
-        open(dest_path+tile_ext,'wb').write(self.pixbuf)
+    def copy2file(self,dest_path,link=False):
+        open(dest_path,'wb').write(self.pixbuf)
+
+#############################
 
 class TileSet(object):
+
+#############################
     def __init__(self,root,options=None,write=False):
         ld(root)
         self.root=root
         self.write=write
         self.options=options
-        self.pyramid=None
+        self.zoom_levels={}
 
         if not self.write:
             assert os.path.exists(root), "No file or directory found: %s" % root
@@ -121,27 +135,38 @@ class TileSet(object):
                 else:
                     os.remove(self.root)
             if self.options.region:
-                from gdal_tiler import Pyramid
-                self.pyramid=Pyramid.profile_class('zxy')()
-                self.pyramid.load_region(self.options.region)
-                self.pyramid.set_zoom_range(self.options.zoom)
-
-        self.child_init()
-
-    def child_init(self):
-        pass
+                prm=Pyramid.profile_class('zxy')()
+                prm.set_zoom_range(self.options.zoom)
+                prm.load_region(self.options.region)
+                self.my_tile=lambda tile: prm.belongs_to(tile.coord())
         
+    def my_tile(self, tile):
+        return True
+            
     def __del__(self):
         ld(self.count)
+
+    def __iter__(self): # to be defined at a child
+        raise Exception("Unimplemented!")
 
     def load_from(self,src_tiles):
         ld((src_tiles.root, self.root))
         map(self.process_tile,src_tiles)
 
     def process_tile(self, tile):
-        if self.pyramid and not self.pyramid.belongs_to(tile.coord()):
+        if not self.my_tile(tile):
             return
         self.store_tile(tile)
+
+        # collect min max values for tiles processed
+        zxy=list(tile.coord())
+        z=zxy[0]
+        min_max=self.zoom_levels.get(z)
+        if min_max is None:
+            self.zoom_levels[z]=[zxy,zxy] # min,max
+        else:
+            zz,xx,yy=zip(*(min_max+[zxy]))
+            self.zoom_levels[z]=[[z,min(xx),min(yy)],[z,max(xx),max(yy)]]
             
     count=0
     tick_rate=100
@@ -155,11 +180,17 @@ class TileSet(object):
 
 # TileSet
 
+#############################
+
 class TileDir(TileSet):
-    forced_ext = None
+
+#############################
     tile_class = FileTile
         
-    def child_init(self):
+
+    def __init__(self,root,options=None,write=False):
+        super(TileDir, self).__init__(root,options,write)
+
         if self.write:
             try:
                 os.makedirs(self.root)
@@ -176,19 +207,66 @@ class TileDir(TileSet):
     def coord2path(self,z,x,y):
         raise Exception("Unimplemented!")
 
+    def dest_ext(self, tile):
+        return tile.get_ext()
+        
     def store_tile(self, tile):
-        # dest_path is w/o extension!
-        dest_path=os.path.join(self.root,self.coord2path(*tile.coord()))
+        self.tile_ext=self.dest_ext(tile)
+        dest_path=os.path.join(self.root,self.coord2path(*tile.coord())) + self.tile_ext
         ld('%s -> %s' % (tile.path,dest_path))
         try:
             os.makedirs(os.path.split(dest_path)[0])
         except os.error: pass
-        tile.copy2file(dest_path,self.forced_ext,self.options.link)
+        tile.copy2file(dest_path,self.options.link)
         self.counter()
 # TileDir
 
-class TMStiles(TileDir): # see TileMap Diagram at http://wiki.osgeo.org/wiki/Tile_Map_Service_Specification
+#############################
+
+class TileMapDir(TileDir):
+
+#############################
+    def __del__(self):
+        if self.write:
+            self.store_metadata()
+        
+    def store_metadata(self):
+        prm=self.init_pyramid()
+        prm.write_tilemap()
+        prm.write_html()
+
+    def init_pyramid(self):
+        ld(self.zoom_levels)
+        prm=Pyramid.profile_class(self.format)(
+            dest=self.root,
+            options=dict(
+                name=os.path.split(self.root)[1],
+                tile_format=self.tile_ext[1:]
+                )
+            )        
+        # compute "effective" covered area
+        prev_sq=0
+        for z in reversed(sorted(self.zoom_levels)):
+            ul_zxy,lr_zxy=self.zoom_levels[z]
+            ul_c=prm.tile_bounds(ul_zxy)[0]
+            lr_c=prm.tile_bounds(lr_zxy)[1]
+            sq=(lr_c[0]-ul_c[0])*(ul_c[1]-lr_c[1])
+            area_diff=round(prev_sq/sq,5)
+            ld('ul_c,lr_c',z,ul_c,lr_c,sq,area_diff)
+            if area_diff == 0.25:
+                break # this must be an exact zoom of a previous level
+            area_coords=[ul_c,lr_c]
+            prev_sq=sq
+
+        prm.set_region(area_coords)
+        prm.set_zoom_range(','.join(map(str,self.zoom_levels.keys())))
+        return prm
+
+#############################
+
+class TMStiles(TileMapDir): # see TileMap Diagram at http://wiki.osgeo.org/wiki/Tile_Map_Service_Specification
     'TMS tiles'
+#############################
     format,ext,input,output='tms','.tms',True,True
     dir_pattern='[0-9]*/*/*.*'
 
@@ -199,8 +277,11 @@ class TMStiles(TileDir): # see TileMap Diagram at http://wiki.osgeo.org/wiki/Til
     def coord2path(self,z,x,y):
         return '%d/%d/%d' % (z,x,2**z-y-1)
 
-class ZXYtiles(TileDir): # http://code.google.com/apis/maps/documentation/javascript/v2/overlays.html#Google_Maps_Coordinates
+#############################
+
+class ZXYtiles(TileMapDir): # http://code.google.com/apis/maps/documentation/javascript/v2/overlays.html#Google_Maps_Coordinates
     'Popular ZXY aka XYZ format (Google Maps, OSM, mappero-compatible)'
+#############################
     format,ext,input,output='zxy','.zxy',True,True
     dir_pattern='[0-9]*/*/*.*'
 
@@ -209,13 +290,18 @@ class ZXYtiles(TileDir): # http://code.google.com/apis/maps/documentation/javasc
 
     def coord2path(self,z,x,y):
         return '%d/%d/%d' % (z,x,y)
+   
+#############################
 
 class MapNav(TileDir): # http://mapnav.spb.ru/site/e107_plugins/forum/forum_viewtopic.php?29047.post
     'MapNav (Global Mapper - compatible)'
+#############################
     format,ext,input,output='mapnav','.mapnav',True,True
     dir_pattern='Z[0-9]*/*/*.pic'
-    forced_ext = '.pic'
     tile_class = FileTileNoExt
+
+    def dest_ext(self, tile):
+        return '.pic'
 
     def path2coord(self,tile_path):
         z,y,x=path2list(tile_path)[-4:-1]
@@ -224,9 +310,11 @@ class MapNav(TileDir): # http://mapnav.spb.ru/site/e107_plugins/forum/forum_view
     def coord2path(self,z,x,y):
         return 'Z%d/%d/%d' % (z,y,x)
 
+#############################
 
 class SASPlanet(TileDir): # http://sasgis.ru/forum/viewtopic.php?f=2&t=24
     'SASPlanet cache'
+#############################
     format,ext,input,output='sasplanet','.sasplanet',True,True
     dir_pattern='z[0-9]*/*/x[0-9]*/*/y[0-9]*.*'
 
@@ -238,8 +326,11 @@ class SASPlanet(TileDir): # http://sasgis.ru/forum/viewtopic.php?f=2&t=24
     def coord2path(self,z,x,y):
         return 'z%d/%d/x%d/%d/y%d' % (z+1, x//1024, x, y//1024, y)
 
+#############################
+
 class SASGoogle(TileDir):
     'SASPlanet google maps cache'
+#############################
     format,ext,input,output='sasgoogle','.sasgoogle',True,True
     dir_pattern='z[0-9]*/*/*.*'
 
@@ -250,12 +341,17 @@ class SASGoogle(TileDir):
     def coord2path(self,z,x,y):
         return 'z%d/%d/%d' % (z,x,y)
 
+#############################
+
 class MapperSQLite(TileSet):
     'maemo-mapper SQLite cache'
+#############################
     format,ext,input,output='sqlite','.db',True,True
     max_zoom=20
     
-    def child_init(self):
+    def __init__(self,root,options=None,write=False):
+        super(MapperSQLite, self).__init__(root,options,write)
+
         import sqlite3
 
         self.db=sqlite3.connect(self.root)
@@ -283,7 +379,7 @@ class MapperSQLite(TileSet):
         for z,x,y,pixbuf in self.dbc:
             self.counter()
             yield PixBufTile((self.max_zoom+1-z,x,y),str(pixbuf),(z,x,y))
-    
+
     def store_tile(self, tile):
         z,x,y=tile.coord()
         # convert to maemo-mapper coords
@@ -294,12 +390,18 @@ class MapperSQLite(TileSet):
         self.counter()
 # MapperSQLite
 
+#############################
+
 class MapperGDBM(TileSet): # due to GDBM weirdness on ARM this only works if run on the tablet itself
     'maemo-mapper GDBM cache (works only on Nokia tablet)'
+#############################
     format,ext,input,output='gdbm','.gdbm',True,True
     max_zoom=20
     
-    def child_init(self):
+    def __init__(self,root,options=None,write=False):
+
+        super(MapperGDBM, self).__init__(root,options,write)
+
         import platform
         assert platform.machine().startswith('arm'), 'This convertion works only on a Nokia tablet'
         import gdbm
@@ -343,7 +445,11 @@ tile_formats=(
     SASGoogle,
     )
 
+#----------------------------
+
 def list_formats():
+
+#----------------------------
     for cl in tile_formats:
         print '%10s\t%s%s\t%s' % (
             cl.format,
@@ -352,7 +458,11 @@ def list_formats():
             cl.__doc__
             )
 
+#----------------------------
+
 def tiles_convert(src_lst,options):
+
+#----------------------------
     for in_class in tile_formats:
         if in_class.input and options.in_fmt == in_class.format:
             break
@@ -370,7 +480,11 @@ def tiles_convert(src_lst,options):
         out_class(dest,options,write=True).load_from(in_class(src))
         pf('')
 
-if __name__=='__main__':
+#----------------------------
+
+def main(argv):
+
+#----------------------------
     parser = optparse.OptionParser(
         usage="usage: %prog  <source> [<target>]",
         version=version,
@@ -394,10 +508,12 @@ if __name__=='__main__':
     parser.add_option("-d", "--debug", action="store_true", dest="debug")
     parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
 
-    (options, args) = parser.parse_args()
+    global options
+    (options, args) = parser.parse_args(argv[1:])
+
     logging.basicConfig(level=logging.DEBUG if options.debug else 
         (logging.ERROR if options.quiet else logging.INFO))
-    ld(options)
+    ld(options.__dict__)
 
     if options.list_formats:
         list_formats()
@@ -406,4 +522,10 @@ if __name__=='__main__':
     src_lst=args
 
     tiles_convert(src_lst,options)
+
+# main()
+
+if __name__=='__main__':
+
+    main(sys.argv)
 

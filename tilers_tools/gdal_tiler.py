@@ -238,7 +238,8 @@ resampling_map={
     'bicubic':  Image.BICUBIC,
     'antialias':Image.ANTIALIAS,
     }
-def resampling_lst(): return resampling_map.keys()
+def resampling_lst(): 
+    return resampling_map.keys()
     
 base_resampling_map={
     'near':         'NearestNeighbour', 
@@ -248,8 +249,9 @@ base_resampling_map={
     'cubicspline':  'CubicSpline',
     'lanczos':      'Lanczos',
     }
-def base_resampling_lst(): return base_resampling_map.keys()
-
+def base_resampling_lst(): 
+    return base_resampling_map.keys()
+        
 #############################
 
 class Pyramid(object):
@@ -267,7 +269,10 @@ class Pyramid(object):
 
         self.src=src
         self.dest=dest
-        self.options=options
+        self.options=LooseOptions(options)
+        self.name=self.options.name
+        self.tile_ext=self.options.tile_format
+        self.description=''
 
         self.temp_files=[]
         self.palette=None
@@ -324,18 +329,17 @@ class Pyramid(object):
 
         # init variables
         self.src_path=self.src
-        self.tiles_prefix=options.tiles_prefix
-        self.tile_ext=options.tile_format.lower()        
+        self.tiles_prefix=self.options.tiles_prefix
         self.src_dir,src_f=os.path.split(self.src)
         self.base=os.path.splitext(src_f)[0]
-        self.base_resampling=base_resampling_map[options.base_resampling]
-        self.resampling=resampling_map[options.overview_resampling]
+        self.base_resampling=base_resampling_map[self.options.base_resampling]
+        self.resampling=resampling_map[self.options.overview_resampling]
 
         pf('\n%s -> %s '%(self.src,self.dest),end='')
 
         if os.path.isdir(self.dest):
-#            if options.noclobber and os.path.exists(os.path.join(self.dest,'merge-cache')):
-            if options.noclobber and os.path.exists(self.dest):
+#            if self.options.noclobber and os.path.exists(os.path.join(self.dest,'merge-cache')):
+            if self.options.noclobber and os.path.exists(self.dest):
                 pf('*** Target already exists: skipping',end='')
                 return False
             else:
@@ -735,13 +739,14 @@ class Pyramid(object):
         'generate pyramid'
     #----------------------------
 
-        if not self.init_map(options.zoom):
+        if not self.init_map(self.options.zoom):
             return
 
         # create a raster source for a base zoom
         self.make_raster(self.max_zoom)
 
-        self.name=os.path.basename(self.dest)
+        if not self.name:
+            self.name=os.path.basename(self.dest)
 
         # map 'logical' tiles to 'physical' tiles
         self.tile_map={}
@@ -884,7 +889,7 @@ class Pyramid(object):
     #----------------------------
 
     def write_tilemap(self):
-        '''Generate xml with pseudo-tms tileset description'''
+        '''Generate xml tileset description a la TMS tilemap'''
     #----------------------------
         tile_mime={
             'png':  'image/png',
@@ -892,7 +897,7 @@ class Pyramid(object):
             'jpg':  'image/jpeg',
             } [self.tile_ext]
 
-        # reproject extents back to the origina SRS
+        # reproject extents back to the original SRS
         bounds=MyTransformer(DST_SRS=self.srs,SRC_SRS=self.proj).transform(self.bounds)
 
         tilesets=[tile_set_templ % dict(
@@ -1109,16 +1114,16 @@ class GenericMap(Pyramid):
     defaul_ext='.generic'
     
     def __init__(self,src=None,dest=None,options=None):
-        self.srs=options.t_srs
+        super(GenericMap, self).__init__(src,dest,options)
+
+        self.srs=self.options.t_srs
         assert self.proj, 'Target SRS is not specified'
-        self.tile_sz=tuple(map(int,options.tile_size.split(',')))
-        self.zoom0_tiles=map(int,options.zoom0_tiles.split(','))
-        if options.tms:
+        self.tile_sz=tuple(map(int,self.options.tile_size.split(',')))
+        self.zoom0_tiles=map(int,self.options.zoom0_tiles.split(','))
+        if self.options.tms:
             tile_direction=(1,1)
         else:
             tile_direction=(1,-1)
-
-        super(GenericMap, self).__init__(src,dest,options)
 
 #############################
 
@@ -1182,8 +1187,8 @@ class PlateCarree(Pyramid):
             'name':      name,
             'links':     links,
             'overlay':   overlay,
-            'dbg_start': '' if options.verbose < 2 else '    <!--\n',
-            'dbg_end':   '' if options.verbose < 2 else '      -->\n',
+            'dbg_start': '' if self.options.verbose < 2 else '    <!--\n',
+            'dbg_end':   '' if self.options.verbose < 2 else '      -->\n',
             }
         open(os.path.join(self.dest,rel_path+'.kml'),'w+').write(kml)
 
@@ -1348,7 +1353,11 @@ profile_map=(
     GenericMap,
     )
 
+#----------------------------
+
 def proc_src(src):
+
+#----------------------------
     cls=Pyramid.profile_class(options.profile)
     ext= cls.defaul_ext if options.strip_dest_ext is None else ''
     dest=dest_path(src,options.dest_dir,ext)
@@ -1357,10 +1366,9 @@ def proc_src(src):
 
 #----------------------------
 
-def main(argv):
+def parse_args(arg_lst):
 
 #----------------------------
-    
     parser = OptionParser(
         usage = "usage: %prog <options>... input_file...",
         version=version,
@@ -1421,8 +1429,16 @@ def main(argv):
     parser.add_option("-d", "--debug", action="store_const", 
         const=2, dest="verbose")
 
+    return parser.parse_args(arg_lst)
+
+#----------------------------
+
+def main(argv):
+
+#----------------------------
+    
     global options
-    (options, args) = parser.parse_args(argv[1:])
+    (options, args) = parse_args(argv[1:])
     
     logging.basicConfig(level=logging.DEBUG if options.verbose==2 else 
         (logging.ERROR if options.verbose==0 else logging.INFO))

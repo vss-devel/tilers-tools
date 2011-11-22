@@ -155,6 +155,25 @@ def re_sub_file(fname, subs_list):
             out.write(l)
     shutil.move(new,fname)
 
+class LooseOptions(object):
+    def __init__(self,options):
+        if options is None:
+            opt_dict={}
+        elif isinstance(options,dict):
+            opt_dict=options
+        else: #optparse.Values
+            opt_dict=options.__dict__
+        self.update(opt_dict)
+
+    def __getattr__(self, name):
+        self.__dict__.get(name)
+
+    def __setattr__(self, name, value):
+        self.__dict__[name]=value
+
+    def update(self, other_dict):
+        self.__dict__.update(other_dict)
+
 #############################
 #
 # GDAL utility functions
