@@ -172,9 +172,8 @@
                 clickToRatio: function(event) {
                     var rect=this.clickBarDiv.getBoundingClientRect();
                     var w=rect.width-this.clickMargin*2;
-                    var offx=Math.round(event.layerX-this.clickMargin);
-
-                    var ratio=offx/w;
+                    var offx= (event.layerX !== undefined) ? event.layerX : event.offsetX;
+                    var ratio=(offx-this.clickMargin)/w;
                     if (ratio < 0) ratio=0;
                     if (ratio > 1) ratio=1;
                     this.ratio=ratio;
