@@ -196,6 +196,11 @@
 
 		<script type="text/javascript">
 
+        function error(msg) {
+			alert(msg);
+            throw new Error(msg);
+        }
+
         function log(msg) {
             try { console.log.apply(console,arguments) } 
             catch (e) {
@@ -203,10 +208,6 @@
                     throw new Error(msg);
                 }, 0);
             }
-        }
-
-        function error(msg) {
-            throw new Error(msg);
         }
 
         /*
@@ -226,26 +227,33 @@
             try { return new ActiveXObject("Microsoft.XMLHTTP"); }
               catch (e) {}
             //Microsoft.XMLHTTP points to Msxml2.XMLHTTP and is redundant
-            throw new Error("This browser does not support XMLHttpRequest.");
+            error("This browser does not support XMLHttpRequest.");
           };
 
         function read_xml(url) {
             var request = new XMLHttpRequest();
             request.open('GET', url, false);
             request.overrideMimeType("text/xml");
+				/*
+			request.onreadystatechange = function() {
+                log('this.readyState',this.readyState);
+				if(this.readyState == 4) {
+				  alert("Loaded xml.\nresponseXml: " + xmlhttp.responseXML);
+				  alert("documentElement: " + xmlhttp.responseXML.documentElement);
+					}
+				}            
+				  */
             try {
-                request.send(null);
+                request.send();
                 if (request.status != 0) {
-                    log(request.status);
-	                log(request.responseText);
+                    log('######################### request.status',request.status,request.responseText);
                 }
             } catch (e) {
-                log(e)
+                log('######################### e.code',e.code);
                 if (e.code == 101) {
-                    alert('Google Chrome requires to run with "--allow-file-access-from-files" switch to load XML from local files')
+                    error('Google Chrome requires to run with "--allow-file-access-from-files" switch to load XML from local files')
                 }
             }
-            //log(request);
             return request.responseXML;
         }
         
@@ -259,6 +267,14 @@
 	            error('Cannot read tilemap.xml');
                 return null;
             }
+            if (tilemap.getElementsByTagName("TileSets").length == 0) {
+				log(navigator.appName);
+				if (navigator.appName == 'Opera') 
+					error('tilemap.xml is incorrect. \nYou may need to set "Allow File XMLHttpRequest" with opera:config#UserPrefs|AllowFileXMLHttpRequest to disable this security check.');
+				else
+					error('tilemap.xml is incorrect');
+                return null;
+			}
             layer_profile=tilemap.getElementsByTagName("TileSets")[0].getAttribute('profile');
             if (layer_profile != 'global-mercator' && layer_profile != 'zxy-mercator') {
 	            error('unsupported profile in tilemap.xml '+layer_profile);
@@ -381,8 +397,7 @@
                             OpenLayers.Util.indexOf(this.serverResolutions, res) :
                             this.map.getZoom() + this.zoomOffset;
                         var limit = Math.pow(2, z);
-                        if (this.wrapDateLine)
-                        {
+                        if (this.wrapDateLine) {
                            x = ((x % limit) + limit) % limit;
                         }
                         
@@ -418,7 +433,7 @@
                         displayClass: "clickbar",
                         ratio: 0.8,
                         reportRatio: function(ratio){
-                            log(ratio);
+                            //log(ratio);
 		                    if (OpenLayers.Util.alphaHack() == false) 
 		                        tiler_overlay.setOpacity(ratio);
                         },
@@ -449,7 +464,6 @@
             map.addLayers([gphy, gmap, ghyb, gsat]);
 		}
 		</script>
-
 	</head>
 
 	<body onload="initialize_openlayers()">
