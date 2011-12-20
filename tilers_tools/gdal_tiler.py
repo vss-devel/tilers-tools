@@ -64,7 +64,7 @@ class BaseImg(object):
         self.transparency=transparency
 
         self.size=self.ds.RasterXSize,self.ds.RasterYSize
-        self.tile_sz=tile_size
+        self.tile_size=tile_size
 
         self.bands=[self.ds.GetRasterBand(i+1) for i in range(self.ds.RasterCount)]
 
@@ -73,15 +73,15 @@ class BaseImg(object):
         del self.ds
                 
     def get_tile(self,tile):
-        tile_sz=self.tile_sz
+        tile_size=self.tile_size
         n_bands=len(self.bands)
 
         assert (tile[0] >= self.tile_first[0] and tile[0] <= self.tile_last[0] and 
                 tile[1] >= self.tile_first[1] and tile[1] <= self.tile_last[1]
                 ), 'tile %s is out of range' % (tile,) 
-        ul_pix=[(tile[0]-self.tile_first[0])*tile_sz[0],(tile[1]-self.tile_first[1])*tile_sz[1]]
+        ul_pix=[(tile[0]-self.tile_first[0])*tile_size[0],(tile[1]-self.tile_first[1])*tile_size[1]]
 
-        tile_bands=[band.ReadRaster(ul_pix[0],ul_pix[1],tile_sz[0],tile_sz[1],tile_sz[0],tile_sz[1],GDT_Byte)
+        tile_bands=[band.ReadRaster(ul_pix[0],ul_pix[1],tile_size[0],tile_size[1],tile_size[0],tile_size[1],GDT_Byte)
                     for band in self.bands]
         if n_bands == 1:
             opacity=1
@@ -93,7 +93,7 @@ class BaseImg(object):
                         return None,0
                     else:                   # semi-transparent
                         opacity=-1
-            img=Image.frombuffer('L',tile_sz,tile_bands[0],'raw','L',0,1)
+            img=Image.frombuffer('L',tile_size,tile_bands[0],'raw','L',0,1)
         else:
             aplpha=tile_bands[-1]
             if min(aplpha) == '\xFF':       # fully opaque
@@ -105,15 +105,15 @@ class BaseImg(object):
             else:                           # semi-transparent
                 opacity=-1
                 mode='RGBA' if n_bands > 2 else 'LA'
-            img=Image.merge(mode,[Image.frombuffer('L',tile_sz,b,'raw','L',0,1) for b in tile_bands])
+            img=Image.merge(mode,[Image.frombuffer('L',tile_size,b,'raw','L',0,1) for b in tile_bands])
         return img,opacity
 
 # BaseImg
     
 #----------------------------
-
+#
 # templates for VRT XML
-
+#
 #----------------------------
 
 def xml_txt(name,value=None,indent=0,**attr_dict):
@@ -258,8 +258,6 @@ class Pyramid(object):
     '''Tile pyramid generator and utilities'''
 #############################
 
-    tile_sz=(256,256) # tile resolution in pixels
-
     #----------------------------
 
     def __init__(self,src=None,dest=None,options=None):
@@ -298,27 +296,27 @@ class Pyramid(object):
         # init tile grid parameters
     #----------------------------
 
-        self.proj=self.srs # self.proj may be changed later to avoid crossing longitude 180 
-        self.longlat=proj_cs2geog_cs(self.proj)
-        ld('proj,longlat',self.proj,self.longlat)
+        self.proj_srs=self.srs # self.proj_srs may be changed later to avoid crossing longitude 180 
+        self.geog_srs=proj_cs2geog_cs(self.proj_srs)
+        ld('proj,longlat',self.proj_srs,self.geog_srs)
 
-        self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
+        self.proj2geog=MyTransformer(SRC_SRS=self.proj_srs,DST_SRS=self.geog_srs)
         max_x=self.proj2geog.transform_point((180,0),inv=True)[0] # Equator's half length 
 
         # dimentions of a tile at zoom 0
-        res0=max_x*2/(self.zoom0_tiles[0]*self.tile_sz[0])
+        res0=max_x*2/(self.zoom0_tiles[0]*self.tile_size[0])
         self.zoom0_res=[res0,-res0]
 
         # coordinates of the upper left corner of the world raster
-        self.pix_origin=[ -max_x, -self.zoom0_res[1]*self.tile_sz[1]*self.zoom0_tiles[1]/2 ]
+        self.pix_origin=[ -max_x, -self.zoom0_res[1]*self.tile_size[1]*self.zoom0_tiles[1]/2 ]
 
         self.tile_origin=self.pix2coord(0,self.zoom0_origin)
         ld('zoom0_tiles',self.zoom0_tiles,'pix_origin',self.pix_origin,'tile_direction',self.tile_direction)
 
-        # set map bounds to the maximum values
+        # set map bounds to world map bounds
         self.bounds=[self.pix2coord(0,(0,0)), # upper left
-                    self.pix2coord(0,(self.zoom0_tiles[0]*self.tile_sz[0],
-                                      self.zoom0_tiles[1]*self.tile_sz[1])) # lower right
+                    self.pix2coord(0,(self.zoom0_tiles[0]*self.tile_size[0],
+                                      self.zoom0_tiles[1]*self.tile_size[1])) # lower right
                     ]
     
     #----------------------------
@@ -354,12 +352,12 @@ class Pyramid(object):
              
         # shift target SRS to avoid crossing 180 meridian
         shifted_srs=self.shift_srs(self.max_zoom)
-        shift_x=MyTransformer(SRC_SRS=shifted_srs,DST_SRS=self.proj).transform_point((0,0))[0]
+        shift_x=MyTransformer(SRC_SRS=shifted_srs,DST_SRS=self.proj_srs).transform_point((0,0))[0]
         if shift_x != 0:
             ld('new_srs',shifted_srs,'shift_x',shift_x,'pix_origin',self.pix_origin)
             self.pix_origin[0]-=shift_x
-            self.proj=shifted_srs
-            self.proj2geog=MyTransformer(SRC_SRS=self.proj,DST_SRS=self.longlat)
+            self.proj_srs=shifted_srs
+            self.proj2geog=MyTransformer(SRC_SRS=self.proj_srs,DST_SRS=self.geog_srs)
 
         # get corners at the target SRS
         target_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
@@ -520,12 +518,12 @@ class Pyramid(object):
     def shift_srs(self,zoom=None):
         'change prime meridian to allow charts crossing 180 meridian'
     #----------------------------
-        ul,lr=MyTransformer(self.src_ds,DST_SRS=self.longlat).transform([
+        ul,lr=MyTransformer(self.src_ds,DST_SRS=self.geog_srs).transform([
             (0,0),
             (self.src_ds.RasterXSize,self.src_ds.RasterYSize)])
         ld('shift_srs ul',ul,'lr',lr)
         if lr[0] <= 180 and ul[0] >=-180 and ul[0] < lr[0]:
-            return self.proj
+            return self.proj_srs
 
         left_lon=ul[0]
         if zoom is not None: # adjust to a tile boundary
@@ -534,7 +532,7 @@ class Pyramid(object):
             left_lon=self.proj2geog.transform_point(tile_left_xy)[0]
         lon_0=left_lon+180
         ld('left_lon',left_lon,'lon_0',lon_0)
-        new_srs='%s +lon_0=%d' % (self.proj,lon_0)
+        new_srs='%s +lon_0=%d' % (self.proj_srs,lon_0)
         if not (lr[0] <= 180 and ul[0] >=-180):
             new_srs+=' +over +wktext' # allow for a map to span beyond -180 -- +180 range
         return new_srs
@@ -561,7 +559,7 @@ class Pyramid(object):
         lr_c=gdal.ApplyGeoTransform(geotr,t_ds.RasterXSize,t_ds.RasterYSize)
         wh=(lr_c[0]-ul_c[0],lr_c[1]-ul_c[1])
         ld('ul_c,lr_c,wh',ul_c,lr_c,wh)
-        min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_sz[i]for i in (0,1)]))
+        min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_size[i]for i in (0,1)]))
 
         self.set_zoom_range(zoom_parm,(min_zoom,max_zoom))
 
@@ -617,7 +615,7 @@ class Pyramid(object):
 
         res=self.zoom2res(zoom)
         #ul_ll,lr_ll=self.coords2longlat([ul_c,lr_c])
-        ld('max_zoom',zoom,'size',dst_xsize,dst_ysize,'-tr',res[0],res[1],'-te',ul_c[0],lr_c[1],lr_c[0],ul_c[1],'-t_srs',self.proj)
+        ld('max_zoom',zoom,'size',dst_xsize,dst_ysize,'-tr',res[0],res[1],'-te',ul_c[0],lr_c[1],lr_c[0],ul_c[1],'-t_srs',self.proj_srs)
         dst_geotr=( ul_c[0], res[0],   0.0,
                     ul_c[1],    0.0, res[1] )
         ok,dst_igeotr=gdal.InvGeoTransform(dst_geotr)
@@ -672,21 +670,19 @@ class Pyramid(object):
         if src_bands < 4 and self.palette is None:
             vrt_bands.append(warp_band % (src_bands+1,warp_band_color % 'Alpha'))
 
-        block_sz=self.tile_sz
-
         vrt_text=warp_vrt % {
             'xsize':            dst_xsize,
             'ysize':            dst_ysize,
-            'srs':              self.proj,
+            'srs':              self.proj_srs,
             'geotr':            geotr_templ % dst_geotr,
             'band_list':        '\n'.join(vrt_bands),
-            'blxsize':          block_sz[0],
-            'blysize':          block_sz[1],
+            'blxsize':          self.tile_size[0],
+            'blysize':          self.tile_size[1],
             'wo_ResampleAlg':   self.base_resampling,
             'wo_src_path':      self.src_path,
             'warp_options':     '\n'.join(warp_options),
             'wo_src_srs':       gcp_proj if gcp_proj else src_proj,
-            'wo_dst_srs':       self.proj,
+            'wo_dst_srs':       self.proj_srs,
             'wo_src_transform': src_transform,
             'wo_dst_transform': dst_transform,
             'wo_BandList':      '\n'.join(wo_BandList),
@@ -707,7 +703,7 @@ class Pyramid(object):
         del self.src_ds
 
         # create base_image raster
-        self.base_img=BaseImg(base_ds,self.tile_sz,tile_ul[1:],tile_lr[1:],self.transparency)
+        self.base_img=BaseImg(base_ds,self.tile_size,tile_ul[1:],tile_lr[1:],self.transparency)
 
     #----------------------------
 
@@ -797,7 +793,7 @@ class Pyramid(object):
             dz=int(2**(child_zoom-zoom))
 
             ch_mozaic=dict(flatten(
-                [[((child_zoom,x*dz+dx,y*dz+dy),(dx*self.tile_sz[0]//dz,dy*self.tile_sz[1]//dz))
+                [[((child_zoom,x*dz+dx,y*dz+dy),(dx*self.tile_size[0]//dz,dy*self.tile_size[1]//dz))
                                for dx in range(dz)]
                                    for dy in range(dz)]))
             children=self.all_tiles & frozenset(ch_mozaic)
@@ -822,9 +818,9 @@ class Pyramid(object):
                         tile_mode=('L' if 'L' in ch_img.mode else 'RGB')+mode_opacity
 
                     if self.transparency is not None:
-                        tile_img=Image.new(tile_mode,self.tile_sz,self.transparency)
+                        tile_img=Image.new(tile_mode,self.tile_size,self.transparency)
                     else:
-                        tile_img=Image.new(tile_mode,self.tile_sz)
+                        tile_img=Image.new(tile_mode,self.tile_size)
                     if self.palette is not None:
                         tile_img.putpalette(self.palette)
 
@@ -898,7 +894,7 @@ class Pyramid(object):
             } [self.tile_ext]
 
         # reproject extents back to the original SRS
-        bounds=MyTransformer(DST_SRS=self.srs,SRC_SRS=self.proj).transform(self.bounds)
+        bounds=MyTransformer(DST_SRS=self.srs,SRC_SRS=self.proj_srs).transform(self.bounds)
 
         tilesets=[tile_set_templ % dict(
                 href=str(zoom),
@@ -911,8 +907,8 @@ class Pyramid(object):
             description=self.description,
             tms_srs=    self.tms_srs,
             tms_profile=self.tms_profile,
-            tile_width= self.tile_sz[0],
-            tile_height=self.tile_sz[1],
+            tile_width= self.tile_size[0],
+            tile_height=self.tile_size[1],
             tile_ext=   self.tile_ext,
             tile_mime=  tile_mime,
             origin_x=   self.tile_origin[0],
@@ -948,7 +944,7 @@ class Pyramid(object):
         print()
 
     def zoom2res(self,zoom):
-        return map(lambda res: res/2**zoom, self.zoom0_res)
+        return [self.zoom0_res[i]/2**zoom for i in (0,1)]
 
     def res2zoom_xy(self,res):
         'resolution to zoom levels (separate for x and y)'
@@ -957,7 +953,7 @@ class Pyramid(object):
 
     def pix2tile(self,zoom,pix_coord):
         'pixel coordinates to tile (z,x,y)'
-        return [zoom]+[pix_coord[i]//self.tile_sz[i] for i in (0,1)]
+        return [zoom]+[pix_coord[i]//self.tile_size[i] for i in (0,1)]
 
     def pix2tile_new(self,zoom,pix_coord):
         'pixel coordinates to tile (z,x,y)'
@@ -965,20 +961,20 @@ class Pyramid(object):
         ld(res)
         tile_xy=[int(round(
                     (pix_coord[i]*res[i]-self.pix_origin[i]-self.tiles_origin[i])/res[i]
-                )) // self.tile_sz[i] for i in (0,1)]
+                )) // self.tile_size[i] for i in (0,1)]
         return [zoom]+[(tile_xy[i] if self.tile_direction[i] != -1 else -tile_xy[i]+1) for i in (0,1)]
 
 #    pix2tile=pix2tile_new
     
     def tile2pix(self,tile):
         'pixel coordinates of the upper left corner of a tile'
-        return map(operator.mul,self.tile_sz,tile[1:])
+        return map(operator.mul,self.tile_size,tile[1:])
 
     def tile2pix_new(self,tile):
         'pixel coordinates of the upper left corner of a tile'
         res=self.zoom2res(zoom)
         tile_xy=[xy if d != -1 else -xy+1 for xy,d in zip(tile[1:],self.tile_direction)]
-        pix=[tile_xy[i]*self.tile_sz[i]*res[i] for i in (0,1)]
+        pix=[tile_xy[i]*self.tile_size[i]*res[i] for i in (0,1)]
         return zzzzz
 
 #    tile2pix=tile2pix_new
@@ -1034,7 +1030,7 @@ class Pyramid(object):
         box_ul,box_lr=[self.tile_bounds(t) for t in (t_ul,t_lr)]
         ld('corner_tiles zoom',zoom,
             'zoom tiles',nztiles,
-            'zoom pixels',map(lambda zt,ts:zt*ts,nztiles,self.tile_sz),
+            'zoom pixels',map(lambda zt,ts:zt*ts,nztiles,self.tile_size),
             'p_ul',p_ul,'p_lr',p_lr,'t_ul',t_ul,'t_lr',t_lr,
             'longlat', self.coords2longlat([box_ul[0],box_lr[1]])
             )
@@ -1079,8 +1075,8 @@ class Pyramid(object):
         return x>=t_ul[1] and y>=t_ul[2] and x<=t_lr[1] and y<=t_lr[2]
 
     def set_region(self,point_lst,source_srs=None):
-        if source_srs and source_srs != self.proj:
-            point_lst=MyTransformer(SRC_SRS=source_srs,DST_SRS=self.proj).transform(point_lst)
+        if source_srs and source_srs != self.proj_srs:
+            point_lst=MyTransformer(SRC_SRS=source_srs,DST_SRS=self.proj_srs).transform(point_lst)
 
         x_coords,y_coords=zip(*point_lst)[0:2]
         upper_left=min(x_coords),max(y_coords)
@@ -1090,7 +1086,7 @@ class Pyramid(object):
     def load_region(self,datasource):
         if not datasource:
             return
-        point_lst=flatten(shape2mpointlst(datasource,self.proj))
+        point_lst=flatten(shape2mpointlst(datasource,self.proj_srs))
         self.set_region(point_lst)
 
     # progress display
@@ -1117,8 +1113,8 @@ class GenericMap(Pyramid):
         super(GenericMap, self).__init__(src,dest,options)
 
         self.srs=self.options.t_srs
-        assert self.proj, 'Target SRS is not specified'
-        self.tile_sz=tuple(map(int,self.options.tile_size.split(',')))
+        assert self.proj_srs, 'Target SRS is not specified'
+        self.tile_size=tuple(map(int,self.options.tile_size.split(',')))
         self.zoom0_tiles=map(int,self.options.zoom0_tiles.split(','))
         if self.options.tms:
             tile_direction=(1,1)
@@ -1130,7 +1126,7 @@ class GenericMap(Pyramid):
 class TilingScheme(object):
 
 #############################
-    pass
+    tile_size=(256,256) # tile size in pixels
 
 class ZXYtiling(TilingScheme):
     tile_direction=(1,-1)
