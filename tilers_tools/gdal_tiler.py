@@ -57,32 +57,27 @@ class BaseImg(object):
     '''Tile feeder for a base zoom level'''
 #############################
 
-    def __init__(self,dataset,tile_size,tile_first,tile_last,transparency=None):
+    def __init__(self,dataset,world_ul,transparency=None):
         self.ds=dataset
-        self.tile_first=tile_first
-        self.tile_last=tile_last
+        self.world_ul=world_ul
         self.transparency=transparency
 
         self.size=self.ds.RasterXSize,self.ds.RasterYSize
-        self.tile_size=tile_size
-
         self.bands=[self.ds.GetRasterBand(i+1) for i in range(self.ds.RasterCount)]
 
     def __del__(self):
         del self.bands
         del self.ds
-                
-    def get_tile(self,tile):
-        tile_size=self.tile_size
+
+    def get_tile(self,corners):
+        '''crop raster as per pair of world pixel coordinates'''
+
+        ul=[corners[0][i]-self.world_ul[i] for i in (0,1)]
+        sz=[corners[1][i]-corners[0][i] for i in (0,1)]
+
+        tile_bands=[bnd.ReadRaster(ul[0],ul[1],sz[0],sz[1],sz[0],sz[1],GDT_Byte)
+                    for bnd in self.bands]
         n_bands=len(self.bands)
-
-        assert (tile[0] >= self.tile_first[0] and tile[0] <= self.tile_last[0] and 
-                tile[1] >= self.tile_first[1] and tile[1] <= self.tile_last[1]
-                ), 'tile %s is out of range' % (tile,) 
-        ul_pix=[(tile[0]-self.tile_first[0])*tile_size[0],(tile[1]-self.tile_first[1])*tile_size[1]]
-
-        tile_bands=[band.ReadRaster(ul_pix[0],ul_pix[1],tile_size[0],tile_size[1],tile_size[0],tile_size[1],GDT_Byte)
-                    for band in self.bands]
         if n_bands == 1:
             opacity=1
             mode='L'
@@ -93,7 +88,7 @@ class BaseImg(object):
                         return None,0
                     else:                   # semi-transparent
                         opacity=-1
-            img=Image.frombuffer('L',tile_size,tile_bands[0],'raw','L',0,1)
+            img=Image.frombuffer('L',sz,tile_bands[0],'raw','L',0,1)
         else:
             aplpha=tile_bands[-1]
             if min(aplpha) == '\xFF':       # fully opaque
@@ -105,11 +100,10 @@ class BaseImg(object):
             else:                           # semi-transparent
                 opacity=-1
                 mode='RGBA' if n_bands > 2 else 'LA'
-            img=Image.merge(mode,[Image.frombuffer('L',tile_size,b,'raw','L',0,1) for b in tile_bands])
+            img=Image.merge(mode,[Image.frombuffer('L',sz,bnd,'raw','L',0,1) for bnd in tile_bands])
         return img,opacity
-
 # BaseImg
-    
+
 #----------------------------
 #
 # templates for VRT XML
@@ -238,20 +232,20 @@ resampling_map={
     'bicubic':  Image.BICUBIC,
     'antialias':Image.ANTIALIAS,
     }
-def resampling_lst(): 
+def resampling_lst():
     return resampling_map.keys()
-    
+
 base_resampling_map={
-    'near':         'NearestNeighbour', 
-    'nearest':      'NearestNeighbour', 
+    'near':         'NearestNeighbour',
+    'nearest':      'NearestNeighbour',
     'bilinear':     'Bilinear',
     'cubic':        'Cubic',
     'cubicspline':  'CubicSpline',
     'lanczos':      'Lanczos',
     }
-def base_resampling_lst(): 
+def base_resampling_lst():
     return base_resampling_map.keys()
-        
+
 #############################
 
 class Pyramid(object):
@@ -296,29 +290,34 @@ class Pyramid(object):
         # init tile grid parameters
     #----------------------------
 
-        self.proj_srs=self.srs # self.proj_srs may be changed later to avoid crossing longitude 180 
+        self.proj_srs=self.srs # self.proj_srs may be changed later to avoid crossing longitude 180
         self.geog_srs=proj_cs2geog_cs(self.proj_srs)
         ld('proj,longlat',self.proj_srs,self.geog_srs)
 
         self.proj2geog=MyTransformer(SRC_SRS=self.proj_srs,DST_SRS=self.geog_srs)
-        max_x=self.proj2geog.transform_point((180,0),inv=True)[0] # Equator's half length 
+        max_x=self.proj2geog.transform_point((180,0),inv=True)[0] # Equator's half length
 
-        # dimentions of a tile at zoom 0
-        res0=max_x*2/(self.zoom0_tiles[0]*self.tile_size[0])
-        self.zoom0_res=[res0,-res0]
+        # pixel resolution at the zoom 0
+        res0=max_x*2/abs(self.zoom0_tiles[0]*self.tile_dim[0])
+        self.zoom0_res=[res0,-res0] # pixel 'y' goes downwards
 
-        # coordinates of the upper left corner of the world raster
-        self.pix_origin=[ -max_x, -self.zoom0_res[1]*self.tile_size[1]*self.zoom0_tiles[1]/2 ]
+        # upper left corner of a world raster
+        self.pix_origin=(-max_x, abs(self.zoom0_res[1]*self.tile_dim[1]*self.zoom0_tiles[1]/2))
 
-        self.tile_origin=self.pix2coord(0,self.zoom0_origin)
-        ld('zoom0_tiles',self.zoom0_tiles,'pix_origin',self.pix_origin,'tile_direction',self.tile_direction)
+        # adjust tile origins to the limits of a world raster
+        max_lat=self.proj2geog.transform_point(self.pix_origin)[1]
+        to_lon,to_lat=self.tile_origin_lonlat
+        self.tile_origin_lonlat = (to_lon,(max_lat if max_lat < to_lat else (-max_lat if -max_lat > to_lat else to_lat)))
+        self.tile_origin=self.proj2geog.transform_point(self.tile_origin_lonlat,inv=True)
 
-        # set map bounds to world map bounds
-        self.bounds=[self.pix2coord(0,(0,0)), # upper left
-                    self.pix2coord(0,(self.zoom0_tiles[0]*self.tile_size[0],
-                                      self.zoom0_tiles[1]*self.tile_size[1])) # lower right
-                    ]
-    
+        ld('zoom0_tiles',self.zoom0_tiles,'tile_dim',self.tile_dim,'pix_origin',self.pix_origin,'tile_origin',self.tile_origin,self.tile_origin_lonlat)
+
+        # default map bounds to maximum limits (world map)
+        ul=self.pix2coord(0,(0,0)) 
+        lr=[-ul[0],-ul[1]]
+        self.bounds=(ul,                # upper left
+                    (-ul[0],-ul[1]))    # lower right
+
     #----------------------------
 
     def init_map(self,zoom_parm):
@@ -348,14 +347,14 @@ class Pyramid(object):
 
         # calculate zoom range
         self.calc_zoom(zoom_parm)
-        self.max_zoom=self.zoom_range[0]        
-             
+        self.max_zoom=self.zoom_range[0]
+
         # shift target SRS to avoid crossing 180 meridian
         shifted_srs=self.shift_srs(self.max_zoom)
         shift_x=MyTransformer(SRC_SRS=shifted_srs,DST_SRS=self.proj_srs).transform_point((0,0))[0]
         if shift_x != 0:
             ld('new_srs',shifted_srs,'shift_x',shift_x,'pix_origin',self.pix_origin)
-            self.pix_origin[0]-=shift_x
+            self.pix_origin=(self.pix_origin[0]-shift_x,self.pix_origin[1])
             self.proj_srs=shifted_srs
             self.proj2geog=MyTransformer(SRC_SRS=self.proj_srs,DST_SRS=self.geog_srs)
 
@@ -365,26 +364,25 @@ class Pyramid(object):
             (0,0),
             (target_ds.RasterXSize,target_ds.RasterYSize)])
 
-        # clip to the max tileset area (set at the __init__)
+        # self.bounds are set to a world raster, now clip to the max tileset area
+        self.bounds=(  (max(self.bounds[0][0],target_bounds[0][0]),
+                        min(self.bounds[0][1],target_bounds[0][1])),
+                       (min(self.bounds[1][0],target_bounds[1][0]),
+                        max(self.bounds[1][1],target_bounds[1][1])))
 
-        self.bounds[0][0]=max(self.bounds[0][0],target_bounds[0][0])
-        self.bounds[0][1]=min(self.bounds[0][1],target_bounds[0][1])
-        self.bounds[1][0]=min(self.bounds[1][0],target_bounds[1][0])
-        self.bounds[1][1]=max(self.bounds[1][1],target_bounds[1][1])
+        #ld('target raster')
+        #ld('Upper Left',self.bounds[0],target_bounds[0],self.proj2geog.transform([self.bounds[0],target_bounds[0]]))
+        #ld('Lower Right',self.bounds[1],target_bounds[1],self.proj2geog.transform([self.bounds[1],target_bounds[1]]))
 
-#        ld('target raster')
-#        ld('Upper Left',self.bounds[0],target_bounds[0],self.proj2geog.transform([self.bounds[0],target_bounds[0]]))
-#        ld('Lower Right',self.bounds[1],target_bounds[1],self.proj2geog.transform([self.bounds[1],target_bounds[1]]))
-        
         return True
-        
+
     #----------------------------
 
     def get_src_ds(self):
         'get src dataset, convert to RGB(A) if required'
     #----------------------------
         override_srs=self.options.srs
-        
+
         if os.path.exists(self.src):
             self.src_path=os.path.abspath(self.src)
 
@@ -444,7 +442,7 @@ class Pyramid(object):
 
                 gcplst_txt=''
                 if gcps:
-                    gcp_lst='\n'.join((gcp_templ % (g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) 
+                    gcp_lst='\n'.join((gcp_templ % (g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ)
                                         for g in gcps))
                     if self.options.srs is None:
                         gcp_proj=wkt2proj4(src_ds.GetGCPProjection())
@@ -511,7 +509,7 @@ class Pyramid(object):
 #        src_proj2geog=MyTransformer(SRC_SRS=src_proj,DST_SRS=proj_cs2geog_cs(src_proj))
 #        ld('source_raster')
 #        ld('Upper Left',src_origin,src_proj2geog.transform([src_origin]))
-#        ld('Lower Right',src_extent,src_proj2geog.transform([src_extent]))        
+#        ld('Lower Right',src_extent,src_proj2geog.transform([src_extent]))
 
     #----------------------------
 
@@ -557,9 +555,9 @@ class Pyramid(object):
         # calculate min_zoom
         ul_c=(geotr[0], geotr[3])
         lr_c=gdal.ApplyGeoTransform(geotr,t_ds.RasterXSize,t_ds.RasterYSize)
-        wh=(lr_c[0]-ul_c[0],lr_c[1]-ul_c[1])
+        wh=(lr_c[0]-ul_c[0],ul_c[1]-lr_c[1])
         ld('ul_c,lr_c,wh',ul_c,lr_c,wh)
-        min_zoom=min(self.res2zoom_xy([wh[i]/self.tile_size[i]for i in (0,1)]))
+        min_zoom=min(self.res2zoom_xy([wh[i]/abs(self.tile_dim[i]) for i in (0,1)]))
 
         self.set_zoom_range(zoom_parm,(min_zoom,max_zoom))
 
@@ -579,12 +577,11 @@ class Pyramid(object):
         lr_pix=self.tile_pixbounds(tile_lr)[1]
 
         # base zoom level raster size
-        dst_xsize=lr_pix[0]-ul_pix[0] 
-        dst_ysize=lr_pix[1]-ul_pix[1]        
+        dst_xsize=lr_pix[0]-ul_pix[0]
+        dst_ysize=lr_pix[1]-ul_pix[1]
 
         ld('target Upper Left',self.bounds[0],ul_c,self.proj2geog.transform([self.bounds[0],ul_c]))
         ld('target Lower Right',self.bounds[1],lr_c,self.proj2geog.transform([self.bounds[1],lr_c]))
-        ld('pix_origin',self.pix_origin,'ul_c+c_off',map(operator.add,ul_c,self.pix_origin))
 
         # create VRT for base image warp
 
@@ -653,7 +650,7 @@ class Pyramid(object):
         if self.palette is not None:
             dst_nodata=[self.transparency]
         ld('nodata',src_nodata,dst_nodata)
-        
+
         # src raster bands mapping
         vrt_bands=[]
         wo_BandList=[]
@@ -676,8 +673,8 @@ class Pyramid(object):
             'srs':              self.proj_srs,
             'geotr':            geotr_templ % dst_geotr,
             'band_list':        '\n'.join(vrt_bands),
-            'blxsize':          self.tile_size[0],
-            'blysize':          self.tile_size[1],
+            'blxsize':          abs(self.tile_dim[0]),
+            'blysize':          abs(self.tile_dim[1]),
             'wo_ResampleAlg':   self.base_resampling,
             'wo_src_path':      self.src_path,
             'warp_options':     '\n'.join(warp_options),
@@ -698,12 +695,12 @@ class Pyramid(object):
         # warp base raster
         base_ds = gdal.Open(vrt_text,GA_ReadOnly)
         pf('.',end='')
-        
+
         # close datasets in a proper order
         del self.src_ds
 
         # create base_image raster
-        self.base_img=BaseImg(base_ds,self.tile_size,tile_ul[1:],tile_lr[1:],self.transparency)
+        self.base_img=BaseImg(base_ds,ul_pix,self.transparency)
 
     #----------------------------
 
@@ -748,23 +745,28 @@ class Pyramid(object):
         self.tile_map={}
         for zoom in self.zoom_range:
             tile_ul,tile_lr=self.corner_tiles(zoom)
-            zoom_tiles=flatten([[(zoom,x,y) for x in range(tile_ul[1],tile_lr[1]+1)] 
-                                           for y in range(tile_ul[2],tile_lr[2]+1)])
+            xx=(tile_ul[1],tile_lr[1])
+            yy=(tile_ul[2],tile_lr[2])
+            zoom_tiles=flatten([[
+                        (zoom,x,y)
+                    for x in range(min(xx),max(xx)+1)]
+                for y in range(min(yy),max(yy)+1)])
             #ld('zoom_tiles',zoom_tiles,tile_ul,tile_lr)
 
             ntiles_x,ntiles_y=self.tiles_xy(zoom)
-
             zoom_tiles_map=dict([((z,x%ntiles_x,y),(z,x,y)) for z,x,y in zoom_tiles])
             self.tile_map.update(zoom_tiles_map)
 
+        self.all_tiles=frozenset(self.tile_map) # store all tiles into a set
         ld('min_zoom',zoom,'tile_ul',tile_ul,'tile_lr',tile_lr,'tiles',zoom_tiles_map)
-        self.all_tiles=frozenset(self.tile_map)
+
+        # top level tiles are in zoom_tiles_map now
         top_results=filter(None,map(self.proc_tile,zoom_tiles_map.keys()))
 
         # write top-level metadata (html/kml)
         self.write_metadata(None,[ch for img,ch,opacities in top_results])
         self.write_tilemap()
-        
+
         # cache back tiles opacity
         file_opacities=[(self.tile_path(tile),opc)
             for tile,opc in flatten([opacities for img,ch,opacities in top_results])]
@@ -784,21 +786,32 @@ class Pyramid(object):
         zoom,x,y=tile
         if zoom==self.max_zoom: # get from the base image
             src_tile=self.tile_map[tile]
-            tile_img,opacity=self.base_img.get_tile(src_tile[1:])
+            tile_img,opacity=self.base_img.get_tile(self.tile_pixbounds(src_tile))
             if tile_img and self.palette:
                 tile_img.putpalette(self.palette)
         else: # merge children
             opacity=0
-            child_zoom=self.zoom_range[self.zoom_range.index(zoom)-1] # child's zoom
-            dz=int(2**(child_zoom-zoom))
+            ch_zoom=self.zoom_range[self.zoom_range.index(zoom)-1] # child's zoom
+            dz=int(2**(ch_zoom-zoom))
 
-            ch_mozaic=dict(flatten(
-                [[((child_zoom,x*dz+dx,y*dz+dy),(dx*self.tile_size[0]//dz,dy*self.tile_size[1]//dz))
-                               for dx in range(dz)]
-                                   for dy in range(dz)]))
-            children=self.all_tiles & frozenset(ch_mozaic)
+            # compute children locations inside the parent raster
+            tsz=[self.tile_dim[0],-self.tile_dim[1]] # align tiling ditrection according to the pixel direction ('y' goes downwards)
+            ch_sz=[tsz[i]//dz for i in (0,1)]        # raster offset increment
+            ofs=[0 if tsz[i] > 0 else -tsz[i]+ch_sz[i] for i in (0,1)]   # if negative -- needs to go in descending order
+            #ld('tsz,ch_sz,ofs',tsz,ch_sz,ofs)
+
+            ch_mozaic=dict(flatten(  # child tile: offsets to inside a parent tile
+                [[((ch_zoom,x*dz+dx,y*dz+dy),
+                        (ofs[0]+dx*ch_sz[0],ofs[1]+dy*ch_sz[1]))
+                    for dx in range(dz)]
+                for dy in range(dz)]))
+            #ld(tile,ch_mozaic)
+
+            children=self.all_tiles & frozenset(ch_mozaic) # get only real children
             ch_results=filter(None,map(self.proc_tile,children))
             #ld('tile',tile,'children',children,'ch_results',ch_results)
+
+            # combine into a parent tile
             if len(ch_results) == 4 and all([opacities[0][1]==1 for img,ch,opacities in ch_results]):
                 opacity=1
                 mode_opacity=''
@@ -818,9 +831,9 @@ class Pyramid(object):
                         tile_mode=('L' if 'L' in ch_img.mode else 'RGB')+mode_opacity
 
                     if self.transparency is not None:
-                        tile_img=Image.new(tile_mode,self.tile_size,self.transparency)
+                        tile_img=Image.new(tile_mode,img.size,self.transparency)
                     else:
-                        tile_img=Image.new(tile_mode,self.tile_size)
+                        tile_img=Image.new(tile_mode,img.size)
                     if self.palette is not None:
                         tile_img.putpalette(self.palette)
 
@@ -829,8 +842,8 @@ class Pyramid(object):
 
         if tile_img is not None and opacity != 0:
             self.write_tile(tile,tile_img)
-            
-            # write tile-level metadata (html/kml)            
+
+            # write tile-level metadata (html/kml)
             self.write_metadata(tile,[ch for img,ch,opacities in ch_results])
             return tile_img,tile,[(tile,opacity)]+ch_opacities
 
@@ -856,7 +869,7 @@ class Pyramid(object):
             tile_img.save(full_path,transparency=self.transparency)
         else:
             tile_img.save(full_path)
-        
+
         self.counter()
 
     #----------------------------
@@ -873,11 +886,11 @@ class Pyramid(object):
         'relative path to a tile'
     #----------------------------
         z,x,y=tile
-        return '%i/%i/%i.%s' % (z,x,y if self.tile_direction[1]==-1 else self.tiles_xy(z)[1]-1-y,self.tile_ext)
+        return '%i/%i/%i.%s' % (z,x,y,self.tile_ext)
 
     #----------------------------
 
-    def write_metadata(self,tile,children=[]): 
+    def write_metadata(self,tile,children=[]):
 
     #----------------------------
         pass # 'virtual'
@@ -907,8 +920,8 @@ class Pyramid(object):
             description=self.description,
             tms_srs=    self.tms_srs,
             tms_profile=self.tms_profile,
-            tile_width= self.tile_size[0],
-            tile_height=self.tile_size[1],
+            tile_width= abs(self.tile_dim[0]),
+            tile_height=abs(self.tile_dim[1]),
             tile_ext=   self.tile_ext,
             tile_mime=  tile_mime,
             origin_x=   self.tile_origin[0],
@@ -924,7 +937,7 @@ class Pyramid(object):
     #----------------------------
     #
     # utility functions
-    #    
+    #
     #----------------------------
 
     @staticmethod
@@ -938,7 +951,7 @@ class Pyramid(object):
     @staticmethod
     def profile_lst(tty=False):
         if not tty:
-            return [c.profile for c in profile_map]    
+            return [c.profile for c in profile_map]
         print('\nOutput profiles and compatibility:\n')
         [print('%10s - %s' % (c.profile,c.__doc__)) for c in profile_map]
         print()
@@ -948,50 +961,36 @@ class Pyramid(object):
 
     def res2zoom_xy(self,res):
         'resolution to zoom levels (separate for x and y)'
-        z=[int(math.floor(math.log(self.zoom0_res[i]/res[i],2))) for i in (0,1)]
+        z=[int(math.floor(math.log(abs(self.zoom0_res[i]/res[i]),2))) for i in (0,1)]
         return [v if v>0 else 0 for v in z]
 
     def pix2tile(self,zoom,pix_coord):
         'pixel coordinates to tile (z,x,y)'
-        return [zoom]+[pix_coord[i]//self.tile_size[i] for i in (0,1)]
-
-    def pix2tile_new(self,zoom,pix_coord):
-        'pixel coordinates to tile (z,x,y)'
         res=self.zoom2res(zoom)
-        ld(res)
         tile_xy=[int(round(
-                    (pix_coord[i]*res[i]-self.pix_origin[i]-self.tiles_origin[i])/res[i]
-                )) // self.tile_size[i] for i in (0,1)]
-        return [zoom]+[(tile_xy[i] if self.tile_direction[i] != -1 else -tile_xy[i]+1) for i in (0,1)]
+                (pix_coord[i]*res[i] + self.pix_origin[i] - self.tile_origin[i])/abs(res[i])
+                )) // self.tile_dim[i]
+                for i in (0,1)] # NB tile_dim can be negative!
+        return [zoom]+tile_xy
 
-#    pix2tile=pix2tile_new
-    
-    def tile2pix(self,tile):
-        'pixel coordinates of the upper left corner of a tile'
-        return map(operator.mul,self.tile_size,tile[1:])
-
-    def tile2pix_new(self,tile):
-        'pixel coordinates of the upper left corner of a tile'
-        res=self.zoom2res(zoom)
-        tile_xy=[xy if d != -1 else -xy+1 for xy,d in zip(tile[1:],self.tile_direction)]
-        pix=[tile_xy[i]*self.tile_size[i]*res[i] for i in (0,1)]
-        return zzzzz
-
-#    tile2pix=tile2pix_new
-    
     def coord2tile(self,zoom,coord):
         'cartesian coordinates to tile numbers'
         return self.pix2tile(zoom,self.coord2pix(zoom,coord))
 
     def tile_pixbounds(self,tile):
         'pixel coordinates of a tile'
-        z,x,y=tile
-        return [self.tile2pix((z,x,y)),self.tile2pix((z,x+1,y+1))]
+        z=tile[0]
+        return [self.coord2pix(z,c) for c in self.tile_bounds(tile)]
 
     def tile_bounds(self,tile):
         "cartesian coordinates of a tile's corners"
-        z=tile[0]
-        return map(self.pix2coord,(z,z),self.tile_pixbounds(tile))
+        res=self.zoom2res(tile[0])
+        xy1=[   tile[1+i] *self.tile_dim[i]*abs(res[i])+self.tile_origin[i] for i in (0,1)]
+        xy2=[(1+tile[1+i])*self.tile_dim[i]*abs(res[i])+self.tile_origin[i] for i in (0,1)]
+        xx,yy=zip(xy1,xy2)
+        ul=[min(xx),max(yy)]
+        lr=[max(xx),min(yy)]
+        return (ul,lr)
 
     def coord2pix(self,zoom,coord):
         'cartesian coordinates to pixel coordinates'
@@ -1026,11 +1025,8 @@ class Pyramid(object):
         p_lr=self.coord2pix(zoom,self.bounds[1])
         t_lr=self.pix2tile(zoom,(p_lr[0],p_lr[1]))
 
-        nztiles=self.tiles_xy(zoom)
         box_ul,box_lr=[self.tile_bounds(t) for t in (t_ul,t_lr)]
         ld('corner_tiles zoom',zoom,
-            'zoom tiles',nztiles,
-            'zoom pixels',map(lambda zt,ts:zt*ts,nztiles,self.tile_size),
             'p_ul',p_ul,'p_lr',p_lr,'t_ul',t_ul,'t_lr',t_lr,
             'longlat', self.coords2longlat([box_ul[0],box_lr[1]])
             )
@@ -1060,10 +1056,10 @@ class Pyramid(object):
                     else:                   # set to n
                         z=int(n)
                     zrange.append(z)
-                
+
                 # update range list
                 zlist+=range(min(zrange),max(zrange)+1)
-                
+
         self.zoom_range=list(reversed(sorted(set(zlist))))
         ld('zoom_range',self.zoom_range,defaults)
 
@@ -1099,7 +1095,7 @@ class Pyramid(object):
             return True
         else:
             return False
-# Pyramid        
+# Pyramid
 
 #############################
 
@@ -1108,31 +1104,29 @@ class GenericMap(Pyramid):
 #############################
     profile='generic'
     defaul_ext='.generic'
-    
+
     def __init__(self,src=None,dest=None,options=None):
         super(GenericMap, self).__init__(src,dest,options)
 
         self.srs=self.options.t_srs
         assert self.proj_srs, 'Target SRS is not specified'
-        self.tile_size=tuple(map(int,self.options.tile_size.split(',')))
         self.zoom0_tiles=map(int,self.options.zoom0_tiles.split(','))
-        if self.options.tms:
-            tile_direction=(1,1)
-        else:
-            tile_direction=(1,-1)
+        self.tile_dim=tuple(map(int,self.options.tile_dim.split(',')))
 
 #############################
 
 class TilingScheme(object):
 
 #############################
-    tile_size=(256,256) # tile size in pixels
+	pass
 
 class ZXYtiling(TilingScheme):
-    tile_direction=(1,-1)
+    tile_origin_lonlat=(-180,90)
+    tile_dim=(256,-256) # tile size in pixels
 
 class TMStiling(TilingScheme):
-    tile_direction=(1,1)
+    tile_origin_lonlat=(-180,-90)
+    tile_dim=(256,256) # tile size in pixels
 
 
 #############################
@@ -1145,10 +1139,10 @@ class PlateCarree(Pyramid):
     tms_srs='EPSG:4326'
 
     # http://earth.google.com/support/bin/static.py?page=guide.cs&guide=22373&topic=23750
-    # "Google Earth uses Simple Cylindrical projection for its imagery base. This is a simple map 
-    # projection where the meridians and parallels are equidistant, straight lines, with the two sets 
-    # crossing at right angles. This projection is also known as Lat/Lon WGS84"    
-    
+    # "Google Earth uses Simple Cylindrical projection for its imagery base. This is a simple map
+    # projection where the meridians and parallels are equidistant, straight lines, with the two sets
+    # crossing at right angles. This projection is also known as Lat/Lon WGS84"
+
     # Equirectangular (EPSG:32662 aka plate carrée, aka Simple Cylindrical)
     # we use this because the SRS might be shifted later to work around 180 meridian
     srs = '+proj=eqc +datum=WGS84 +ellps=WGS84'
@@ -1162,13 +1156,13 @@ class PlateCarree(Pyramid):
         kml_links=[]
         # convert tiles to degree boxes
         longlat_boxes=self.map_tiles2longlat_bounds(children)
-        
+
         for tile,longlat in zip(children,longlat_boxes):
             #ld(tile,longlat)
             w,n,e,s=['%.11f'%v for v in flatten(longlat)]
             name=os.path.splitext(self.tile_path(tile))[0]
             # fill in kml link template
-            kml_links.append( kml_link_templ % { 
+            kml_links.append( kml_link_templ % {
                 'name':    name,
                 'href':    path_prefix+'%s.kml' % name,
                 'west':    w, 'north':    n,
@@ -1217,7 +1211,6 @@ class PlateCarreeZXY(PlateCarree,ZXYtiling):
 #############################
     profile='zxy-geo'
     defaul_ext='.geo'
-    zoom0_origin=(0,0)
     tms_profile='zxy-geodetic' # non-standard profile
 
 #############################
@@ -1227,7 +1220,6 @@ class PlateCarreeTMS(PlateCarree,TMStiling):
 #############################
     profile='tms-geo'
     defaul_ext='.tms-geo'
-    zoom0_origin=(0,256)
     tms_profile='global-geodetic'
 
 # PlateCarreeTMS
@@ -1238,7 +1230,7 @@ kml_templ='''<?xml version="1.0" encoding="utf-8"?>
 <!-- Generated by gdal_tiler.py (http://code.google.com/p/tilers-tools/) -->
 
     <Document>
-%(dbg_start)s        <Style> 
+%(dbg_start)s        <Style>
             <ListStyle id="hideChildren"> <listItemType>checkHideChildren</listItemType> </ListStyle>
         </Style>
 %(dbg_end)s        <name>%(name)s</name>%(overlay)s%(links)s
@@ -1247,9 +1239,9 @@ kml_templ='''<?xml version="1.0" encoding="utf-8"?>
 '''
 
 kml_overlay_templ='''
-        <Region> 
-            <Lod> 
-                <minLodPixels>%(min_lod)s</minLodPixels> 
+        <Region>
+            <Lod>
+                <minLodPixels>%(min_lod)s</minLodPixels>
                 <maxLodPixels>%(max_lod)s</maxLodPixels>
             </Lod>
             <LatLonAltBox>
@@ -1270,9 +1262,9 @@ kml_overlay_templ='''
 kml_link_templ='''
         <NetworkLink>
             <name>%(name)s</name>
-            <Region> 
-                <Lod> 
-                    <minLodPixels>%(min_lod)s</minLodPixels> 
+            <Region>
+                <Lod>
+                    <minLodPixels>%(min_lod)s</minLodPixels>
                     <maxLodPixels>%(max_lod)s</maxLodPixels>
                 </Lod>
                 <LatLonAltBox>
@@ -1286,7 +1278,7 @@ kml_link_templ='''
         </NetworkLink>'''
 
 ##############################
-
+#
 #class Yandex(Pyramid):
 #    'Yandex Maps (WGS 84 / World Mercator, epsg:3395)'
 ##############################
@@ -1307,8 +1299,8 @@ class GMercator(Pyramid):
     srs='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext'
 
     tms_srs='OSGEO:41001' # http://wiki.osgeo.org/wiki/Tile_Map_Service_Specification
-    
-    def write_metadata(self,tile,children=[]): 
+
+    def write_metadata(self,tile,children=[]):
         if not tile: # create top level html
             self.write_html()
 
@@ -1325,8 +1317,6 @@ class GMercatorZXY(GMercator,ZXYtiling):
     defaul_ext='.zxy'
     tms_profile='zxy-mercator' # non-standard profile
 
-    zoom0_origin=(0,0)
-    
 #############################
 
 class GMercatorTMS(GMercator,TMStiling):
@@ -1335,8 +1325,6 @@ class GMercatorTMS(GMercator,TMStiling):
     profile='tms'
     defaul_ext='.tms'
     tms_profile='global-mercator'
-
-    zoom0_origin=(0,256)
 
 # GMercatorTMS
 
@@ -1382,8 +1370,6 @@ def parse_args(arg_lst):
         help='generic profile: tile size (default: 256,256)')
     parser.add_option("--zoom0-tiles", default='1,1',metavar="NTILES_X,NTILES_Y",
         help='generic profile: number of tiles along the axis at the zoom 0 (default: 1,1)')
-    parser.add_option("--tms", action="store_true", 
-        help='generic profile: generate TMS tiles (default: google)')
     parser.add_option("--srs", default=None,metavar="PROJ4_SRS",
         help="override source's spatial reference system with PROJ.4 definition")
     parser.add_option('--overview-resampling', default='nearest',metavar="METHOD1",
@@ -1396,11 +1382,11 @@ def parse_args(arg_lst):
         help='set resampling options to (antialias,bilinear)')
     parser.add_option('--tps', action="store_true",
         help='Force use of thin plate spline transformer based on available GCPs)')
-    parser.add_option("-c", "--cut", action="store_true", 
+    parser.add_option("-c", "--cut", action="store_true",
         help='cut the raster as per cutline provided')
     parser.add_option("--cutline", default=None, metavar="DATASOURCE",
         help='cutline data: OGR datasource')
-    parser.add_option("--cutline-match-name",  action="store_true", 
+    parser.add_option("--cutline-match-name",  action="store_true",
         help='match OGR feature field "Name" against source name')
     parser.add_option("--cutline-blend", dest="blend_dist",default=None,metavar="N",
         help='CUTLINE_BLEND_DIST in pixels')
@@ -1412,17 +1398,17 @@ def parse_args(arg_lst):
         help='prefix for tile URLs at googlemaps.hml')
     parser.add_option("--tile-format", default='png',metavar="FMT",
         help='tile image format (default: PNG)')
-    parser.add_option("--paletted", action="store_true", 
+    parser.add_option("--paletted", action="store_true",
         help='convert tiles to paletted format (8 bit/pixel)')
     parser.add_option("-t", "--dest-dir", dest="dest_dir", default=None,
         help='destination directory (default: source)')
-    parser.add_option("--noclobber", action="store_true", 
+    parser.add_option("--noclobber", action="store_true",
         help='skip processing if the target pyramyd already exists')
     parser.add_option("-s", "--strip-dest-ext", action="store_true",
         help='do not add a default extension suffix from a destination directory')
-    parser.add_option("-q", "--quiet", action="store_const", 
+    parser.add_option("-q", "--quiet", action="store_const",
         const=0, default=1, dest="verbose")
-    parser.add_option("-d", "--debug", action="store_const", 
+    parser.add_option("-d", "--debug", action="store_const",
         const=2, dest="verbose")
 
     return parser.parse_args(arg_lst)
@@ -1432,16 +1418,16 @@ def parse_args(arg_lst):
 def main(argv):
 
 #----------------------------
-    
+
     global options
     (options, args) = parse_args(argv[1:])
-    
-    logging.basicConfig(level=logging.DEBUG if options.verbose==2 else 
+
+    logging.basicConfig(level=logging.DEBUG if options.verbose==2 else
         (logging.ERROR if options.verbose==0 else logging.INFO))
 
     ld(os.name)
     ld(options)
-    
+
     if options.list_profiles:
         Pyramid.profile_lst(tty=True)
         sys.exit(0)
