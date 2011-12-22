@@ -28,10 +28,10 @@
         <title>tiles-openlayers</title>
         <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 
-        <!-- 
+        <!--
 	    <script src='http://openlayers.org/api/2.11-rc2/OpenLayers.js'></script>
         <script src='http://maps.google.com/maps?file=api&amp;v=2'></script>
-        <script src='http://proj4js.org/lib/proj4js-combined.js'></script> 
+        <script src='http://proj4js.org/lib/proj4js-combined.js'></script>
         <script src='http://proj4js.org/lib/proj4js-compressed.js'></script>
         -->
 
@@ -54,18 +54,18 @@
 			    width: 100%;
 			    height: 100%;
 			    border: 1px solid black;
-		    }	
+		    }
 		    .clickbar {
                 top: 8px;
                 right: 6px;
 		        border: 1px solid black;
-		        border-radius: 3px; 
-		        background: white; 
-                padding-left: 4px; 
+		        border-radius: 3px;
+		        background: white;
+                padding-left: 4px;
                 padding-right: 4px;
                 font: 10px monospace;
 		        cursor: pointer;
-		    }	
+		    }
 	    </style>
 
 	    <script  type="text/javascript">
@@ -75,7 +75,7 @@
                 clickBarDiv: null,
                 divEvents: null,
                 title : 'Click to set opacity of the overlay',
-                
+
                 /**
                  * Constructor: OpenLayers.Control.ClickBar
                  *
@@ -95,22 +95,22 @@
                     OpenLayers.Control.prototype.destroy.apply(this, arguments);
                 },
 
-                /** 
+                /**
                  * Method: redraw
                  * clear the div and start over.
                  */
                 redraw: function() {
                     if (this.div != null) {
                         this._removeClickBar();
-                    }  
+                    }
                     this.draw();
                 },
-                
+
                 /**
-                * Method: draw 
+                * Method: draw
                 *
                 * Parameters:
-                * px - {<OpenLayers.Pixel>} 
+                * px - {<OpenLayers.Pixel>}
                 */
                 draw: function(px) {
                     // initialize our internal div
@@ -120,9 +120,9 @@
                     return this.div;
                 },
 
-                /** 
+                /**
                 * Method: _addClickBar
-                * 
+                *
                 * Parameters:
                 * location - {<OpenLayers.Pixel>} where ClickBar drawing is to start.
                 */
@@ -136,18 +136,18 @@
                                 "relative");
 
                     this.clickBarDiv = div;
-                    this.divEvents = new OpenLayers.Events(this, div, null, true, 
+                    this.divEvents = new OpenLayers.Events(this, div, null, true,
                                                             {includeXY: true});
                     this.divEvents.on({
                         "click": this.click
                     });
-                    
+
                     this.div.appendChild(div);
 
-                    this.ratioDisplay();                
-                    return this.div; 
+                    this.ratioDisplay();
+                    return this.div;
                 },
-                
+
                 /**
                  * Method: _removeClickBar
                  */
@@ -156,7 +156,7 @@
                         "click": this.click
                     });
                     this.divEvents.destroy();
-                    
+
                     this.div.removeChild(this.clickBarDiv);
                     this.clickBarDiv = null;
                 },
@@ -164,11 +164,11 @@
                 click: function (event) {
                     this.clickToRatio(event);
                 },
-                
+
                 ratio: 0.5,
-                
+
                 clickMargin: 7,
-                
+
                 clickToRatio: function(event) {
                     var rect=this.clickBarDiv.getBoundingClientRect();
                     var w=rect.width-this.clickMargin*2;
@@ -177,15 +177,15 @@
                     if (ratio < 0) ratio=0;
                     if (ratio > 1) ratio=1;
                     this.ratio=ratio;
-                    this.ratioDisplay();                
+                    this.ratioDisplay();
                     },
 
                 reportRatio: null, // function(ratio){log(ratio)},
-                
+
                 ratioDisplay: function (){
                     var s = OpenLayers.Number.format(this.ratio,1);
                     this.clickBarDiv.innerHTML = '<- ' + s + ' ->'
-                    this.reportRatio(this.ratio);    
+                    this.reportRatio(this.ratio);
                     },
 
                 CLASS_NAME: "OpenLayers.Control.ClickBar"
@@ -201,7 +201,7 @@
         }
 
         function log(msg) {
-            try { console.log.apply(console,arguments) } 
+            try { console.log.apply(console,arguments) }
             catch (e) {
                 setTimeout(function() {
                     throw new Error(msg);
@@ -213,7 +213,7 @@
            Provide the XMLHttpRequest constructor for Internet Explorer 5.x-6.x:
            Other browsers (including Internet Explorer 7.x-9.x) do not redefine
            XMLHttpRequest if it already exists.
-         
+
            This example is based on findings at:
            http://blogs.msdn.com/xmlteam/archive/2006/10/23/using-the-right-version-of-msxml-in-internet-explorer.aspx
         */
@@ -229,19 +229,18 @@
             error("This browser does not support XMLHttpRequest.");
           };
 
-        function read_xml(url) {
+        function read_text(url,mime) {
             var request = new XMLHttpRequest();
             request.open('GET', url, false);
-            request.overrideMimeType("text/xml");
-				/*
+            request.overrideMimeType(mime);
+			/*
 			request.onreadystatechange = function() {
                 log('this.readyState',this.readyState);
 				if(this.readyState == 4) {
 				  alert("Loaded xml.\nresponseXml: " + xmlhttp.responseXML);
-				  alert("documentElement: " + xmlhttp.responseXML.documentElement);
 					}
-				}            
-				  */
+				}
+			  */
             try {
                 request.send();
                 if (request.status != 0) {
@@ -253,52 +252,34 @@
                     error('Google Chrome requires to run with "--allow-file-access-from-files" switch to load XML from local files')
                 }
             }
-            return request.responseXML;
-        }
-        
-        function e2f(elem,attr_idx) {
-            return parseFloat(elem.getAttribute(attr_idx));
+            return request.responseText;
         }
 
-        function read_map_parameters() {    
-            var tilemap=read_xml("tilemap.xml");
-            if (tilemap == null) {
+        function read_map_parameters() {
+            var tilemap_txt=read_text("tilemap.json","application/json");
+            if (tilemap_txt == null) {
 	            error('Cannot read tilemap.xml');
                 return null;
-            }
+            };
+
+            //log(tilemap_txt);
+            var tilemap = JSON.parse(tilemap_txt);
+            //log(tilemap);
+
+            if (tilemap['srs'] != 'OSGEO:41001') {
+	            error('tilemap.xml: unsupported SRS');
+                return null;
+            };
+
+            /*
             if (tilemap.getElementsByTagName("TileSets").length == 0) {
 				log(navigator.appName);
-				if (navigator.appName == 'Opera') 
+				if (navigator.appName == 'Opera')
 					error('tilemap.xml is incorrect. \nYou may need to set "Allow File XMLHttpRequest" with opera:config#UserPrefs|AllowFileXMLHttpRequest to disable this security check.');
 				else
 					error('tilemap.xml is incorrect');
                 return null;
 			}
-            layer_profile=tilemap.getElementsByTagName("TileSets")[0].getAttribute('profile');
-            if (layer_profile != 'global-mercator' && layer_profile != 'zxy-mercator') {
-	            error('unsupported profile in tilemap.xml '+layer_profile);
-                return null;
-            }
-            layer_srs = tilemap.getElementsByTagName("SRS")[0].textContent;
-            if (layer_srs != 'OSGEO:41001') {
-	            error('tilemap.xml: unsupported SRS');
-                return null;
-            }
-            title = tilemap.getElementsByTagName("Title")[0].textContent;
-            document.title = title;
-
-            var box_el = tilemap.getElementsByTagName("BoundingBox")[0];
-            layer_extent = new OpenLayers.Bounds(e2f(box_el,'minx'),e2f(box_el,'miny'),e2f(box_el,'maxx'),e2f(box_el,'maxy'));
-
-            var origin_el = tilemap.getElementsByTagName("Origin")[0];
-            tile_origin = new OpenLayers.LonLat(e2f(origin_el,'x'),e2f(origin_el,'y'));
-            //log(tile_origin);
-            
-            var tile_format_el=tilemap.getElementsByTagName("TileFormat")[0];
-            tile_size= new OpenLayers.Size(
-                parseInt(tile_format_el.getAttribute('width')),
-                parseInt(tile_format_el.getAttribute('height')));
-            tile_ext=tile_format_el.getAttribute('extension');
 
             var tileset_el_lst=tilemap.getElementsByTagName("TileSet");
             layer_resolutions=[];
@@ -315,7 +296,9 @@
                     units_per_pixel: res,
                 };
             }
-            return true;
+            */
+
+            return tilemap;
         }
 
 		OpenLayers.Util.extend( OpenLayers.INCHES_PER_UNIT, {
@@ -323,11 +306,11 @@
 		    "cbl": OpenLayers.INCHES_PER_UNIT["nmi"]/10,
 		});
 
-//        Proj4js.defs["EPSG:3857"]="+title=GoogleMercator +proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs"; 
+//        Proj4js.defs["EPSG:3857"]="+title=GoogleMercator +proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs";
 
 //        var mapProjection = "EPSG:3857";
         var layer_srs = 'OSGEO:41001';
-        var layer_extent = new OpenLayers.Bounds(-20037508.342789, -20037508.342789, 20037508.342789, 20037508.342789);
+        var layer_bounds = new OpenLayers.Bounds(-20037508.342789, -20037508.342789, 20037508.342789, 20037508.342789);
         var tile_origin = new OpenLayers.LonLat(-20037508.342789,-20037508.342789);
         var tile_size = new OpenLayers.Size(256,256);
         var tile_ext = "png";
@@ -338,7 +321,20 @@
         var min_res=null;
         var max_res=null;
         var layer_resolutions=[];
-                
+
+        var layer = {
+            "title": document.title,
+            "description": "",
+            "profile": "zxy-mercator",
+            "tile_size": [256, -256],
+            "srs": "OSGEO:41001",
+            "tile_ext": "png",
+            "tile_mime": "image/png",
+            "tile_origin": [-20037508.342789248, 20037508.342789244],
+            "bounds": [-20037508.342789, -20037508.342789, 20037508.342789, 20037508.342789],
+            "tilesets": null,
+            };
+
         log('OpenLayers.VERSION_NUMBER',OpenLayers.VERSION_NUMBER);
 
         function initialize_openlayers() {
@@ -359,12 +355,13 @@
                         new OpenLayers.Control.ScaleLine({
                             maxWidth: 50,
                             bottomOutUnits: 'NM',
-                            bottomInUnits: 'cbl'                            
+                            bottomInUnits: 'cbl'
                         }),
                     ]
             });
 
-            read_map_parameters();
+            var layer = read_map_parameters();
+            document.title=layer.title;
 
             var osm = new OpenLayers.Layer.OSM(
                 "Open Street Map",'http://tile.openstreetmap.org/${z}/${x}/${y}.png',
@@ -376,13 +373,23 @@
                 {
                     sphericalMecator: true,
                     wrapDateLine: true,
-                    maxExtent: layer_extent,
-                    tileOrigin: tile_origin,
-                    tileSize: tile_size,
-                    resolutions: layer_resolutions,
                     isBaseLayer: false,
-                    profile: layer_profile,
                     displayOutsideMaxExtent: false,
+                    maxExtent: new OpenLayers.Bounds(
+                        layer.bounds[0],
+                        layer.bounds[1],
+                        layer.bounds[2],
+                        layer.bounds[3]),
+                    tileOrigin: new OpenLayers.LonLat(
+                        layer.tile_origin[0],
+                        layer.tile_origin[1]),
+                    tileSize: new OpenLayers.Size(
+                        Math.abs(layer.tile_size[0]),
+                        Math.abs(layer.tile_size[1])),
+                    tileInversed: [
+                        layer.tile_size[0] < 0,
+                        layer.tile_size[1] < 0],
+                    //resolutions: layer_resolutions,
 
                     // openlayers 2.11 and below do not take into account TileOrigin
                     getXYZ: function(bounds) {
@@ -396,35 +403,37 @@
                             OpenLayers.Util.indexOf(this.serverResolutions, res) :
                             this.map.getZoom() + this.zoomOffset;
                         var limit = Math.pow(2, z);
+
+                        if (this.tileInversed[0])
+                            x= -x - 1;
+                        if (!this.tileInversed[1])
+                            y= -y - 1;
                         if (this.wrapDateLine) {
                            x = ((x % limit) + limit) % limit;
                         }
-                        
-                        if (this.profile == 'global-mercator')
-                            y= -y - 1;
 
                         //log(bounds.left,bounds.top,z,x,y);
                         return {'x': x, 'y': y, 'z': z};
                     },
                     // openlayers 2.11 and below do not take into account TileOrigin
-                    getTileBounds: function(viewPortPx) { 
+                    getTileBounds: function(viewPortPx) {
                         var origin = this.getTileOrigin();
                         var resolution = this.getResolution();
                         var tileMapWidth = resolution * this.tileSize.w;
                         var tileMapHeight = resolution * this.tileSize.h;
                         var mapLocation = this.getLonLatFromViewPortPx(viewPortPx);
-                        var tileLeft = origin.lon + 
+                        var tileLeft = origin.lon +
                             (tileMapWidth * Math.floor((mapLocation.lon - origin.lon) / tileMapWidth));
-                        var tileBottom = origin.lat + 
+                        var tileBottom = origin.lat +
                             (tileMapHeight * Math.floor((mapLocation.lat - origin.lat) / tileMapHeight));
-                            
+
                         //log(tileLeft,tileBottom);
                         return new OpenLayers.Bounds(tileLeft, tileBottom,
                                                      tileLeft + tileMapWidth,
                                                      tileBottom + tileMapHeight);
                     },
                 });
-                
+
                 //log(tiler_overlay);
 
                 map.addControl(
@@ -433,14 +442,14 @@
                         ratio: 0.8,
                         reportRatio: function(ratio){
                             //log(ratio);
-		                    if (OpenLayers.Util.alphaHack() == false) 
+		                    if (OpenLayers.Util.alphaHack() == false)
 		                        tiler_overlay.setOpacity(ratio);
                         },
                     })
                 );
 
             map.addLayers([osm,tiler_overlay]);
-			map.zoomToExtent(layer_extent,true);
+			map.zoomToExtent(tiler_overlay.maxExtent,true);
 
             // Google layers
             var gphy = new OpenLayers.Layer.Google(

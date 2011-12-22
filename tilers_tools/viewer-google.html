@@ -39,20 +39,12 @@
 
 <script type="text/javascript">
     var G=google.maps; // use G. instead of google.maps.
-
-    var mapBounds = new G.LatLngBounds(new G.LatLng(-85.0511287798, -180.0), new G.LatLng(85.0511287798, 180.0));
-    var coord_origin = new G.Point(-20037508.342789,-20037508.342789);
-    var tile_ext = "png";
-    var tile_size = new G.Size(256, 256);
     var map_type = G.MapTypeId.SATELLITE;
     var opacity = 0.8;
-    var profile = 'zxy-mercator';
-    var srs = 'OSGEO:41001';
     var transparent_url='http://maps.gstatic.com/mapfiles/transparent.png';
-    var tileset_lst=[];
-    
+
     function log(msg) {
-        try { console.log(msg) } 
+        try { console.log(msg) }
         catch (e) {
             setTimeout(function() {
                 throw new Error(msg);
@@ -69,7 +61,7 @@
        Provide the XMLHttpRequest constructor for Internet Explorer 5.x-6.x:
        Other browsers (including Internet Explorer 7.x-9.x) do not redefine
        XMLHttpRequest if it already exists.
-     
+
        This example is based on findings at:
        http://blogs.msdn.com/xmlteam/archive/2006/10/23/using-the-right-version-of-msxml-in-internet-explorer.aspx
     */
@@ -85,25 +77,76 @@
         throw new Error("This browser does not support XMLHttpRequest.");
       };
 
-    function read_xml(url) {
-        var request = new XMLHttpRequest();
-        request.open('GET', url, false);
-        request.overrideMimeType("text/xml");
-        try {
-            request.send(null);
-            if (request.status != 0) {
-                log(request.status);
-	            log(request.responseText);
+       function read_text(url,mime) {
+            var request = new XMLHttpRequest();
+            request.open('GET', url, false);
+            request.overrideMimeType(mime);
+			/*
+			request.onreadystatechange = function() {
+                log('this.readyState',this.readyState);
+				if(this.readyState == 4) {
+				  alert("Loaded xml.\nresponseXml: " + xmlhttp.responseXML);
+					}
+				}
+			  */
+            try {
+                request.send();
+                if (request.status != 0) {
+                    log('######################### request.status',request.status,request.responseText);
+                }
+            } catch (e) {
+                log('######################### e.code',e.code);
+                if (e.code == 101) {
+                    error('Google Chrome requires to run with "--allow-file-access-from-files" switch to load XML from local files')
+                }
             }
-        } catch (e) {
-            log(e)
-            if (e.code == 101) {
-                alert('Google Chrome requires to run with "--allow-file-access-from-files" switch to load XML from local files')
-            }
+            return request.responseText;
         }
-        return request.responseXML;
-    }
-    
+
+        function read_map_parameters() {
+            var tilemap_txt=read_text("tilemap.json","application/json");
+            if (tilemap_txt == null) {
+	            error('Cannot read tilemap.xml');
+                return null;
+            };
+
+            var tilemap = JSON.parse(tilemap_txt);
+
+            if (tilemap['srs'] != 'OSGEO:41001') {
+	            error('tilemap.xml: unsupported SRS');
+                return null;
+            };
+
+            /*
+            if (tilemap.getElementsByTagName("TileSets").length == 0) {
+				log(navigator.appName);
+				if (navigator.appName == 'Opera')
+					error('tilemap.xml is incorrect. \nYou may need to set "Allow File XMLHttpRequest" with opera:config#UserPrefs|AllowFileXMLHttpRequest to disable this security check.');
+				else
+					error('tilemap.xml is incorrect');
+                return null;
+			}
+
+            var tileset_el_lst=tilemap.getElementsByTagName("TileSet");
+            layer_resolutions=[];
+            min_res = Number.MAX_VALUE;
+            max_res = 0;
+            for (i=0; i<tileset_el_lst.length; i++) {
+                var zoom = parseInt(tileset_el_lst[i].getAttribute('order'));
+                var res = parseFloat(tileset_el_lst[i].getAttribute('units-per-pixel'));
+                layer_resolutions[i]=res;
+                min_res=Math.min(min_res,res);
+                max_res=Math.max(max_res,res);
+                tileset_lst[zoom] = {
+                    prefix: tileset_el_lst[i].getAttribute('href'),
+                    units_per_pixel: res,
+                };
+            }
+            */
+
+            return tilemap;
+        }
+
 	function coord2latlong(point) {
 	    var R = 6378137 // Eatrh's radius as per EPSG:3857
 		var lon = 180/Math.PI * (point.x/R);
@@ -111,82 +154,6 @@
 		//log('x,y '+point.x+' '+point.y+' lon,lat '+lon+' '+lat);
 		return new G.LatLng(lat,lon);
 	}
-
-    function elem2point(elem,x_idx,y_idx) {
-        var x=parseFloat(elem.getAttribute(x_idx));
-        var y=parseFloat(elem.getAttribute(y_idx));
-        return new G.Point(x,y);
-    }
-
-    function read_map_parameters() {    
-        var tilemap=read_xml("tilemap.xml");
-        if (tilemap == null) {
-	        error('Cannot read tilemap.xml');
-            return null;
-        }
-        profile=tilemap.getElementsByTagName("TileSets")[0].getAttribute('profile');
-        if (profile != 'global-mercator' && profile != 'zxy-mercator') {
-	        error('tilemap.xml: unsupported profile');
-            return null;
-        }
-        srs = tilemap.getElementsByTagName("SRS")[0].textContent;
-        if (srs != 'OSGEO:41001') {
-	        error('tilemap.xml: unsupported SRS');
-            return null;
-        }
-        document.title = tilemap.getElementsByTagName("Title")[0].textContent;
-
-        var box_el = tilemap.getElementsByTagName("BoundingBox")[0];
-        var box_sw=coord2latlong(elem2point(box_el,'minx','miny'));
-        var box_ne=coord2latlong(elem2point(box_el,'maxx','maxy'));
-        mapBounds = new G.LatLngBounds(box_sw, box_ne);
-
-        var origin_el = tilemap.getElementsByTagName("Origin")[0];
-        coord_origin = elem2point(origin_el,'x','y');
-        //log(coord_origin);
-        
-        var tile_format_el=tilemap.getElementsByTagName("TileFormat")[0];
-        tile_size= new G.Size(parseInt(tile_format_el.getAttribute('width')),parseInt(tile_format_el.getAttribute('height')));
-        tile_ext=tile_format_el.getAttribute('extension');
-
-        var tileset_el_lst=tilemap.getElementsByTagName("TileSet");        
-        for (i=0; i<tileset_el_lst.length; i++) {
-            var zoom = parseInt(tileset_el_lst[i].getAttribute('order'));
-            tileset_lst[zoom] = {
-                prefix: tileset_el_lst[i].getAttribute('href'),
-                units_per_pixel: parseFloat(tileset_el_lst[i].getAttribute('units-per-pixel')),
-            };
-        }
-    }
-
-    function map_overlay(){
-        return new G.ImageMapType({
-            tileSize: tile_size,
-            opacity: opacity,
-            isPng: (tile_ext == "png"),
-            getTileUrl: function(tile_coord, zoom) {
-                var max_x=1<<zoom;
-                var max_y=1<<zoom;
-                if (typeof tileset_lst[zoom] == "undefined" ||
-                    tile_coord.y >= max_y || tile_coord.y < 0)
-                        return transparent_url;
-                var prefix=tileset_lst[zoom].prefix;
-                var y=tile_coord.y;
-                if (profile == 'global-mercator') {
-                    y= -tile_coord.y -1;
-                    if (coord_origin.y < 0)
-                        y += max_y;
-                }
-                var x=tile_coord.x % max_x;
-                if (x < 0)
-                    x=max_x+x;                
-                var url=prefix+"/"+x+"/"+y+"."+tile_ext;
-                //log(url);
-                return url;
-                }
-            })
-        }
-
     function opacity_str(opacity){
         var s = String(Math.round(opacity*100));
         while (s.length < 3) s = '+' + s;
@@ -236,23 +203,74 @@
             });
         return controlDiv;
         }
+/*
+        var layer = {
+            "title": document.title,
+            "description": "",
+            "profile": "zxy-mercator",
+            "tile_size": [256, -256],
+            "srs": "OSGEO:41001",
+            "tile_ext": "png",
+            "tile_mime": "image/png",
+            "tile_origin": [-20037508.342789248, 20037508.342789244],
+            "bounds": [-20037508.342789, -20037508.342789, 20037508.342789, 20037508.342789],
+            "tilesets": null,
+            };
+*/
+    function map_overlay(layer){
+        return new G.ImageMapType({
+            tileSize: new G.Size(
+                Math.abs(layer.tile_size[0]),
+                Math.abs(layer.tile_size[1])),
+            opacity: opacity,
+            isPng: (layer.tile_ext == "png"),
+            tileInversed: [
+                layer.tile_size[0] < 0,
+                layer.tile_size[1] < 0],
+
+            getTileUrl: function(tile_coord, zoom) {
+                var max_x=1<<zoom;
+                var max_y=1<<zoom;
+                /*
+                if (typeof tileset_lst[zoom] == "undefined" ||
+                    tile_coord.y >= max_y || tile_coord.y < 0)
+                        return transparent_url;
+                */
+                var prefix=zoom; //tileset_lst[zoom].prefix;
+                var y=tile_coord.y;
+                if (!this.tileInversed[1]) {
+                    y= -y -1;
+                    y += max_y;
+                }
+                var x=tile_coord.x % max_x;
+                if (x < 0)
+                    x=max_x+x;
+                var url=prefix+"/"+x+"/"+y+"."+(this.isPng ? 'png' : 'jpg');
+                //log(url);
+                return url;
+                }
+            })
+        }
 
     function initialize() {
-        map = new G.Map(document.getElementById("map_canvas"));
-        read_map_parameters();
+        var map = new G.Map(document.getElementById("map_canvas"));
+        var layer=read_map_parameters();
+        log(layer);
+        document.title = layer.title;
 
-        //log(mapBounds);
-        map.fitBounds(mapBounds);
+        var box_sw=coord2latlong(new G.Point(layer.bounds[0],layer.bounds[1]));
+        var box_ne=coord2latlong(new G.Point(layer.bounds[2],layer.bounds[3]));
+
+        map.fitBounds(new G.LatLngBounds(box_sw, box_ne));
         map.setMapTypeId(map_type);
-        
-        var overlay_index=map.overlayMapTypes.push(map_overlay()) - 1;
+
+        var overlay_index=map.overlayMapTypes.push(map_overlay(layer)) - 1;
         map.controls[G.ControlPosition.TOP_RIGHT].push(opacity_control(map,overlay_index));
         }
 </script>
 </head>
 
 <body onload="initialize()">
-<!--    <div id="header"><h1>NE1_HR_LC_SR_W_DR.gmaps</h1></div> -->
     <div id="map_canvas" style="width:100%; height:100%"></div>
 </body>
 </html>
