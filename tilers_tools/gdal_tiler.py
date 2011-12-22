@@ -307,16 +307,19 @@ class Pyramid(object):
         # adjust tile origins to the limits of a world raster
         max_lat=self.proj2geog.transform_point(self.pix_origin)[1]
         to_lon,to_lat=self.tile_origin_lonlat
+
+        # self.tile_origin may be changed later to avoid crossing longitude 180
+        # but self.tile_origin_lonlat will retain the original setting
         self.tile_origin_lonlat = (to_lon,(max_lat if max_lat < to_lat else (-max_lat if -max_lat > to_lat else to_lat)))
         self.tile_origin=self.proj2geog.transform_point(self.tile_origin_lonlat,inv=True)
 
         ld('zoom0_tiles',self.zoom0_tiles,'tile_dim',self.tile_dim,'pix_origin',self.pix_origin,'tile_origin',self.tile_origin,self.tile_origin_lonlat)
 
         # default map bounds to maximum limits (world map)
-        ul=self.pix2coord(0,(0,0)) 
+        ul=self.pix2coord(0,(0,0))
         lr=[-ul[0],-ul[1]]
-        self.bounds=(ul,                # upper left
-                    (-ul[0],-ul[1]))    # lower right
+        self.bounds=(  ul,               # upper left
+                     (-ul[0],-ul[1]))    # lower right
 
     #----------------------------
 
@@ -335,7 +338,6 @@ class Pyramid(object):
         pf('\n%s -> %s '%(self.src,self.dest),end='')
 
         if os.path.isdir(self.dest):
-#            if self.options.noclobber and os.path.exists(os.path.join(self.dest,'merge-cache')):
             if self.options.noclobber and os.path.exists(self.dest):
                 pf('*** Target already exists: skipping',end='')
                 return False
@@ -353,10 +355,11 @@ class Pyramid(object):
         shifted_srs=self.shift_srs(self.max_zoom)
         shift_x=MyTransformer(SRC_SRS=shifted_srs,DST_SRS=self.proj_srs).transform_point((0,0))[0]
         if shift_x != 0:
-            ld('new_srs',shifted_srs,'shift_x',shift_x,'pix_origin',self.pix_origin)
-            self.pix_origin=(self.pix_origin[0]-shift_x,self.pix_origin[1])
             self.proj_srs=shifted_srs
             self.proj2geog=MyTransformer(SRC_SRS=self.proj_srs,DST_SRS=self.geog_srs)
+            self.pix_origin=(self.pix_origin[0]-shift_x,self.pix_origin[1])
+            self.tile_origin=(self.tile_origin[0]-shift_x,self.tile_origin[1])
+            ld('new_srs',shifted_srs,'shift_x',shift_x,'pix_origin',self.pix_origin)
 
         # get corners at the target SRS
         target_ds=gdal.AutoCreateWarpedVRT(self.src_ds,None,proj4wkt(shifted_srs))
@@ -365,15 +368,17 @@ class Pyramid(object):
             (target_ds.RasterXSize,target_ds.RasterYSize)])
 
         # self.bounds are set to a world raster, now clip to the max tileset area
-        self.bounds=(  (max(self.bounds[0][0],target_bounds[0][0]),
-                        min(self.bounds[0][1],target_bounds[0][1])),
-                       (min(self.bounds[1][0],target_bounds[1][0]),
-                        max(self.bounds[1][1],target_bounds[1][1])))
+        self.bounds=((target_bounds[0][0],
+                      min(self.bounds[0][1],target_bounds[0][1])),
+                     (target_bounds[1][0],
+                      max(self.bounds[1][1],target_bounds[1][1])))
 
-        #ld('target raster')
-        #ld('Upper Left',self.bounds[0],target_bounds[0],self.proj2geog.transform([self.bounds[0],target_bounds[0]]))
-        #ld('Lower Right',self.bounds[1],target_bounds[1],self.proj2geog.transform([self.bounds[1],target_bounds[1]]))
-
+        ld('target raster')
+        ld('Upper Left',self.bounds[0],target_bounds[0],self.proj2geog.transform([self.bounds[0],target_bounds[0]]))
+        ld('Lower Right',self.bounds[1],target_bounds[1],self.proj2geog.transform([self.bounds[1],target_bounds[1]]))
+#        orig_ul=MyTransformer(SRC_SRS=self.geog_srs,DST_SRS=self.srs).transform_point(
+#            self.proj2geog.transform_point(target_bounds[0]))
+#        ld(orig_ul[0]-target_bounds[0][0],orig_ul)
         return True
 
     #----------------------------
@@ -425,7 +430,7 @@ class Pyramid(object):
                 elif min(a) == 0:
                     transparency=a.index(0)
                 elif ncolors < 256:
-                    pil_palette+=[0,0,0]                   # the last color added is for transparency
+                    pil_palette+=[0,0,0]                   # the last color index is a transparency
                     transparency=len(pil_palette)/3-1
 
             ld('transparency',transparency)
@@ -480,7 +485,7 @@ class Pyramid(object):
                     'band_list':band_lst,
                     }
 
-                src_vrt=os.path.join(self.dest,self.base+'.src.vrt') # auxilary VRT file
+                src_vrt=os.path.abspath(os.path.join(self.dest,self.base+'.src.vrt')) # auxilary VRT file
                 self.temp_files.append(src_vrt)
                 self.src_path=src_vrt
                 with open(src_vrt,'w') as f:
@@ -528,7 +533,7 @@ class Pyramid(object):
             left_xy=self.proj2geog.transform_point((left_lon,0),inv=True)
             tile_left_xy=self.tile_bounds(self.coord2tile(zoom,left_xy))[0]
             left_lon=self.proj2geog.transform_point(tile_left_xy)[0]
-        lon_0=left_lon+180
+        lon_0=left_lon + 180
         ld('left_lon',left_lon,'lon_0',lon_0)
         new_srs='%s +lon_0=%d' % (self.proj_srs,lon_0)
         if not (lr[0] <= 180 and ul[0] >=-180):
@@ -599,8 +604,7 @@ class Pyramid(object):
             assert gcps, 'Neither geotransform, nor gpcs are in the source file %s' % self.src
 
             gcp_lst=[(g.Id,g.GCPPixel,g.GCPLine,g.GCPX,g.GCPY,g.GCPZ) for g in gcps]
-            ld('src_proj',self.src_ds.GetProjection())
-            ld('gcp_proj',self.src_ds.GetGCPProjection())
+            ld('src_proj',self.src_ds.GetProjection(),'gcp_proj',self.src_ds.GetGCPProjection())
             gcp_proj=wkt2proj4(self.src_ds.GetGCPProjection())
             if src_proj and gcp_proj != src_proj:
                 coords=MyTransformer(SRC_SRS=gcp_proj,DST_SRS=src_proj).transform([g[3:6] for g in gcp_lst])
@@ -742,6 +746,7 @@ class Pyramid(object):
             self.name=os.path.basename(self.dest)
 
         # map 'logical' tiles to 'physical' tiles
+        ld('walk')
         self.tile_map={}
         for zoom in self.zoom_range:
             tile_ul,tile_lr=self.corner_tiles(zoom)
@@ -906,8 +911,11 @@ class Pyramid(object):
             'jpg':  'image/jpeg',
             } [self.tile_ext]
 
-        # reproject extents back to the original SRS
-        bounds=MyTransformer(DST_SRS=self.srs,SRC_SRS=self.proj_srs).transform(self.bounds)
+        # reproject extents back to the unshifted SRS
+        bounds=MyTransformer(SRC_SRS=self.proj_srs,DST_SRS=self.srs).transform(self.bounds)
+        # get back unshifted tile origin
+        un_tile_origin=MyTransformer(SRC_SRS=self.geog_srs,DST_SRS=self.srs).transform_point(self.tile_origin_lonlat)
+        ld('un_tile_origin',un_tile_origin,self.tile_origin_lonlat,self.geog_srs,self.srs)
 
         tilesets=[tile_set_templ % dict(
                 href=str(zoom),
@@ -924,8 +932,8 @@ class Pyramid(object):
             tile_height=abs(self.tile_dim[1]),
             tile_ext=   self.tile_ext,
             tile_mime=  tile_mime,
-            origin_x=   self.tile_origin[0],
-            origin_y=   self.tile_origin[1],
+            origin_x=   un_tile_origin[0],
+            origin_y=   un_tile_origin[1],
             minx=       bounds[0][0],
             miny=       bounds[1][1],
             maxx=       bounds[1][0],
@@ -1132,7 +1140,7 @@ class TMStiling(TilingScheme):
 #############################
 
 class PlateCarree(Pyramid):
-    'Plate Carrée, top-to-bottom tile numbering  (a la Google Earth)'
+    '''Plate Carrée, top-to-bottom tile numbering  (a la Google Earth)'''
 #############################
     zoom0_tiles=[2,1] # tiles at zoom 0
 
