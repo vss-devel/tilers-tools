@@ -34,21 +34,21 @@ from tiler_functions import *
 
 class ZoomSet:
     def __init__(self,tiles_dir):
-        pf('%s ' % tiles_dir,end='')    
+        pf('%s ' % tiles_dir,end='')
 
         start_dir=os.getcwd()
         os.chdir(tiles_dir)
         self.tiles_root=os.getcwd()
         os.chdir(start_dir)
 
-        self.tileset=TileSetData(self.tiles_root)
+        self.tilemap=read_tilemap(self.tiles_root)
 
-        if self.tileset.profile.startswith('zxy'):
+        if self.tilemap['tile_size'][1] < 0: # google
             self.tile_offsets=[
                 (0,0), (128,0),
                 (0,128), (128,128),
                 ]
-        else:
+        else:                   # TMS
             self.tile_offsets=[
                 (0,128), (128,128),
                 (0,0), (128,0)
@@ -56,7 +56,7 @@ class ZoomSet:
 
     def __call__(self,dest_tile):
         (z,x,y)=dest_tile
-        ext=self.tileset.tile_ext
+        ext=self.tilemap['tile_ext']
         im = Image.new("RGBA",(256,256),(0,0,0,0))
 
         tiles_in=[(x*2,y*2),(x*2+1,y*2),
@@ -74,19 +74,27 @@ class ZoomSet:
         start_dir=os.getcwd()
         try:
 
-            top_zoom=min(self.tileset.zooms)
+            tilesets=self.tilemap['tilesets']
+            ld(tilesets)
+
+            top_zoom=min(tilesets.keys())
             new_zooms=range(top_zoom-1,target_zoom-1,-1)
             if not new_zooms:
                 return
             for zoom in new_zooms: # make new zoom tiles
                 pf('%i' % zoom,end='')
-                
+
+                # add a new zoom level to tilemap
+                tilesets[zoom]={
+                    "href": unicode(zoom),
+                    "units_per_pixel": tilesets[zoom+1]["units_per_pixel"]*2}
+
                 shutil.rmtree('%i' % zoom,ignore_errors=True)
                 os.chdir(os.path.join(self.tiles_root,'%i' % (zoom+1)))
 
                 self.src_lst=set(
-                    [tuple(map(int,path2list(f)[:-1])) 
-                        for f in glob.glob('*/*.%s' % self.tileset.tile_ext)])
+                    [tuple(map(int,path2list(f)[:-1]))
+                        for f in glob.glob('*/*.%s' % self.tilemap['tile_ext'])])
 
                 os.chdir(self.tiles_root)
 
@@ -100,29 +108,7 @@ class ZoomSet:
 
                 parallel_map(self,dest_lst)
 
-            # adjust tilemap.xml
-            doc=self.tileset.doc
-            #ld(self.tileset.title,self.tileset.abstract)
-            tilesets_el=elem0(doc,"TileSets")
-            new_tilesets={}
-            for z in self.tileset.zooms: # unlink old tilesets
-                new_tilesets[z]=tilesets_el.removeChild(self.tileset.tilesets[z])
-
-            tileset_el=self.tileset.tilesets[top_zoom]
-            res=self.tileset.tileset_parms[top_zoom][0]
-            for zoom in new_zooms: # add new tilesets
-                tileset_el=tileset_el.cloneNode(False)
-                res=res*2
-                tileset_el.setAttribute('units-per-pixel', '%.11G' % res)
-                tileset_el.setAttribute('order', str(zoom))
-                tileset_el.setAttribute('href', str(zoom))
-                new_tilesets[zoom]=tileset_el                
-            for z in sorted(new_tilesets): # sorted merge of new and old tilsets
-                tilesets_el.appendChild(new_tilesets[z])
-
-            with open(self.tileset.tilemap,'w') as f:
-                #doc.writexml(f,encoding='utf-8')
-                f.write(doc.toxml('utf-8'))
+            write_tilemap('.',self.tilemap)
 
         finally:
             os.chdir(start_dir)
@@ -132,17 +118,17 @@ class ZoomSet:
 
 if __name__=='__main__':
     parser = optparse.OptionParser(
-        usage="usage: %prog tiles_dir ...", 
+        usage="usage: %prog tiles_dir ...",
         version=version,
         )
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose")
-    parser.add_option("-z", "--zoom", dest="zoom", type='int', 
+    parser.add_option("-z", "--zoom", dest="zoom", type='int',
         help='target zoom level)')
     parser.add_option("-q", "--quiet", action="store_true")
     parser.add_option("-d", "--debug", action="store_true")
-        
+
     (options, args) = parser.parse_args()
-    logging.basicConfig(level=logging.DEBUG if options.debug else 
+    logging.basicConfig(level=logging.DEBUG if options.debug else
         (logging.ERROR if options.quiet else logging.INFO))
 
     if options.zoom == None:

@@ -376,10 +376,10 @@
                     isBaseLayer: false,
                     displayOutsideMaxExtent: false,
                     maxExtent: new OpenLayers.Bounds(
-                        layer.bounds[0],
-                        layer.bounds[1],
-                        layer.bounds[2],
-                        layer.bounds[3]),
+                        layer.bbox[0],
+                        layer.bbox[1],
+                        layer.bbox[2],
+                        layer.bbox[3]),
                     tileOrigin: new OpenLayers.LonLat(
                         layer.tile_origin[0],
                         layer.tile_origin[1]),

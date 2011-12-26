@@ -39,7 +39,7 @@ import shutil
 import locale
 #from optparse import OptionParser
 
-import xml.dom.minidom
+import json
 
 try:
     from osgeo import gdal
@@ -56,14 +56,14 @@ except ImportError:
 try:
     import multiprocessing # available in python 2.6 and above
 
-    class KeyboardInterruptError(Exception): 
+    class KeyboardInterruptError(Exception):
         pass
 except:
     multiprocessing=None
 
 def data_dir():
     return sys.path[0]
-    
+
 def set_nothreads():
     global multiprocessing
     multiprocessing=None
@@ -94,11 +94,11 @@ def pf(*parms,**kparms):
 def pf_nothing(*parms,**kparms):
     return
 
-def flatten(two_level_list): 
+def flatten(two_level_list):
     return list(itertools.chain(*two_level_list))
 
 try:
-    import win32pipe 
+    import win32pipe
 except:
     win32pipe=None
 
@@ -129,7 +129,7 @@ def command(params,child_in=None):
     else:
         process=Popen(params,stdin=PIPE, stdout=PIPE, stderr=PIPE, universal_newlines=True)
         (child_out,child_err)=process.communicate(child_in)
-        if process.returncode != 0: 
+        if process.returncode != 0:
             raise Exception("*** External program failed: %s\n%s" % (cmd_str,child_err))
     ld('<',child_out,child_err)
     return child_out
@@ -144,7 +144,7 @@ def dest_path(src,dest_dir,ext='',template='%s'):
         dest='%s/%s' % (dest_dir,dest)
     ld(base,dest)
     return dest
-    
+
 def re_sub_file(fname, subs_list):
     'stream edit file using reg exp substitution list'
     new=fname+'.new'
@@ -250,11 +250,11 @@ def sasplanet_hlg2ogr(fname):
     feature = ogr.Feature(layer.GetLayerDefn())
     feature.SetGeometry(polygon)
     layer.CreateFeature(feature)
-    
+
     del feature
     del polygon
     del ring
-    
+
     return ds
 
 def shape2mpointlst(datasource,dst_srs,feature_name=None):
@@ -280,14 +280,14 @@ def shape2mpointlst(datasource,dst_srs,feature_name=None):
             feature.Destroy()
         else:
             return []
-            
+
     geom=feature.GetGeometryRef()
     geom_name=geom.GetGeometryName()
     geom_lst={
         'MULTIPOLYGON':(geom.GetGeometryRef(i) for i in range(geom.GetGeometryCount())),
         'POLYGON': (geom,),
         }[geom_name]
-    
+
     layer_srs=layer.GetSpatialRef()
     if layer_srs:
         layer_proj=layer_srs.ExportToProj4()
@@ -325,53 +325,32 @@ def shape2cutline(cutline_ds,raster_ds,feature_name=None):
     cutline='MULTIPOLYGON(%s)' % ','.join(['((%s))' % poly for poly in mpoly]) if mpoly else None
     ld('cutline',cutline)
     return cutline
-    
+
 def elem0(doc,id):
     return doc.getElementsByTagName(id)[0]
-    
-class TileSetData(object):
 
-    def __init__(self,src_dir):
-        
-        #src_dir=src_dir.decode('utf-8','ignore')
-        src=os.path.join(src_dir,'tilemap.xml')
+#class TileSetData(object):
 
-        try:
-            doc=xml.dom.minidom.parse(src)
-        except xml.parsers.expat.ExpatError:
-            raise Exception('Invalid input file: %s' % src)
+#    def __init__(self,src_dir):
 
-        box_el = elem0(doc,"BoundingBox")
-        origin_el = elem0(doc,"Origin")
-        tile_format_el=elem0(doc,"TileFormat")
+def read_tilemap(src_dir):
 
-        zooms=set([])
-        tilesets={}
-        tileset_parms={}
-        for tileset in doc.getElementsByTagName("TileSet"):
-            order = int(tileset.getAttribute('order'))
-            res = float(tileset.getAttribute('units-per-pixel'))
-            href = tileset.getAttribute('href')
-            zooms.add(order)
-            tilesets[order] = tileset
-            tileset_parms[order] = (res,href)
+    #src_dir=src_dir.decode('utf-8','ignore')
+    src=os.path.join(src_dir,'tilemap.json')
 
-        self.tilemap=    src
-        self.root=       src_dir
-        self.doc=        doc
-        self.profile=    elem0(doc,"TileSets").getAttribute('profile')
-        self.srs=        elem0(doc,"SRS").firstChild.data
-        self.title=      elem0(doc,"Title").firstChild.data
-        self.abstract=   elem0(doc,"Abstract").firstChild.data
-        self.extent=     [float(box_el.getAttribute(attr)) for attr in ('minx','miny','maxx','maxy')]
-        self.tile_origin=[float(origin_el.getAttribute(attr)) for attr in ('x','y')]
-        self.tile_size=  [int(tile_format_el.getAttribute(attr)) for attr in ('width','height')]
-        self.tile_ext=   tile_format_el.getAttribute('extension')
-        self.tile_mime=  tile_format_el.getAttribute('mime-type')
-        self.zooms=      zooms
-        self.tilesets=   tilesets
-        self.tileset_parms=tileset_parms
+    try:
+        with open(src,'r') as f:
+            tilemap=json.load(f)
 
-    def __del__(self):    
-        self.doc.unlink()
+        # convert tilesets keys to int
+        tilesets=tilemap['tilesets']
+        tilemap['tilesets']=dict([ (int(key),val) for key,val in tilesets.items()])
+    except ValueError: # No JSON object could be decoded
+            raise Exception('Invalid tilemap file: %s' % src)
 
+    return tilemap
+
+def write_tilemap(dst_dir,tilemap):
+
+    with open(os.path.join(dst_dir,'tilemap.json'),'w') as f:
+         json.dump(tilemap,f,indent=2)

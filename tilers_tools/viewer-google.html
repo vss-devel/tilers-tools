@@ -258,8 +258,8 @@
         var tilemap=read_map_parameters();
         document.title = tilemap.title;
 
-        var box_sw=coord2latlong(new G.Point(tilemap.bounds[0],tilemap.bounds[1]));
-        var box_ne=coord2latlong(new G.Point(tilemap.bounds[2],tilemap.bounds[3]));
+        var box_sw=coord2latlong(new G.Point(tilemap.bbox[0],tilemap.bbox[1]));
+        var box_ne=coord2latlong(new G.Point(tilemap.bbox[2],tilemap.bbox[3]));
 
         map.fitBounds(new G.LatLngBounds(box_sw, box_ne));
         map.setMapTypeId(map_type);

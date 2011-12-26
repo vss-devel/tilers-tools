@@ -771,8 +771,7 @@ class Pyramid(object):
 
         # write top-level metadata (html/kml)
         self.write_metadata(None,[ch for img,ch,opacities in top_results])
-        #self.write_tilemap()
-        self.write_tilemap_json()
+        self.make_tilemap()
 
         # cache back tiles opacity
         file_opacities=[(self.tile_path(tile),opc)
@@ -904,7 +903,7 @@ class Pyramid(object):
 
     #----------------------------
 
-    def write_tilemap(self):
+    def write_tilemap_xml(self):
         '''Generate xml tileset description a la TMS tilemap'''
     #----------------------------
         tile_mime={
@@ -946,7 +945,7 @@ class Pyramid(object):
 
     #----------------------------
 
-    def write_tilemap_json(self):
+    def make_tilemap(self):
         '''Generate JSON for a tileset description'''
     #----------------------------
         tile_mime={
@@ -956,7 +955,7 @@ class Pyramid(object):
             } [self.tile_ext]
 
         # reproject extents back to the unshifted SRS
-        bounds=MyTransformer(SRC_SRS=self.proj_srs,DST_SRS=self.srs).transform(self.bounds)
+        bbox=MyTransformer(SRC_SRS=self.proj_srs,DST_SRS=self.srs).transform(self.bounds)
         # get back unshifted tile origin
         un_tile_origin=MyTransformer(SRC_SRS=self.geog_srs,DST_SRS=self.srs).transform_point(self.tile_origin_lonlat)
         ld('un_tile_origin',un_tile_origin,self.tile_origin_lonlat,self.geog_srs,self.srs)
@@ -970,18 +969,18 @@ class Pyramid(object):
             tile_ext=   self.tile_ext,
             tile_mime=  tile_mime,
             tile_origin=un_tile_origin,
-            bounds=    (bounds[0][0],
-                        bounds[1][1],
-                        bounds[1][0],
-                        bounds[0][1]),
-            tilesets=   [dict(
-                            href=str(zoom),
-                            order=zoom,
-                            units_per_pixel=self.zoom2res(zoom)[0],
-                        ) for zoom in reversed(self.zoom_range)]
+            bbox=      (bbox[0][0],
+                        bbox[1][1],
+                        bbox[1][0],
+                        bbox[0][1]),
+            tilesets=   dict([
+                              (zoom,
+                               {"href": str(zoom),"units_per_pixel": self.zoom2res(zoom)[0]})
+                            for zoom in reversed(self.zoom_range)])
             )
-        with open(os.path.join(self.dest,'tilemap.json'),'w') as f:
-             json.dump(tilemap,f,indent=2)
+
+        write_tilemap(self.dest,tilemap)
+        ld(tilemap)
 
     #----------------------------
     #
