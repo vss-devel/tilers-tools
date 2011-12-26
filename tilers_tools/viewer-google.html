@@ -160,7 +160,7 @@
         return '<++' + s + '%+++>';
         }
 
-    function opacity_control(map,overlay_index) {
+    function opacity_control(map,overlay_index,tilemap) {
         var controlDiv=document.createElement('DIV');
         // Set CSS styles for the DIV containing the control
         // Setting padding will offset the control from the edge of the map
@@ -199,7 +199,7 @@
             if (opacity > 1) opacity=1;
             controlText.innerHTML = opacity_str(opacity);
             map.overlayMapTypes.removeAt(overlay_index);
-            map.overlayMapTypes.insertAt(overlay_index,map_overlay());
+            map.overlayMapTypes.insertAt(overlay_index,map_overlay(tilemap));
             });
         return controlDiv;
         }
@@ -217,16 +217,17 @@
             "tilesets": null,
             };
 */
-    function map_overlay(layer){
+    function map_overlay(tilemap){
+
         return new G.ImageMapType({
-            tileSize: new G.Size(
-                Math.abs(layer.tile_size[0]),
-                Math.abs(layer.tile_size[1])),
             opacity: opacity,
-            isPng: (layer.tile_ext == "png"),
+            isPng: (tilemap.tile_ext == "png"),
+            tileSize: new G.Size(
+                Math.abs(tilemap.tile_size[0]),
+                Math.abs(tilemap.tile_size[1])),
             tileInversed: [
-                layer.tile_size[0] < 0,
-                layer.tile_size[1] < 0],
+                tilemap.tile_size[0] < 0,
+                tilemap.tile_size[1] < 0],
 
             getTileUrl: function(tile_coord, zoom) {
                 var max_x=1<<zoom;
@@ -254,18 +255,19 @@
 
     function initialize() {
         var map = new G.Map(document.getElementById("map_canvas"));
-        var layer=read_map_parameters();
-        log(layer);
-        document.title = layer.title;
+        var tilemap=read_map_parameters();
+        document.title = tilemap.title;
 
-        var box_sw=coord2latlong(new G.Point(layer.bounds[0],layer.bounds[1]));
-        var box_ne=coord2latlong(new G.Point(layer.bounds[2],layer.bounds[3]));
+        var box_sw=coord2latlong(new G.Point(tilemap.bounds[0],tilemap.bounds[1]));
+        var box_ne=coord2latlong(new G.Point(tilemap.bounds[2],tilemap.bounds[3]));
 
         map.fitBounds(new G.LatLngBounds(box_sw, box_ne));
         map.setMapTypeId(map_type);
 
-        var overlay_index=map.overlayMapTypes.push(map_overlay(layer)) - 1;
-        map.controls[G.ControlPosition.TOP_RIGHT].push(opacity_control(map,overlay_index));
+        var layer=map_overlay(tilemap);
+        //log(layer);
+        var overlay_index=map.overlayMapTypes.push(layer) - 1;
+        map.controls[G.ControlPosition.TOP_RIGHT].push(opacity_control(map,overlay_index,tilemap));
         }
 </script>
 </head>
