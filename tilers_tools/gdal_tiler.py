@@ -1350,12 +1350,17 @@ class GMercator(Pyramid):
     tms_srs='OSGEO:41001' # http://wiki.osgeo.org/wiki/Tile_Map_Service_Specification
 
     def write_metadata(self,tile,children=[]):
-        if not tile: # create top level html
-            self.write_html()
+        if not tile: # only for a top level of a pyramid
+            self.copy_viewer()
 
-    def write_html(self):
-        shutil.copy(os.path.join(data_dir(),'viewer-google.html'),self.dest)
-        shutil.copy(os.path.join(data_dir(),'viewer-openlayers.html'),self.dest)
+    def copy_viewer(self):
+        for f in ['viewer-google.html','viewer-openlayers.html']:
+            src=os.path.join(data_dir(),f)
+            dst=os.path.join(self.dest,f)
+            try:
+                os.link(src,dst) # hard links as FF loves to dereference htmls
+            except OSError: # non POSIX or cross-device link?
+                shutil.copy(src,dst)
 
 #############################
 
@@ -1455,6 +1460,8 @@ def parse_args(arg_lst):
         help='skip processing if the target pyramyd already exists')
     parser.add_option("-s", "--strip-dest-ext", action="store_true",
         help='do not add a default extension suffix from a destination directory')
+#    parser.add_option("--viewer-copy", action="store_true",
+#        help='on POSIX systems copy html viewer instead of hardlinking to the original location')
     parser.add_option("-q", "--quiet", action="store_const",
         const=0, default=1, dest="verbose")
     parser.add_option("-d", "--debug", action="store_const",
