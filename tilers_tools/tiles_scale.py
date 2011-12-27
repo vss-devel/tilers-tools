@@ -43,7 +43,7 @@ class ZoomSet:
 
         self.tilemap=read_tilemap(self.tiles_root)
 
-        if self.tilemap['tile_size'][1] < 0: # google
+        if self.tilemap['tiles']['inversion'][1]: # google
             self.tile_offsets=[
                 (0,0), (128,0),
                 (0,128), (128,128),
@@ -56,7 +56,7 @@ class ZoomSet:
 
     def __call__(self,dest_tile):
         (z,x,y)=dest_tile
-        ext=self.tilemap['tile_ext']
+        ext=self.tilemap['tiles']['ext']
         im = Image.new("RGBA",(256,256),(0,0,0,0))
 
         tiles_in=[(x*2,y*2),(x*2+1,y*2),
@@ -94,7 +94,7 @@ class ZoomSet:
 
                 self.src_lst=set(
                     [tuple(map(int,path2list(f)[:-1]))
-                        for f in glob.glob('*/*.%s' % self.tilemap['tile_ext'])])
+                        for f in glob.glob('*/*.%s' % self.tilemap['tiles']['ext'])])
 
                 os.chdir(self.tiles_root)
 

@@ -351,6 +351,21 @@ def read_tilemap(src_dir):
     return tilemap
 
 def write_tilemap(dst_dir,tilemap):
-
     with open(os.path.join(dst_dir,'tilemap.json'),'w') as f:
          json.dump(tilemap,f,indent=2)
+
+def read_transparency(src_dir):
+    try:
+        with open(os.path.join(src_dir, 'transparency.json'),'r') as f:
+            transparency=json.load(f)
+    except:
+        ld("transparency cache load failure")
+        transparency={}
+    return transparency
+
+def write_transparency(dst_dir,transparency):
+    try:
+        with open(os.path.join(dst_dir, 'transparency.json'),'w') as f:
+            json.dump(transparency,f,indent=0)
+    except:
+        logging.warning("transparency cache save failure")

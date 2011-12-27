@@ -70,13 +70,13 @@ class MergeSet:
         # read metadata
         self.src=read_tilemap(src_dir)
         self.dst=read_tilemap(dst_dir)
-        self.tile_size=map(abs,self.src['tile_size'])
+        self.tile_size=self.src['tiles']['size']
 
         # get a list of source tiles
         try:
             cwd=os.getcwd()
             os.chdir(src_dir)
-            self.src_lst=glob.glob('[0-9]*/*/*.%s' % self.src['tile_ext'])
+            self.src_lst=glob.glob('[0-9]*/*/*.%s' % self.src['tiles']['ext'])
             self.max_zoom=max([int(i) for i in glob.glob('[0-9]*')])
         finally:
             os.chdir(cwd)
@@ -84,16 +84,12 @@ class MergeSet:
 
         # load cached tile transparency data if any
         self.src_transp=dict.fromkeys(self.src_lst,None)
-        self.src_cache_path=os.path.join(src_dir, 'merge-cache')
-        try:
-            self.src_transp.update(pickle.load(open(self.src_cache_path,'r')))
-        except:
-            ld("cache load failed")
+        self.src_transp.update(read_transparency(src_dir))
         #ld(repr(self.src_transp))
 
         # define crop map for underlay function
         tsx,tsy=self.tile_size
-        if self.src['tile_size'][1] < 0: # google
+        if self.src['tiles']['inversion'][1]: # google
             self.underlay_map=[
                 #  lf    up    rt    lw
                 (   0,    0,tsx/2,tsy/2), (tsx/2,    0,  tsx,tsy/2),
@@ -112,9 +108,8 @@ class MergeSet:
         src=self.src
         dst=self.dst
 
-        dst["title"]=os.path.split(dst_dir)[1]
-        dst["description"]='merged tileset'
-
+        dst["properties"]["title"]=os.path.split(dst_dir)[1]
+        dst["properties"]["description"]='merged tileset'
 
         ld([round(i/1000) for i in src["bbox"]],[round(i/1000) for i in dst["bbox"]])
         for i,min_max in zip(range(4),(min,min,max,max)):
@@ -196,18 +191,16 @@ class MergeSet:
             raise KeyboardInterruptError()
         return (tile,transp) # send back transparency values for caching
 
-    def upd_stat(self,transparency_data):
-        self.src_transp.update(dict(transparency_data))
-        try:
-            pickle.dump(self.src_transp,open(self.src_cache_path,'w'))
-        except :
-            ld("cache save failed")
-        pf('')
-
     def merge_dirs(self):
-        self.merge_metadata()
+
         src_transparency=parallel_map(self,self.src_lst)
-        self.upd_stat(src_transparency)
+
+        self.merge_metadata()
+
+        # save transparency data
+        self.src_transp.update(dict(src_transparency))
+        write_transparency(self.src_dir,self.src_transp)
+        pf('')
 
 # MergeSet end
 

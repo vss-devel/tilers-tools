@@ -81,14 +81,14 @@
             var request = new XMLHttpRequest();
             request.open('GET', url, false);
             request.overrideMimeType(mime);
-			/*
-			request.onreadystatechange = function() {
+            /*
+            request.onreadystatechange = function() {
                 log('this.readyState',this.readyState);
-				if(this.readyState == 4) {
-				  alert("Loaded xml.\nresponseXml: " + xmlhttp.responseXML);
-					}
-				}
-			  */
+                if(this.readyState == 4) {
+                  alert("Loaded xml.\nresponseXml: " + xmlhttp.responseXML);
+                    }
+                }
+              */
             try {
                 request.send();
                 if (request.status != 0) {
@@ -103,29 +103,34 @@
             return request.responseText;
         }
 
-        function read_map_parameters() {
+        function read_tilemap() {
             var tilemap_txt=read_text("tilemap.json","application/json");
             if (tilemap_txt == null) {
-	            error('Cannot read tilemap.xml');
+                error('Cannot read tilemap.json');
                 return null;
             };
 
             var tilemap = JSON.parse(tilemap_txt);
 
-            if (tilemap['srs'] != 'OSGEO:41001') {
-	            error('tilemap.xml: unsupported SRS');
+            if (tilemap.type != 'TileMap') {
+                error('tilemap.json: incorrect format');
+                return null;
+            };
+
+            if (tilemap.crs.properties.name != 'EPSG:3857') {
+                error('tilemap.json: unsupported CRS');
                 return null;
             };
 
             /*
             if (tilemap.getElementsByTagName("TileSets").length == 0) {
-				log(navigator.appName);
-				if (navigator.appName == 'Opera')
-					error('tilemap.xml is incorrect. \nYou may need to set "Allow File XMLHttpRequest" with opera:config#UserPrefs|AllowFileXMLHttpRequest to disable this security check.');
-				else
-					error('tilemap.xml is incorrect');
+                log(navigator.appName);
+                if (navigator.appName == 'Opera')
+                    error('tilemap.xml is incorrect. \nYou may need to set "Allow File XMLHttpRequest" with opera:config#UserPrefs|AllowFileXMLHttpRequest to disable this security check.');
+                else
+                    error('tilemap.xml is incorrect');
                 return null;
-			}
+            }
 
             var tileset_el_lst=tilemap.getElementsByTagName("TileSet");
             layer_resolutions=[];
@@ -147,13 +152,13 @@
             return tilemap;
         }
 
-	function coord2latlong(point) {
-	    var R = 6378137 // Eatrh's radius as per EPSG:3857
-		var lon = 180/Math.PI * (point.x/R);
-		var lat = 180/Math.PI * (2*Math.atan(Math.exp(point.y/R)) - Math.PI/2);
-		//log('x,y '+point.x+' '+point.y+' lon,lat '+lon+' '+lat);
-		return new G.LatLng(lat,lon);
-	}
+    function coord2latlong(point) {
+        var R = 6378137 // Eatrh's radius as per EPSG:3857
+        var lon = 180/Math.PI * (point.x/R);
+        var lat = 180/Math.PI * (2*Math.atan(Math.exp(point.y/R)) - Math.PI/2);
+        //log('x,y '+point.x+' '+point.y+' lon,lat '+lon+' '+lat);
+        return new G.LatLng(lat,lon);
+    }
     function opacity_str(opacity){
         var s = String(Math.round(opacity*100));
         while (s.length < 3) s = '+' + s;
@@ -203,31 +208,15 @@
             });
         return controlDiv;
         }
-/*
-        var layer = {
-            "title": document.title,
-            "description": "",
-            "profile": "zxy-mercator",
-            "tile_size": [256, -256],
-            "srs": "OSGEO:41001",
-            "tile_ext": "png",
-            "tile_mime": "image/png",
-            "tile_origin": [-20037508.342789248, 20037508.342789244],
-            "bounds": [-20037508.342789, -20037508.342789, 20037508.342789, 20037508.342789],
-            "tilesets": null,
-            };
-*/
+
     function map_overlay(tilemap){
 
         return new G.ImageMapType({
             opacity: opacity,
-            isPng: (tilemap.tile_ext == "png"),
+            isPng: (tilemap.tiles.ext == "png"),
             tileSize: new G.Size(
-                Math.abs(tilemap.tile_size[0]),
-                Math.abs(tilemap.tile_size[1])),
-            tileInversed: [
-                tilemap.tile_size[0] < 0,
-                tilemap.tile_size[1] < 0],
+                tilemap.tiles.size[0],
+                tilemap.tiles.size[1]),
 
             getTileUrl: function(tile_coord, zoom) {
                 var max_x=1<<zoom;
@@ -239,7 +228,7 @@
                 */
                 var prefix=zoom; //tileset_lst[zoom].prefix;
                 var y=tile_coord.y;
-                if (!this.tileInversed[1]) {
+                if (!tilemap.tiles.inversion[1]) {
                     y= -y -1;
                     y += max_y;
                 }
@@ -255,8 +244,8 @@
 
     function initialize() {
         var map = new G.Map(document.getElementById("map_canvas"));
-        var tilemap=read_map_parameters();
-        document.title = tilemap.title;
+        var tilemap=read_tilemap();
+        document.title = tilemap.properties.title;
 
         var box_sw=coord2latlong(new G.Point(tilemap.bbox[0],tilemap.bbox[1]));
         var box_ne=coord2latlong(new G.Point(tilemap.bbox[2],tilemap.bbox[3]));
