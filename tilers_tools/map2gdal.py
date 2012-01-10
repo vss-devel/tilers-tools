@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-10 13:33:20 
+# 2011-04-10 13:33:20
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -48,7 +48,7 @@ class_map=(
 
 def proc_src(src):
     with open(src,'rU') as f:
-        lines=[f.readline() for i in range(10)]
+        lines=[f.readline() for i in range(30)]
     for cls in class_map:
         patt=cls.magic
         if any((l.startswith(patt) for l in lines)):
@@ -71,27 +71,27 @@ if __name__=='__main__':
         help="override a datum part only (PROJ.4 definition)")
     parser.add_option("--proj", default=None,
         help="override a projection part only (PROJ.4 definition)")
-    parser.add_option("--force-dtm", action="store_true", 
+    parser.add_option("--force-dtm", action="store_true",
         help='force using BSB datum shift to WGS84 instead of native BSB datum')
     parser.add_option("--dtm",dest="dtm_shift",default=None,metavar="SHIFT_LONG,SHIFT_LAT",
         help='northing and easting to WGS84 datum in seconds of arc')
-    parser.add_option("--get-cutline", action="store_true", 
+    parser.add_option("--get-cutline", action="store_true",
         help='print a definition of a cutline polygon, then exit')
-    parser.add_option("--cut-file", action="store_true", 
+    parser.add_option("--cut-file", action="store_true",
         help='create a .GMT file with a cutline polygon')
     parser.add_option("-t", "--dest-dir", default=None, dest="dst_dir",
         help='destination directory (default: current)')
-    parser.add_option("-n", "--after-name", action="store_true", 
+    parser.add_option("-n", "--after-name", action="store_true",
         help='give an output file name after a map name (from metadata)')
     parser.add_option("-m", "--after-map", action="store_true",
         help='give an output file name  after name of a map file, otherwise after a name of an image file')
-    parser.add_option("-l", "--long-name", action="store_true", 
+    parser.add_option("-l", "--long-name", action="store_true",
         help='give an output file a long name')
     parser.add_option("-d", "--debug", action="store_true", dest="debug")
     parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
-#    parser.add_option("--last-column-bug", action="store_true", 
+#    parser.add_option("--last-column-bug", action="store_true",
 #        help='some BSB files are missing value for last column, here is a workaround')
-#    parser.add_option("--broken-raster", action="store_true", 
+#    parser.add_option("--broken-raster", action="store_true",
 #        help='try to workaround some BSB broken rasters (requires "convert" from ImageMagick)')
 
     (options, args) = parser.parse_args()
@@ -99,7 +99,7 @@ if __name__=='__main__':
     if not args:
         parser.error('No input file(s) specified')
 
-    logging.basicConfig(level=logging.DEBUG if options.debug else 
+    logging.basicConfig(level=logging.DEBUG if options.debug else
         (logging.ERROR if options.quiet else logging.INFO))
 
     ld(os.name)
