@@ -173,12 +173,12 @@ class BsbLayer(SrcLayer):
                 logging.warning(' Unknown datum "%s", guessed as "%s"' % (datum_id,datum))
             except IndexError:
                 # datum still not found
-                dtm=self.get_dtm() # get northing, easting to WGS84 if any
+                dtm=self.get_dtm() # get northing, easting to WGS 84 if any
                 datum='+datum=WGS84'
                 if dtm: 
-                    logging.warning(' Unknown datum %s, trying WGS 84 with DTM shifts' % datum_id)
+                    logging.warning(' Unknown datum "%s", assumed as WGS 84 with DTM shifts' % datum_id)
                 else: # assume DTM is 0,0
-                    logging.warning(' Unknown datum %s, trying WGS 84' % datum_id)
+                    logging.warning(' Unknown datum "%s", assumed as WGS 84' % datum_id)
         return datum.split(' ')
 
     def get_raster(self):
