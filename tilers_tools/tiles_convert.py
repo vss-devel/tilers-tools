@@ -43,14 +43,27 @@ ext_map=(
 
 def ext_from_buffer(buf):
     for magic,ext in ext_map:
-        if buf.startswith(magic): 
-            return ext 
+        if buf.startswith(magic):
+            return ext
     raise Exception('Cannot determing image type in a buffer')
 
 def ext_from_file(path):
     with file(path, "r") as f:
         buf = f.read(512)
         return ext_from_buffer(buf)
+
+mime_map=(
+    ['.png','image/png'],
+    ['.gif','image/gif'],
+    ['.jpg','image/jpeg'],
+    ['.jpeg','image/jpeg'],
+    )
+
+def mime_from_ext(ext):
+    for patt,mime in mime_map:
+        if ext.startswith(patt):
+            return mime
+    raise Exception('Cannot determing image MIME type')
 
 #############################
 
@@ -59,9 +72,12 @@ class Tile(object):
 #############################
     def __init__(self,coord):
         self._coord=coord
-        
+
     def coord(self):
         return self._coord
+
+    def get_mime(self):
+        return mime_from_ext(self.get_ext())
 
 #############################
 
@@ -76,7 +92,7 @@ class FileTile(Tile):
         return open(self.path,'rb').read()
 
     def get_ext(self):
-        return os.path.splitext(self.path)[1]        
+        return os.path.splitext(self.path)[1]
 
     def copy2file(self,dst,link=False):
         if link and os.name == 'posix':
@@ -109,7 +125,7 @@ class PixBufTile(Tile):
 
     def get_ext(self):
         ext=ext_from_buffer(self.pixbuf)
-        return ext        
+        return ext
 
     def copy2file(self,dest_path,link=False):
         open(dest_path,'wb').write(self.pixbuf)
@@ -139,10 +155,10 @@ class TileSet(object):
                 prm.set_zoom_range(self.options.zoom)
                 prm.load_region(self.options.region)
                 self.my_tile=lambda tile: prm.belongs_to(tile.coord())
-        
+
     def my_tile(self, tile):
         return True
-            
+
     def __del__(self):
         ld(self.count)
 
@@ -167,7 +183,7 @@ class TileSet(object):
         else:
             zz,xx,yy=zip(*(min_max+[zxy]))
             self.zoom_levels[z]=[[z,min(xx),min(yy)],[z,max(xx),max(yy)]]
-            
+
     count=0
     tick_rate=100
     def counter(self):
@@ -186,7 +202,7 @@ class TileDir(TileSet):
 
 #############################
     tile_class = FileTile
-        
+
 
     def __init__(self,root,options=None,write=False):
         super(TileDir, self).__init__(root,options,write)
@@ -195,7 +211,7 @@ class TileDir(TileSet):
             try:
                 os.makedirs(self.root)
             except os.error: pass
-        
+
     def __iter__(self):
         for f in glob.iglob(os.path.join(self.root,self.dir_pattern)):
             self.counter()
@@ -209,7 +225,7 @@ class TileDir(TileSet):
 
     def dest_ext(self, tile):
         return tile.get_ext()
-        
+
     def store_tile(self, tile):
         self.tile_ext=self.dest_ext(tile)
         dest_path=os.path.join(self.root,self.coord2path(*tile.coord())) + self.tile_ext
@@ -229,7 +245,7 @@ class TileMapDir(TileDir):
     def __del__(self):
         if self.write:
             self.store_metadata()
-        
+
     def store_metadata(self):
         prm=self.init_pyramid()
         prm.write_tilemap()
@@ -243,7 +259,7 @@ class TileMapDir(TileDir):
                 name=os.path.split(self.root)[1],
                 tile_format=self.tile_ext[1:]
                 )
-            )        
+            )
         # compute "effective" covered area
         prev_sq=0
         for z in reversed(sorted(self.zoom_levels)):
@@ -290,7 +306,7 @@ class ZXYtiles(TileMapDir): # http://code.google.com/apis/maps/documentation/jav
 
     def coord2path(self,z,x,y):
         return '%d/%d/%d' % (z,x,y)
-   
+
 #############################
 
 class MapNav(TileDir): # http://mapnav.spb.ru/site/e107_plugins/forum/forum_viewtopic.php?29047.post
@@ -343,12 +359,75 @@ class SASGoogle(TileDir):
 
 #############################
 
+class TstSQLite(TileSet):
+    'TstSQLite'
+#############################
+    format,ext,input,output='tst','.sqlite',True,True
+    max_zoom=20
+
+    def __init__(self,root,options=None,write=False):
+        super(TstSQLite, self).__init__(root,options,write)
+
+        import sqlite3
+        import base64
+        self.b64encode=base64.b64encode
+        self.b64decode=base64.b64decode
+
+        self.db=sqlite3.connect(self.root)
+        self.dbc = self.db.cursor()
+        if self.write:
+            self.dbc.execute (
+                'CREATE TABLE IF NOT EXISTS tiles ('
+                    'map_id INTEGER NOT NULL,'
+                    'z INTEGER,'
+                    'x INTEGER,'
+                    'y INTEGER,'
+                    'raster_id INTEGER NOT NULL REFERENCES rasters(raster_id),'
+                    'PRIMARY KEY (map_id, z, x, y)'
+                    ')'
+                )
+            self.dbc.execute (
+                'CREATE TABLE IF NOT EXISTS rasters ('
+                    'raster_id INTEGER NOT NULL PRIMARY KEY,'
+                    'mime_type TEXT,'
+                    'data TEXT'
+                    ')'
+                )
+
+    def __del__(self):
+        self.db.commit()
+        self.db.close()
+        TileSet.__del__(self)
+
+    def __iter__(self):
+        self.dbc.execute('select * from tiles')
+        for z,x,y,data in self.dbc:
+            self.counter()
+            yield PixBufTile((z,x,y),self.b64decode(data),(z,x,y))
+
+    def store_tile(self, tile):
+        z,x,y=tile.coord()
+        ld('%s -> SQLite %d,%d,%d' % (tile.path, z, x, y))
+        self.dbc.execute(
+            'insert or replace into rasters (mime_type,data) values (?,?);',
+            (tile.get_mime(),self.b64encode(tile.data()))
+            )
+        raster_id=self.dbc.lastrowid
+        map_id=1
+        self.dbc.execute('insert or replace into tiles (map_id,z,x,y,raster_id) values (?,?,?,?,?);',
+            (map_id,z,x,y,raster_id))
+
+        self.counter()
+# tst
+
+#############################
+
 class MapperSQLite(TileSet):
     'maemo-mapper SQLite cache'
 #############################
     format,ext,input,output='sqlite','.db',True,True
     max_zoom=20
-    
+
     def __init__(self,root,options=None,write=False):
         super(MapperSQLite, self).__init__(root,options,write)
 
@@ -397,7 +476,7 @@ class MapperGDBM(TileSet): # due to GDBM weirdness on ARM this only works if run
 #############################
     format,ext,input,output='gdbm','.gdbm',True,True
     max_zoom=20
-    
+
     def __init__(self,root,options=None,write=False):
 
         super(MapperGDBM, self).__init__(root,options,write)
@@ -424,7 +503,7 @@ class MapperGDBM(TileSet): # due to GDBM weirdness on ARM this only works if run
             self.counter()
             yield PixBufTile((self.max_zoom+1-z,x,y),self.db[key],(z,x,y))
             key=self.db.nextkey(key)
-    
+
     def store_tile(self, tile):
         z,x,y=tile.coord()
         # convert to maemo-mapper coords
@@ -443,6 +522,7 @@ tile_formats=(
     MapNav,
     SASPlanet,
     SASGoogle,
+    TstSQLite
     )
 
 #----------------------------
@@ -511,14 +591,14 @@ def main(argv):
     global options
     (options, args) = parser.parse_args(argv[1:])
 
-    logging.basicConfig(level=logging.DEBUG if options.debug else 
+    logging.basicConfig(level=logging.DEBUG if options.debug else
         (logging.ERROR if options.quiet else logging.INFO))
     ld(options.__dict__)
 
     if options.list_formats:
         list_formats()
         sys.exit(0)
-        
+
     src_lst=args
 
     tiles_convert(src_lst,options)
