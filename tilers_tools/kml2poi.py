@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-05-15 17:27:24 
+# 2011-05-15 17:27:24
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -46,7 +46,7 @@ htmlentitydefs.name2codepoint['apos']=27
 
 def strip_html(text):
     'Removes HTML markup from a text string. http://effbot.org/zone/re-sub.htm#strip-html'
-    
+
     def replace(match): # pattern replacement function
         text = match.group(0)
         if text == "<br>":
@@ -126,7 +126,7 @@ class Poi2Mapper:
     def load_categ(self,src):
         path=os.path.splitext(src)[0] + '.categories'
         if os.path.exists(path):
-            cats_lst=[[unicode(i.strip(),'utf-8') for i in l.split(',',4)] 
+            cats_lst=[[unicode(i.strip(),'utf-8') for i in l.split(',',4)]
                         for l in open(path)]
             for d in cats_lst:
                 try:
@@ -142,12 +142,12 @@ class Poi2Mapper:
         if os.path.exists(path):
             db=sqlite3.connect(path)
             dbc=db.cursor()
-            dbc.execute('select * from category')
+            dbc.execute('SELECT * FROM category')
             for (cat_id,label,desc,enabled) in dbc:
                 self.categ_add_update(label,enabled,desc=desc)
                 cat_ids[cat_id]=label
 
-            dbc.execute('select * from poi')
+            dbc.execute('SELECT * FROM poi')
             for (poi_id,lat,lon,name,desc, cat_id) in dbc:
                 self.pois.append(Poi(name,lat=lat,lon=lon,desc=desc,categ=cat_ids[cat_id]))
             db.close()
@@ -178,7 +178,7 @@ class Poi2Mapper:
                     try:
                         poi_parms[col]=row[col_id[col]]
                     except:
-                        poi_parms[col]=''                  
+                        poi_parms[col]=''
                 if poi_parms['categ']:
                     icon=poi_parms['categ'].lower()+'.jpg'
                 else:
@@ -192,7 +192,7 @@ class Poi2Mapper:
                     lon=poi_parms['lon'],
                     desc=poi_parms['desc']
                     ))
-                        
+
     def handleStyle(self,elm):
         url=None
         style_id=elm.getAttribute('id')
@@ -208,11 +208,11 @@ class Poi2Mapper:
         elif elm.getElementsByTagName("LineStyle") != []:
             icon=u'__line__.jpg'
         return (style_id, self.categ_add_update(None,icon=icon,url=url))
-                    
+
     def get_coords(self,elm):
         coords=elm.getElementsByTagName("coordinates")[0].firstChild.data.split()
         return [map(float,c.split(',')) for c in coords]
-        
+
     def handlePlacemark(self,pm):
         point=pm.getElementsByTagName("Point")
         if point == []:
@@ -260,12 +260,12 @@ class Poi2Mapper:
                     print >>f, s
 
     def proc_category(self,c):
-        self.dbc.execute('insert into category (label, desc, enabled) values (?,?,?);',
+        self.dbc.execute('INSERT INTO category (label, desc, enabled) VALUES (?,?,?);',
             (c.label,c.desc,c.enabled))
         c.update(cat_id=self.dbc.lastrowid)
-            
+
     def proc_poi(self,p):
-        self.dbc.execute('insert into poi (lat, lon, label, desc, cat_id) values (?,?,?,?,?);',
+        self.dbc.execute('INSERT INTO poi (lat, lon, label, desc, cat_id) VALUES (?,?,?,?,?);',
             (p.lat,p.lon,p.label,p.desc,self.categories[p.categ].cat_id))
 
     def proc_src(self,src):
@@ -273,7 +273,7 @@ class Poi2Mapper:
         self.load_categ(src)
         try: # to open as kml file
             self.doc = xml.dom.minidom.parse(src)
-            self.name=[n for n in self.doc.getElementsByTagName("Document")[0].childNodes 
+            self.name=[n for n in self.doc.getElementsByTagName("Document")[0].childNodes
                         if n.nodeType == n.ELEMENT_NODE and n.tagName == 'name'][0].firstChild.data
 
             self.styles=dict(map(self.handleStyle,self.doc.getElementsByTagName("Style")))
@@ -296,12 +296,12 @@ class Poi2Mapper:
         self.db=sqlite3.connect(self.dest_db)
         self.dbc = self.db.cursor()
         try:
-            self.db.execute ('''
-                create table category (cat_id integer PRIMARY KEY, label text, desc text, enabled integer);
-                ''')
-            self.db.execute ('''
-                create table poi (poi_id integer PRIMARY KEY, lat real, lon real, label text, desc text, cat_id integer);
-                ''')
+            self.db.execute (
+                'CREATE TABLE category (cat_id INTEGER PRIMARY KEY, label TEXT, desc TEXT, enabled INTEGER)'
+                )
+            self.db.execute (
+                'CREATE TABLE poi (poi_id INTEGER PRIMARY KEY, lat REAL, lon REAL, label TEXT, desc TEXT, cat_id INTEGER)'
+                )
         except:
             pass
 
@@ -320,11 +320,11 @@ if __name__=='__main__':
     parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
     parser.add_option("-r", "--remove-dest", action="store_true",
         help='delete destination before processing')
-    parser.add_option("-o", "--output",dest="dest_db", 
+    parser.add_option("-o", "--output",dest="dest_db",
                       type="string",help="output POIs db file")
 
     (options, args) = parser.parse_args()
-    logging.basicConfig(level=logging.DEBUG if options.debug else 
+    logging.basicConfig(level=logging.DEBUG if options.debug else
         (logging.ERROR if options.quiet else logging.INFO))
 
     if args == []:
