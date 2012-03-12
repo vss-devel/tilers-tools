@@ -377,6 +377,15 @@ class TstSQLite(TileSet):
         self.dbc = self.db.cursor()
         if self.write:
             self.dbc.execute (
+                'CREATE TABLE __WebKitDatabaseInfoTable__ ('
+                    'key TEXT NOT NULL ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE,'
+                    'value TEXT NOT NULL ON CONFLICT FAIL'
+                    ');'
+                )
+            self.dbc.execute (
+                "INSERT INTO __WebKitDatabaseInfoTable__ VALUES('WebKitDatabaseVersionKey','');"
+                )
+            self.dbc.execute (
                 'CREATE TABLE IF NOT EXISTS tiles ('
                     'map_id INTEGER NOT NULL,'
                     'z INTEGER,'
