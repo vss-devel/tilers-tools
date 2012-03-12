@@ -95,6 +95,9 @@ class Poi:
 class Poi2Mapper:
     def __init__ (self,src,dest_db):
         attr_update(self,src=src,categories={},styles={},icons={},pois=[])
+
+        self.toGMercator=MyTransformer(SRC_SRS='+init=epsg:4326',DST_SRS='+init=epsg:3857')
+
         if dest_db:
             self.base=os.path.splitext(dest_db)[0]
             self.dest_db=dest_db
@@ -265,8 +268,9 @@ class Poi2Mapper:
         c.update(cat_id=self.dbc.lastrowid)
 
     def proc_poi(self,p):
-        self.dbc.execute('INSERT INTO poi (lat, lon, label, desc, cat_id) VALUES (?,?,?,?,?);',
-            (p.lat,p.lon,p.label,p.desc,self.categories[p.categ].cat_id))
+        x,y=self.toGMercator.transform_point([p.lon,p.lat])
+        self.dbc.execute('INSERT INTO poi (x,y,lon,lat,label,desc,cat_id) VALUES (?,?,?,?,?,?,?);',
+            (x,y,p.lon,p.lat,p.label,p.desc,self.categories[p.categ].cat_id))
 
     def proc_src(self,src):
         pf(src)
@@ -296,11 +300,14 @@ class Poi2Mapper:
         self.db=sqlite3.connect(self.dest_db)
         self.dbc = self.db.cursor()
         try:
-            self.db.execute (
+            self.db.execute(
                 'CREATE TABLE category (cat_id INTEGER PRIMARY KEY, label TEXT, desc TEXT, enabled INTEGER)'
                 )
-            self.db.execute (
-                'CREATE TABLE poi (poi_id INTEGER PRIMARY KEY, lat REAL, lon REAL, label TEXT, desc TEXT, cat_id INTEGER)'
+            self.db.execute(
+                'CREATE TABLE poi (poi_id INTEGER PRIMARY KEY,lat REAL,lon REAL,label TEXT,desc TEXT,cat_id INTEGER,x REAL,y REAL)'
+                )
+            self.db.execute(
+                'CREATE TABLE icon (icon_id INTEGER PRIMARY KEY,cat_id INTEGER,mime_type TEXT,data TEXT)'
                 )
         except:
             pass
