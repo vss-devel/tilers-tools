@@ -32,6 +32,7 @@ import logging
 import optparse
 import xml.dom.minidom
 import sqlite3
+import base64
 import htmlentitydefs
 import csv
 
@@ -104,6 +105,8 @@ class Poi2Mapper:
         else:
             self.base=os.path.splitext(src[0])[0]
             self.dest_db=self.base+'.db'
+        self.base_dir=os.path.split(self.base)[0]
+
         if os.path.exists(self.dest_db):
             if options.remove_dest:
                 os.remove(self.dest_db)
@@ -134,7 +137,7 @@ class Poi2Mapper:
             for d in cats_lst:
                 try:
                     (enabled,icon,categ,desc) = d + [None for i in range(len(d),4)]
-                    ld(enabled,icon,categ,desc)
+                    log(enabled,icon,categ,desc)
                     if enabled not in ('0','1') or not categ:
                         continue
                     self.categ_add_update(categ,int(enabled),icon=icon,desc=desc)
@@ -199,7 +202,7 @@ class Poi2Mapper:
     def handleStyle(self,elm):
         url=None
         style_id=elm.getAttribute('id')
-        ld(style_id)
+        log(style_id)
         icon=u'__%s__.jpg' % style_id
         if elm.getElementsByTagName("IconStyle") != []:
             try:
@@ -226,7 +229,7 @@ class Poi2Mapper:
         label=pm.getElementsByTagName("name")[0].firstChild.data
         style_id=pm.getElementsByTagName("styleUrl")[0].firstChild.data[1:]
         style=self.styles[style_id]
-        ld((label,style_id,style))
+        log((label,style_id,style))
         if style.startswith('__') and style.endswith('__'):
             logging.warning(' No icon for "%s"' % label)
         desc=None
@@ -247,13 +250,13 @@ class Poi2Mapper:
         icon_aliases=[] #"ln -s '%s.db' 'poi.db'"  % self.base]
         icon_aliase_templ="ln -s '%s' '%s'"
         for (c_key,c) in self.categories.iteritems():
-            for i_key in c.icons:
-                cat_list.append('%i, %s, %s%s' % (c.enabled,i_key,c.label,((', '+c.desc) if c.desc else '')))
-                url=c.icons[i_key]
+            for icon_name in c.icons:
+                cat_list.append('%i, %s, %s%s' % (c.enabled,icon_name,c.label,((', '+c.desc) if c.desc else '')))
+                url=c.icons[icon_name]
                 if url:
                     icon_urls.append("wget -nc '%s'" % url)
-                if c_key+'.jpg' != i_key:
-                    icon_aliases.append(icon_aliase_templ % (i_key, c_key+'.jpg'))
+                if c_key+'.jpg' != icon_name:
+                    icon_aliases.append(icon_aliase_templ % (icon_name, c_key+'.jpg'))
         with open(self.base+'.categories.gen','w') as f:
             for s in cat_list:
                 print >>f, s
@@ -262,10 +265,23 @@ class Poi2Mapper:
                 for s in ls:
                     print >>f, s
 
+    def proc_icon(self,c):
+        log("c.icons",c.icons)
+        icon_file=os.path.join(self.base_dir,c.label+'.jpg')
+        if not os.path.exists(icon_file):
+            logging.warning('No icon image for %s' % c.label)
+            return
+        with open(icon_file) as f:
+            icon_data=f.read()
+        mime_type=mime_from_ext(ext_from_buffer(icon_data))
+        self.dbc.execute('INSERT INTO icon (cat_id,mime_type,data) VALUES (?,?,?);',
+            (c.cat_id,mime_type,base64.b64encode(icon_data)))
+
     def proc_category(self,c):
         self.dbc.execute('INSERT INTO category (label, desc, enabled) VALUES (?,?,?);',
             (c.label,c.desc,c.enabled))
         c.update(cat_id=self.dbc.lastrowid)
+        self.proc_icon(c)
 
     def proc_poi(self,p):
         x,y=self.toGMercator.transform_point([p.lon,p.lat])
