@@ -35,6 +35,7 @@ import sqlite3
 import base64
 import htmlentitydefs
 import csv
+from PIL import Image
 
 from tiler_functions import *
 
@@ -266,7 +267,7 @@ class Poi2Mapper:
                     print >>f, s
 
     def proc_icon(self,c):
-        log("c.icons",c.icons)
+        #log("c.icons",c.icons)
         icon_file=os.path.join(self.base_dir,c.label+'.jpg')
         if not os.path.exists(icon_file):
             logging.warning('No icon image for %s' % c.label)
@@ -274,8 +275,15 @@ class Poi2Mapper:
         with open(icon_file) as f:
             icon_data=f.read()
         mime_type=mime_from_ext(ext_from_buffer(icon_data))
-        self.dbc.execute('INSERT INTO icon (cat_id,mime_type,data) VALUES (?,?,?);',
-            (c.cat_id,mime_type,base64.b64encode(icon_data)))
+        img=Image.open(icon_file)
+        width,height=img.size
+        x_offset,y_offset=(width/2,0)
+        #log("icon",c.label,img.format,width,height)
+        self.dbc.execute(
+            'INSERT INTO icon '
+                '(cat_id,mime_type,data,width,height,x_offset,y_offset) '
+                'VALUES (?,?,?,?,?,?,?);',
+            (c.cat_id,mime_type,base64.b64encode(icon_data),width,height,x_offset,y_offset))
 
     def proc_category(self,c):
         self.dbc.execute('INSERT INTO category (label, desc, enabled) VALUES (?,?,?);',
@@ -317,13 +325,36 @@ class Poi2Mapper:
         self.dbc = self.db.cursor()
         try:
             self.db.execute(
-                'CREATE TABLE category (cat_id INTEGER PRIMARY KEY, label TEXT, desc TEXT, enabled INTEGER)'
+                'CREATE TABLE IF NOT EXISTS category ('
+                    'cat_id INTEGER PRIMARY KEY,'
+                    'label TEXT,'
+                    'desc TEXT,'
+                    'enabled INTEGER'
+                    ')'
                 )
             self.db.execute(
-                'CREATE TABLE poi (poi_id INTEGER PRIMARY KEY,lat REAL,lon REAL,label TEXT,desc TEXT,cat_id INTEGER,x REAL,y REAL)'
+                'CREATE TABLE IF NOT EXISTS poi ('
+                    'poi_id INTEGER PRIMARY KEY,'
+                    'lat REAL,'
+                    'lon REAL,'
+                    'label TEXT,'
+                    'desc TEXT,'
+                    'cat_id INTEGER,'
+                    'x REAL,'
+                    'y REAL'
+                    ')'
                 )
             self.db.execute(
-                'CREATE TABLE icon (icon_id INTEGER PRIMARY KEY,cat_id INTEGER,mime_type TEXT,data TEXT)'
+                'CREATE TABLE IF NOT EXISTS icon ('
+                    'icon_id INTEGER PRIMARY KEY,'
+                    'cat_id INTEGER,'
+                    'width INTEGER,'
+                    'height INTEGER,'
+                    'x_offset INTEGER,'
+                    'y_offset INTEGER,'
+                    'mime_type TEXT,'
+                    'data TEXT'
+                    ')'
                 )
         except:
             pass
