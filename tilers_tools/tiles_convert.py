@@ -376,12 +376,12 @@ class WebSQL(TileSet):
                 )
             self.dbc.execute (
                 'CREATE TABLE IF NOT EXISTS tiles ('
-                    'tile_id INTEGER PRIMARY KEY NOT NULL,'
                     'map_id INTEGER NOT NULL,'
                     'z INTEGER,'
                     'x INTEGER,'
                     'y INTEGER,'
-                    'raster_id INTEGER REFERENCES rasters(raster_id)'
+                    'raster_id INTEGER REFERENCES rasters(raster_id),'
+                    'PRIMARY KEY (map_id, z, x, y)'
                     ')'
                 )
             self.dbc.execute (
@@ -393,16 +393,19 @@ class WebSQL(TileSet):
                     'data TEXT'
                     ')'
                 )
-            self.dbc.execute('INSERT OR REPLACE INTO maps (name,url,overlay,description) VALUES (?,?,?,?);',
-                (self.name,self.options.url,self.options.overlay,self.options.description))
+            self.db.commit()
 
-            self.map_id=self.dbc.lastrowid
+            self.dbc.execute('INSERT OR IGNORE INTO maps (name) VALUES (?);',
+                (self.name,))
+            self.dbc.execute('SELECT map_id FROM maps WHERE name=?',(self.name,))
+            row=self.dbc.fetchone()
+            self.map_id=row[0]
+            log("self.map_id",self.map_id)
+
+            self.dbc.execute('UPDATE maps SET url=?,overlay=?,description=? WHERE name=?;',
+                (self.options.url,self.options.overlay,self.options.description,self.name))
 
     def __del__(self):
-        if self.write:
-            self.dbc.execute (
-                "CREATE INDEX IF NOT EXISTS tile_zxy ON tiles "
-                "(map_id, z, x, y)")
         self.db.commit()
         self.db.close()
         super(WebSQL, self).__del__()
@@ -416,15 +419,26 @@ class WebSQL(TileSet):
     def store_tile(self, tile):
         z,x,y=tile.coord()
         log('%s -> WebSQL %s:%d,%d,%d' % (tile.path,self.name, z, x, y))
-        self.dbc.execute('INSERT OR REPLACE INTO tiles (map_id,z,x,y) VALUES (?,?,?,?);',
+        self.dbc.execute(
+            "SELECT rowid,raster_id "
+            "FROM tiles "
+            "WHERE map_id=? AND z=? AND x=? AND y=?",
+            (self.map_id,z,x,y))
+        row=self.dbc.fetchone()
+        if row:
+            tile_id,raster_id=row
+            self.dbc.execute("DELETE FROM tiles WHERE rowid=?",(tile_id,))
+            self.dbc.execute("DELETE FROM rasters WHERE raster_id=?",(raster_id,))
+
+        self.dbc.execute('INSERT INTO tiles (map_id,z,x,y) VALUES (?,?,?,?);',
             (self.map_id,z,x,y))
         tile_id=self.dbc.lastrowid
         self.dbc.execute(
-            'INSERT OR REPLACE INTO rasters (tile_id,map_id,mime_type,data) VALUES (?,?,?,?);',
+            'INSERT INTO rasters (tile_id,map_id,mime_type,data) VALUES (?,?,?,?);',
             (tile_id,self.map_id,tile.get_mime(),self.b64encode(tile.data()))
             )
         raster_id=self.dbc.lastrowid
-        self.dbc.execute('UPDATE tiles SET raster_id=? WHERE tile_id=?;',(raster_id,tile_id))
+        self.dbc.execute('UPDATE tiles SET raster_id=? WHERE rowid=?;',(raster_id,tile_id))
 
         self.counter()
 # tst
