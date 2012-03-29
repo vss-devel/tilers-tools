@@ -111,6 +111,9 @@ def path2list(path):
     split=[ext]
     while head:
         head,p=os.path.split(head)
+        if p == '': # head must be '/'
+            p=head
+            head=None
         split.append(p)
     split.reverse()
     return split
@@ -157,14 +160,14 @@ def re_sub_file(fname, subs_list):
     shutil.move(new,fname)
 
 class LooseOptions(object):
-    def __init__(self,options):
+    def __init__(self,options=None):
         if options is None:
-            opt_dict={}
+            options=dict()
         elif isinstance(options,dict):
-            opt_dict=options
+            pass
         else: #optparse.Values
-            opt_dict=options.__dict__
-        self.update(opt_dict)
+            options=options.__dict__
+        self.update(options)
 
     def __getattr__(self, name):
         self.__dict__.get(name)
