@@ -357,52 +357,52 @@ class WebSQL(TileSet):
         self.dbc = self.db.cursor()
         if self.write:
             self.dbc.execute (
-                'CREATE TABLE IF NOT EXISTS __WebKitDatabaseInfoTable__ ('
-                    'key TEXT NOT NULL ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE,'
-                    'value TEXT NOT NULL ON CONFLICT FAIL'
-                    ');'
+                "CREATE TABLE IF NOT EXISTS __WebKitDatabaseInfoTable__ ("
+                    "key TEXT NOT NULL ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE,"
+                    "value TEXT NOT NULL ON CONFLICT FAIL"
+                    ");"
                 )
             self.dbc.execute (
                 "INSERT OR REPLACE INTO __WebKitDatabaseInfoTable__ VALUES('WebKitDatabaseVersionKey','');"
                 )
             self.dbc.execute (
-                'CREATE TABLE IF NOT EXISTS maps ('
-                    'map_id INTEGER PRIMARY KEY NOT NULL,'
-                    'name TEXT UNIQUE NOT NULL,'
-                    'url TEXT,'
-                    'overlay BOOLEAN,'
-                    'description TEXT'
-                    ')'
+                "CREATE TABLE IF NOT EXISTS maps ("
+                    "map_id INTEGER PRIMARY KEY NOT NULL,"
+                    "name TEXT UNIQUE NOT NULL,"
+                    "url TEXT,"
+                    "overlay BOOLEAN,"
+                    "description TEXT"
+                    ")"
                 )
             self.dbc.execute (
-                'CREATE TABLE IF NOT EXISTS tiles ('
-                    'map_id INTEGER NOT NULL,'
-                    'z INTEGER,'
-                    'x INTEGER,'
-                    'y INTEGER,'
-                    'raster_id INTEGER REFERENCES rasters(raster_id),'
-                    'PRIMARY KEY (map_id, z, x, y)'
-                    ')'
+                "CREATE TABLE IF NOT EXISTS tiles ("
+                    "map_id INTEGER NOT NULL,"
+                    "z INTEGER,"
+                    "x INTEGER,"
+                    "y INTEGER,"
+                    "raster_id INTEGER REFERENCES rasters(raster_id),"
+                    "PRIMARY KEY (map_id, z, x, y)"
+                    ")"
                 )
             self.dbc.execute (
-                'CREATE TABLE IF NOT EXISTS rasters ('
-                    'raster_id INTEGER NOT NULL PRIMARY KEY,'
-                    'tile_id INTEGER UNIQUE NOT NULL,'
-                    'map_id INTEGER NOT NULL,'
-                    'mime_type TEXT,'
-                    'data TEXT'
-                    ')'
+                "CREATE TABLE IF NOT EXISTS rasters ("
+                    "raster_id INTEGER NOT NULL PRIMARY KEY,"
+                    "tile_id INTEGER UNIQUE NOT NULL,"
+                    "map_id INTEGER NOT NULL,"
+                    "mime_type TEXT,"
+                    "data TEXT"
+                    ")"
                 )
             self.db.commit()
 
-            self.dbc.execute('INSERT OR IGNORE INTO maps (name) VALUES (?);',
+            self.dbc.execute("INSERT OR IGNORE INTO maps (name) VALUES (?);",
                 (self.name,))
-            self.dbc.execute('SELECT map_id FROM maps WHERE name=?',(self.name,))
+            self.dbc.execute("SELECT map_id FROM maps WHERE name=?",(self.name,))
             row=self.dbc.fetchone()
             self.map_id=row[0]
             log("self.map_id",self.map_id)
 
-            self.dbc.execute('UPDATE maps SET url=?,overlay=?,description=? WHERE name=?;',
+            self.dbc.execute("UPDATE maps SET url=?,overlay=?,description=? WHERE name=?;",
                 (self.options.url,self.options.overlay,self.options.description,self.name))
 
     def __del__(self):
@@ -411,14 +411,14 @@ class WebSQL(TileSet):
         super(WebSQL, self).__del__()
 
     def __iter__(self):
-        self.dbc.execute('SELECT * FROM tiles')
+        self.dbc.execute("SELECT * FROM tiles")
         for z,x,y,data in self.dbc:
             self.counter()
             yield PixBufTile((z,x,y),self.b64decode(data),(z,x,y))
 
     def store_tile(self, tile):
         z,x,y=tile.coord()
-        log('%s -> WebSQL %s:%d,%d,%d' % (tile.path,self.name, z, x, y))
+        log("%s -> WebSQL %s:%d,%d,%d" % (tile.path,self.name, z, x, y))
         self.dbc.execute(
             "SELECT rowid,raster_id "
             "FROM tiles "
@@ -430,15 +430,15 @@ class WebSQL(TileSet):
             self.dbc.execute("DELETE FROM tiles WHERE rowid=?",(tile_id,))
             self.dbc.execute("DELETE FROM rasters WHERE raster_id=?",(raster_id,))
 
-        self.dbc.execute('INSERT INTO tiles (map_id,z,x,y) VALUES (?,?,?,?);',
+        self.dbc.execute("INSERT INTO tiles (map_id,z,x,y) VALUES (?,?,?,?);",
             (self.map_id,z,x,y))
         tile_id=self.dbc.lastrowid
         self.dbc.execute(
-            'INSERT INTO rasters (tile_id,map_id,mime_type,data) VALUES (?,?,?,?);',
+            "INSERT INTO rasters (tile_id,map_id,mime_type,data) VALUES (?,?,?,?);",
             (tile_id,self.map_id,tile.get_mime(),self.b64encode(tile.data()))
             )
         raster_id=self.dbc.lastrowid
-        self.dbc.execute('UPDATE tiles SET raster_id=? WHERE rowid=?;',(raster_id,tile_id))
+        self.dbc.execute("UPDATE tiles SET raster_id=? WHERE rowid=?;",(raster_id,tile_id))
 
         self.counter()
 # tst
@@ -460,14 +460,14 @@ class MapperSQLite(TileSet):
         self.dbc = self.db.cursor()
         if self.write:
             try:
-                self.dbc.execute ('''
-                    CREATE TABLE maps (
-                        zoom integer,
-                        tilex integer,
-                        tiley integer,
-                        pixbuf blob,
-                        primary key (zoom, tilex, tiley));
-                    ''')
+                self.dbc.execute (
+                    "CREATE TABLE maps ("
+                        "zoom INTEGER,"
+                        "tilex INTEGER,"
+                        "tiley INTEGER,"
+                        "pixbuf BLOB,"
+                        "PRIMARY KEY (zoom, tilex, tiley));"
+                    )
             except:
                 pass
 
@@ -477,7 +477,7 @@ class MapperSQLite(TileSet):
         TileSet.__del__(self)
 
     def __iter__(self):
-        self.dbc.execute('SELECT * FROM tiles')
+        self.dbc.execute("SELECT * FROM tiles")
         for z,x,y,pixbuf in self.dbc:
             self.counter()
             yield PixBufTile((self.max_zoom+1-z,x,y),str(pixbuf),(z,x,y))
@@ -487,7 +487,7 @@ class MapperSQLite(TileSet):
         # convert to maemo-mapper coords
         z=self.max_zoom+1-z
         log('%s -> SQLite %d,%d,%d' % (tile.path, z, x, y))
-        self.dbc.execute('INSERT OR REPLACE INTO maps (zoom,tilex,tiley,pixbuf) VALUES (?,?,?,?);',
+        self.dbc.execute("INSERT OR REPLACE INTO maps (zoom,tilex,tiley,pixbuf) VALUES (?,?,?,?);",
             (z,x,y,buffer(tile.data())))
         self.counter()
 # MapperSQLite
