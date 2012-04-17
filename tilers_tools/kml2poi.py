@@ -155,7 +155,8 @@ class Poi2Mapper:
                 cat_ids[cat_id]=label
 
             dbc.execute('SELECT * FROM poi')
-            for (poi_id,lat,lon,name,desc, cat_id) in dbc:
+            for row in dbc:
+                (poi_id,lat,lon,name,desc,cat_id)=row[:6]
                 self.pois.append(Poi(name,lat=lat,lon=lon,desc=desc,categ=cat_ids[cat_id]))
             db.close()
 

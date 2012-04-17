@@ -366,8 +366,8 @@ class WebSQL(TileSet):
                 "INSERT OR REPLACE INTO __WebKitDatabaseInfoTable__ VALUES('WebKitDatabaseVersionKey','');"
                 )
             self.dbc.execute (
-                "CREATE TABLE IF NOT EXISTS maps ("
-                    "map_id INTEGER PRIMARY KEY NOT NULL,"
+                "CREATE TABLE IF NOT EXISTS layers ("
+                    "layer INTEGER PRIMARY KEY NOT NULL,"
                     "name TEXT UNIQUE NOT NULL,"
                     "url TEXT,"
                     "overlay BOOLEAN,"
@@ -376,33 +376,34 @@ class WebSQL(TileSet):
                 )
             self.dbc.execute (
                 "CREATE TABLE IF NOT EXISTS tiles ("
-                    "map_id INTEGER NOT NULL,"
+                    "tile INTEGER PRIMARY KEY,"
+                    "layer INTEGER NOT NULL REFERENCES layers,"
                     "z INTEGER,"
                     "x INTEGER,"
                     "y INTEGER,"
-                    "raster_id INTEGER REFERENCES rasters(raster_id),"
-                    "PRIMARY KEY (map_id, z, x, y)"
+                    "raster INTEGER REFERENCES rasters,"
+                    "UNIQUE (layer, z, x, y)"
                     ")"
                 )
             self.dbc.execute (
                 "CREATE TABLE IF NOT EXISTS rasters ("
-                    "raster_id INTEGER NOT NULL PRIMARY KEY,"
-                    "tile_id INTEGER UNIQUE NOT NULL,"
-                    "map_id INTEGER NOT NULL,"
+                    "raster INTEGER PRIMARY KEY,"
+                    "tile INTEGER NOT NULL REFERENCES tiles,"
+                    "layer INTEGER NOT NULL REFERENCES layers,"
                     "mime_type TEXT,"
                     "data TEXT"
                     ")"
                 )
             self.db.commit()
 
-            self.dbc.execute("INSERT OR IGNORE INTO maps (name) VALUES (?);",
+            self.dbc.execute("INSERT OR IGNORE INTO layers (name) VALUES (?);",
                 (self.name,))
-            self.dbc.execute("SELECT map_id FROM maps WHERE name=?",(self.name,))
+            self.dbc.execute("SELECT layer FROM layers WHERE name=?",(self.name,))
             row=self.dbc.fetchone()
-            self.map_id=row[0]
-            log("self.map_id",self.map_id)
+            self.layer_id=row[0]
+            log("self.layer",self.layer_id)
 
-            self.dbc.execute("UPDATE maps SET url=?,overlay=?,description=? WHERE name=?;",
+            self.dbc.execute("UPDATE layers SET url=?,overlay=?,description=? WHERE name=?;",
                 (self.options.url,self.options.overlay,self.options.description,self.name))
 
     def __del__(self):
@@ -420,25 +421,25 @@ class WebSQL(TileSet):
         z,x,y=tile.coord()
         log("%s -> WebSQL %s:%d,%d,%d" % (tile.path,self.name, z, x, y))
         self.dbc.execute(
-            "SELECT rowid,raster_id "
+            "SELECT tile,raster "
             "FROM tiles "
-            "WHERE map_id=? AND z=? AND x=? AND y=?",
-            (self.map_id,z,x,y))
+            "WHERE layer=? AND z=? AND x=? AND y=?",
+            (self.layer_id,z,x,y))
         row=self.dbc.fetchone()
         if row:
             tile_id,raster_id=row
-            self.dbc.execute("DELETE FROM tiles WHERE rowid=?",(tile_id,))
-            self.dbc.execute("DELETE FROM rasters WHERE raster_id=?",(raster_id,))
+            self.dbc.execute("DELETE FROM rasters WHERE raster=?",(raster_id,))
+            self.dbc.execute("DELETE FROM tiles WHERE tile=?",(tile_id,))
 
-        self.dbc.execute("INSERT INTO tiles (map_id,z,x,y) VALUES (?,?,?,?);",
-            (self.map_id,z,x,y))
+        self.dbc.execute("INSERT INTO tiles (layer,z,x,y) VALUES (?,?,?,?);",
+            (self.layer_id,z,x,y))
         tile_id=self.dbc.lastrowid
         self.dbc.execute(
-            "INSERT INTO rasters (tile_id,map_id,mime_type,data) VALUES (?,?,?,?);",
-            (tile_id,self.map_id,tile.get_mime(),self.b64encode(tile.data()))
+            "INSERT INTO rasters (tile,layer,mime_type,data) VALUES (?,?,?,?);",
+            (tile_id,self.layer_id,tile.get_mime(),self.b64encode(tile.data()))
             )
         raster_id=self.dbc.lastrowid
-        self.dbc.execute("UPDATE tiles SET raster_id=? WHERE rowid=?;",(raster_id,tile_id))
+        self.dbc.execute("UPDATE tiles SET raster=? WHERE tile=?;",(raster_id,tile_id))
 
         self.counter()
 # tst
