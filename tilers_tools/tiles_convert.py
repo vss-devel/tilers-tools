@@ -478,7 +478,7 @@ class MapperSQLite(TileSet):
         TileSet.__del__(self)
 
     def __iter__(self):
-        self.dbc.execute("SELECT * FROM tiles")
+        self.dbc.execute("SELECT * FROM maps")
         for z,x,y,pixbuf in self.dbc:
             self.counter()
             yield PixBufTile((self.max_zoom+1-z,x,y),str(pixbuf),(z,x,y))
