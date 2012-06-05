@@ -264,6 +264,7 @@ def sasplanet_hlg2ogr(fname):
 def shape2mpointlst(datasource,dst_srs,feature_name=None):
     ds=ogr.Open(datasource.encode(locale.getpreferredencoding()))
     if not ds:
+        gdal.ErrorReset()
         ds=sasplanet_hlg2ogr(datasource)
     if not ds:
         ld('shape2mpointlst: Invalid datasource %s' % datasource)
