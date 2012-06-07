@@ -55,7 +55,7 @@ def to_jpeg(src,dst,dpath):
     img.save(dst_jpg,optimize=True,quality=options.quality)
 
 class KeyboardInterruptError(Exception): pass
-   
+
 def proc_file(f):
     try:
         src=os.path.join(src_dir,f)
@@ -71,7 +71,7 @@ def proc_file(f):
     except KeyboardInterrupt: # http://jessenoller.com/2009/01/08/multiprocessingpool-and-keyboardinterrupt/
         pf('got KeyboardInterrupt')
         raise KeyboardInterruptError()
-    
+
 if __name__=='__main__':
     logging.basicConfig(level=logging.INFO)
     #logging.basicConfig(level=logging.DEBUG)
@@ -92,7 +92,7 @@ if __name__=='__main__':
     parser.add_option("-d", "--debug", action="store_true")
     parser.add_option("--nothreads", action="store_true",
         help="do not use multiprocessing")
-        
+
     (options, args) = parser.parse_args()
 
     if not args:
@@ -101,14 +101,16 @@ if __name__=='__main__':
     if options.nothreads or options.debug:
         set_nothreads()
 
-    if options.jpeg: 
+    dst_ext='.opt'
+    if options.jpeg:
         optimize_png=to_jpeg
+        dst_ext='.jpeg'
 
     for src_dir in args:
-        dst_dir=src_dir+'.opt'
+        dst_dir=src_dir+dst_ext
         pf('%s -> %s ' % (src_dir,dst_dir),end='')
 
-        if options.remove_dest: 
+        if options.remove_dest:
             shutil.rmtree(dst_dir,ignore_errors=True)
         elif os.path.exists(dst_dir):
             raise Exception('Destination already exists: %s' % dst_dir)
@@ -117,7 +119,7 @@ if __name__=='__main__':
         try:
             cwd=os.getcwd()
             os.chdir(src_dir)
-            src_lst=flatten([os.path.join(path, name) for name in files] 
+            src_lst=flatten([os.path.join(path, name) for name in files]
                         for path, dirs, files in os.walk('.'))
         finally:
             os.chdir(cwd)
@@ -125,11 +127,11 @@ if __name__=='__main__':
         parallel_map(proc_file,src_lst)
 
         if options.jpeg:
-            tilemap=os.path.join(dst_dir,'tilemap.xml')
+            tilemap=os.path.join(dst_dir,'tilemap.json')
             if os.path.exists(tilemap):
                 re_sub_file(tilemap,[
-                    ('mime-type="[^"]*"','mime-type="image/jpeg"'),                    
-                    ('extension="[^"]*"','extension="jpg"'),
+                    ('"mime":[^,]*"','"mime": "image/jpeg"'),
+                    ('"ext":[^,]*"','"ext": "jpg"'),
                     ])
 
         pf('')
