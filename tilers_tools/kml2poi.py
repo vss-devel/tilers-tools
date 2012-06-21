@@ -270,7 +270,9 @@ class Poi2Mapper:
     def proc_icon(self,c):
         #log("c.icons",c.icons)
         icon_file=os.path.join(self.base_dir,c.label+'.jpg')
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! Make case insensitive !!!!!!!!!!!!!!!!!!!!!!!!!!
         if not os.path.exists(icon_file):
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! Make case insensitive !!!!!!!!!!!!!!!!!!!!!!!!!!
             logging.warning('No icon image for %s' % c.label)
             return
         with open(icon_file) as f:
