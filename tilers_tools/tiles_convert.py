@@ -381,19 +381,20 @@ class WebSQL(TileSet):
                     "z INTEGER,"
                     "x INTEGER,"
                     "y INTEGER,"
-                    "raster INTEGER REFERENCES rasters,"
+                    "data TEXT,"
                     "UNIQUE (layer, z, x, y)"
                     ")"
                 )
-            self.dbc.execute (
-                "CREATE TABLE IF NOT EXISTS rasters ("
-                    "raster INTEGER PRIMARY KEY,"
-                    "tile INTEGER NOT NULL REFERENCES tiles,"
-                    "layer INTEGER NOT NULL REFERENCES layers,"
-                    "mime_type TEXT,"
-                    "data TEXT"
-                    ")"
-                )
+#                    "raster INTEGER REFERENCES rasters,"
+            #~ self.dbc.execute (
+                #~ "CREATE TABLE IF NOT EXISTS rasters ("
+                    #~ "raster INTEGER PRIMARY KEY,"
+                    #~ "tile INTEGER NOT NULL REFERENCES tiles,"
+                    #~ "layer INTEGER NOT NULL REFERENCES layers,"
+                    #~ "data TEXT"
+                    #~ ")"
+                #~ )
+#                    "mime_type TEXT,"
             self.db.commit()
 
             self.dbc.execute("INSERT OR IGNORE INTO layers (name) VALUES (?);",
@@ -420,26 +421,31 @@ class WebSQL(TileSet):
     def store_tile(self, tile):
         z,x,y=tile.coord()
         log("%s -> WebSQL %s:%d,%d,%d" % (tile.path,self.name, z, x, y))
-        self.dbc.execute(
-            "SELECT tile,raster "
-            "FROM tiles "
-            "WHERE layer=? AND z=? AND x=? AND y=?",
-            (self.layer_id,z,x,y))
-        row=self.dbc.fetchone()
-        if row:
-            tile_id,raster_id=row
-            self.dbc.execute("DELETE FROM rasters WHERE raster=?",(raster_id,))
-            self.dbc.execute("DELETE FROM tiles WHERE tile=?",(tile_id,))
+        #~ self.dbc.execute(
+            #~ "SELECT tile,raster "
+            #~ "FROM tiles "
+            #~ "WHERE layer=? AND z=? AND x=? AND y=?",
+            #~ (self.layer_id,z,x,y))
+        #~ row=self.dbc.fetchone()
+        #~ if row:
+            #~ tile_id,raster_id=row
+            #~ self.dbc.execute("DELETE FROM rasters WHERE raster=?",(raster_id,))
+            #~ self.dbc.execute("DELETE FROM tiles WHERE tile=?",(tile_id,))
 
-        self.dbc.execute("INSERT INTO tiles (layer,z,x,y) VALUES (?,?,?,?);",
-            (self.layer_id,z,x,y))
-        tile_id=self.dbc.lastrowid
-        self.dbc.execute(
-            "INSERT INTO rasters (tile,layer,mime_type,data) VALUES (?,?,?,?);",
-            (tile_id,self.layer_id,tile.get_mime(),self.b64encode(tile.data()))
-            )
-        raster_id=self.dbc.lastrowid
-        self.dbc.execute("UPDATE tiles SET raster=? WHERE tile=?;",(raster_id,tile_id))
+        self.dbc.execute("INSERT INTO tiles (layer,z,x,y,data) VALUES (?,?,?,?,?);",
+            (self.layer_id,z,x,y,'data:' + tile.get_mime() + ';base64,' + self.b64encode(tile.data())))
+
+#~ #        self.dbc.execute("INSERT INTO tiles (layer,z,x,y) VALUES (?,?,?,?);",
+#~ #            (self.layer_id,z,x,y))
+        #~ tile_id=self.dbc.lastrowid
+        #~ self.dbc.execute(
+#~ #            "INSERT INTO rasters (tile,layer,mime_type,data) VALUES (?,?,?,?);",
+#~ #            (tile_id,self.layer_id,tile.get_mime(),self.b64encode(tile.data()))
+            #~ "INSERT INTO rasters (tile,layer,data) VALUES (?,?,?);",
+            #~ (tile_id,self.layer_id,'data:' + tile.get_mime() + ';base64,' + self.b64encode(tile.data()))
+            #~ )
+        #~ raster_id=self.dbc.lastrowid
+        #~ self.dbc.execute("UPDATE tiles SET raster=? WHERE tile=?;",(raster_id,tile_id))
 
         self.counter()
 # tst

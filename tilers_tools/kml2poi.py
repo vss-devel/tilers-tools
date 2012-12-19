@@ -295,6 +295,7 @@ class Poi2Mapper:
         self.proc_icon(c)
 
     def proc_poi(self,p):
+        log("poi",p.label,p.lon,p.lat)
         x,y=self.toGMercator.transform_point([p.lon,p.lat])
         self.dbc.execute('INSERT INTO poi (x,y,lon,lat,label,desc,cat_id) VALUES (?,?,?,?,?,?,?);',
             (x,y,p.lon,p.lat,p.label,p.desc,self.categories[p.categ].cat_id))
