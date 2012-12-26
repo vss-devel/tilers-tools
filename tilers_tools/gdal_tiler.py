@@ -1290,10 +1290,17 @@ class GMercator(Pyramid):
     'base class for Global Mercator'
 #############################
 
+    # OpenLayers-2.12/lib/OpenLayers/Projection.js
+    #
+    # "EPSG:900913": {
+    #     units: "m",
+    #     maxExtent: [-20037508.34, -20037508.34, 20037508.34, 20037508.34]
+    # }
+
     zoom0_tiles=[1,1] # tiles at zoom 0
 
-    # Global Mercator (EPSG:3857) http://docs.openlayers.org/library/spherical_mercator.html
-    srs='+proj=merc +a=6378137 +b=6378137 +nadgrids=@null +wktext'
+    # Global Mercator (EPSG:3857, aka EPSG:900913) http://docs.openlayers.org/library/spherical_mercator.html
+    srs = '+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs'
 
     tilemap_crs='EPSG:3857'
 
