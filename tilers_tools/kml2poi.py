@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-05-15 17:27:24
-
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
 #
@@ -35,6 +33,7 @@ import sqlite3
 import base64
 import htmlentitydefs
 import csv
+import json
 from PIL import Image
 
 from tiler_functions import *
@@ -74,7 +73,7 @@ def strip_html(text):
 def attr_update(self,**updates):
         self.__dict__.update(updates)
 
-class Category:
+class Category (object):
     def __init__(self,label):
         attr_update(self,label=label,enabled=1,desc='',cat_id=None,icons={})
 
@@ -88,13 +87,14 @@ class Category:
         if enabled is not None:
             self.enabled= 1 if enabled else 0;
 
-class Poi:
+class Poi (object):
     def __init__(self,label=None,lat=None,lon=None,desc='',categ=None):
         if desc is None:
             desc=''
         attr_update(self,label=label,desc=desc,lat=lat,lon=lon,categ=categ.lower())
 
-class Poi2Mapper:
+class Poi2Db (object):
+    """ Generic class """
     def __init__ (self,src,dest_db):
         attr_update(self,src=src,categories={},styles={},icons={},pois=[])
 
@@ -143,22 +143,6 @@ class Poi2Mapper:
                         continue
                     self.categ_add_update(categ,int(enabled),icon=icon,desc=desc)
                 except: pass
-
-    def read_db(self,path):
-        cat_ids={}
-        if os.path.exists(path):
-            db=sqlite3.connect(path)
-            dbc=db.cursor()
-            dbc.execute('SELECT * FROM category')
-            for (cat_id,label,desc,enabled) in dbc:
-                self.categ_add_update(label,enabled,desc=desc)
-                cat_ids[cat_id]=label
-
-            dbc.execute('SELECT * FROM poi')
-            for row in dbc:
-                (poi_id,lat,lon,name,desc,cat_id)=row[:6]
-                self.pois.append(Poi(name,lat=lat,lon=lon,desc=desc,categ=cat_ids[cat_id]))
-            db.close()
 
     def read_csv(self,path):
         col_id={
@@ -267,41 +251,8 @@ class Poi2Mapper:
                 for s in ls:
                     print >>f, s
 
-    def proc_icon(self,c):
-        #log("c.icons",c.icons)
-        icon_file=os.path.join(self.base_dir,c.label+'.jpg')
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! Make case insensitive !!!!!!!!!!!!!!!!!!!!!!!!!!
-        if not os.path.exists(icon_file):
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! Make case insensitive !!!!!!!!!!!!!!!!!!!!!!!!!!
-            logging.warning('No icon image for %s' % c.label)
-            return
-        with open(icon_file) as f:
-            icon_data=f.read()
-        mime_type=mime_from_ext(ext_from_buffer(icon_data))
-        img=Image.open(icon_file)
-        width,height=img.size
-        x_offset,y_offset=(width/2,0)
-        #log("icon",c.label,img.format,width,height)
-        self.dbc.execute(
-            'INSERT INTO icon '
-                '(cat_id,mime_type,data,width,height,x_offset,y_offset) '
-                'VALUES (?,?,?,?,?,?,?);',
-            (c.cat_id,mime_type,base64.b64encode(icon_data),width,height,x_offset,y_offset))
-
-    def proc_category(self,c):
-        self.dbc.execute('INSERT INTO category (label, desc, enabled) VALUES (?,?,?);',
-            (c.label,c.desc,c.enabled))
-        c.update(cat_id=self.dbc.lastrowid)
-        self.proc_icon(c)
-
-    def proc_poi(self,p):
-        log("poi",p.label,p.lon,p.lat)
-        x,y=self.toGMercator.transform_point([p.lon,p.lat])
-        self.dbc.execute('INSERT INTO poi (x,y,lon,lat,label,desc,cat_id) VALUES (?,?,?,?,?,?,?);',
-            (x,y,p.lon,p.lat,p.label,p.desc,self.categories[p.categ].cat_id))
-
     def proc_src(self,src):
-        pf(src)
+        log(src)
         self.load_categ(src)
         try: # to open as kml file
             self.doc = xml.dom.minidom.parse(src)
@@ -322,8 +273,74 @@ class Poi2Mapper:
                 except csv.Error:
                     raise Exception('Invalid input file: %s' % src)
 
+    def proc_icon(self, c):
+        pass
+
     def proc_all(self):
         map(self.proc_src, self.src)
+
+        self.create_db()
+
+        map(self.proc_category,self.categories.itervalues())
+        map(self.proc_poi,self.pois)
+        #map(self.proc_icon,self.pois)
+
+        self.write_aux()
+        self.close_db()
+#
+# Poi2Db
+
+class Poi2Mapper (Poi2Db):
+    def read_db(self,path):
+        cat_ids={}
+        if os.path.exists(path):
+            db=sqlite3.connect(path)
+            dbc=db.cursor()
+            dbc.execute('SELECT * FROM category')
+            for (cat_id,label,desc,enabled) in dbc:
+                self.categ_add_update(label,enabled,desc=desc)
+                cat_ids[cat_id]=label
+
+            dbc.execute('SELECT * FROM poi')
+            for row in dbc:
+                (poi_id,lat,lon,name,desc,cat_id)=row[:6]
+                self.pois.append(Poi(name,lat=lat,lon=lon,desc=desc,categ=cat_ids[cat_id]))
+            db.close()
+
+    def proc_category_icon(self, c):
+        #log("c.icons",c.icons)
+        icon_file=os.path.join(self.base_dir,c.label+'.jpg')
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! Make case insensitive !!!!!!!!!!!!!!!!!!!!!!!!!!
+        if not os.path.exists(icon_file):
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! Make case insensitive !!!!!!!!!!!!!!!!!!!!!!!!!!
+            logging.warning('No icon image for %s' % c.label)
+            return
+        with open(icon_file) as f:
+            icon_data = f.read()
+        mime_type = mime_from_ext(ext_from_buffer(icon_data))
+        img = Image.open(icon_file)
+        width, height = img.size
+        x_offset, y_offset = (width/2, 0)
+        #log("icon",c.label,img.format,width,height)
+        self.dbc.execute(
+            'INSERT INTO icon '
+                '(cat_id,mime_type,data,width,height,x_offset,y_offset) '
+                'VALUES (?,?,?,?,?,?,?);',
+            (c.cat_id,mime_type,base64.b64encode(icon_data),width,height,x_offset,y_offset))
+
+    def proc_category(self,c):
+        self.dbc.execute('INSERT INTO category (label, desc, enabled) VALUES (?,?,?);',
+            (c.label,c.desc,c.enabled))
+        c.update(cat_id=self.dbc.lastrowid)
+        self.proc_category_icon(c)
+
+    def proc_poi(self,p):
+        log("poi",p.label,p.lon,p.lat)
+        x,y=self.toGMercator.transform_point([p.lon,p.lat])
+        self.dbc.execute('INSERT INTO poi (x,y,lon,lat,label,desc,cat_id) VALUES (?,?,?,?,?,?,?);',
+            (x,y,p.lon,p.lat,p.label,p.desc,self.categories[p.categ].cat_id))
+
+    def create_db(self):
 
         self.db=sqlite3.connect(self.dest_db)
         self.dbc = self.db.cursor()
@@ -363,11 +380,132 @@ class Poi2Mapper:
         except:
             pass
 
-        map(self.proc_category,self.categories.itervalues())
-        map(self.proc_poi,self.pois)
+    def close_db(self):
         self.db.commit()
         self.db.close()
-        self.write_aux()
+#
+# class Poi2Mapper
+
+class Poi2WebSql (Poi2Mapper):
+
+    def __init__ (self, src, dest_db):
+        super(Poi2WebSql, self).__init__(src,dest_db)
+        self.inserted_icons = set()
+
+    def read_db(self,path):
+        #cat_ids={}
+        if os.path.exists(path):
+            db=sqlite3.connect(path)
+            db.row_factory = sqlite3.Row
+            dbc=db.cursor()
+            dbc.execute('SELECT * FROM categories')
+            for row in dbc:
+                log('row',row)
+                props = json.loads(row['properties'])
+                self.categ_add_update(props['label'], props['enabled'], desc=props['description'])
+                #cat_ids[cat_id] = props['label']
+
+            dbc.execute('SELECT * FROM pois')
+            for row in dbc:
+                props = json.loads(row['properties'])
+                self.pois.append(Poi(props['label'], lat=props['lat'], lon=props['lon'], desc=props['description'], categ=props['category']))
+            db.close()
+
+    def proc_icon(self, i):
+        if i in self.inserted_icons:
+            return
+        self.inserted_icons.add(i)
+
+        icon_file = os.path.join(self.base_dir, i)
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! Make case insensitive !!!!!!!!!!!!!!!!!!!!!!!!!!
+        if not os.path.exists(icon_file):
+        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! Make case insensitive !!!!!!!!!!!!!!!!!!!!!!!!!!
+            logging.warning('No icon image %s' % i)
+            return
+
+        with open(icon_file) as f:
+            icon_data = f.read()
+
+        mime_type = mime_from_ext(ext_from_buffer(icon_data))
+        img = Image.open(icon_file)
+        width, height = img.size
+        x_offset, y_offset = (width/2, 0)
+        #log("icon",c.label,img.format,width,height)
+
+        props = json.dumps({
+            'width': width,
+            'height': height,
+            'x_offset': x_offset,
+            'y_offset': y_offset,
+            'label': i,
+            })
+        data = 'data:' + mime_type + ';base64,' + base64.b64encode(icon_data)
+
+        self.dbc.execute('INSERT INTO icons (properties, data) VALUES (?,?);',(props,data))
+
+    def proc_category(self, c):
+        icon = c.label+'.jpg'
+        props = json.dumps({
+            'description': c.desc,
+            'icon': icon,
+            'enabled': c.enabled,
+            'label': c.label,
+            })
+
+        self.dbc.execute('INSERT INTO categories (properties) VALUES (?);',(props,))
+        c.update(cat_id=self.dbc.lastrowid)
+
+        log("c.icons",c.icons)
+        map(self.proc_icon, [icon] + c.icons.keys())
+
+    def proc_poi(self, p):
+        log("poi",p.label,p.lon,p.lat)
+        x, y = self.toGMercator.transform_point([p.lon, p.lat])
+        props = json.dumps({
+            'label': p.label,
+            'description': p.desc,
+            'lon': p.lon,
+            'lat': p.lat,
+            'category': self.categories[p.categ].label
+            })
+        geom = '{"type":"Point","coordinates":[%f,%f]}' % (x,y)
+        self.dbc.execute(
+            'INSERT INTO pois (xmin,xmax,ymin,ymax,geometry,properties) VALUES (?,?,?,?,?,?);',
+            (x,y,x,y,geom,props))
+
+    def create_db(self):
+
+        self.db=sqlite3.connect(self.dest_db)
+        self.dbc = self.db.cursor()
+        try:
+            self.dbc.execute (
+                "CREATE TABLE IF NOT EXISTS __WebKitDatabaseInfoTable__ ("
+                    "key TEXT NOT NULL ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE,"
+                    "value TEXT NOT NULL ON CONFLICT FAIL"
+                    ");"
+                )
+            self.dbc.execute (
+                "INSERT OR REPLACE INTO __WebKitDatabaseInfoTable__ VALUES('WebKitDatabaseVersionKey','');"
+                )
+            for table in ('categories', 'icons', 'pois'):
+                self.dbc.execute((
+                    "CREATE TABLE IF NOT EXISTS %s ("+
+                        "id INTEGER PRIMARY KEY,"+
+                        "section INTEGER,"+
+                        "rank INTEGER,"+
+                        "xmin FLOAT,"+
+                        "xmax FLOAT,"+
+                        "ymin FLOAT,"+
+                        "ymax FLOAT,"+
+                        "geometry TEXT,"+
+                        "properties TEXT,"+
+                        "data TEXT"+
+                    ")") % table )
+        #~ except:
+        finally:
+            pass
+#
+# class Poi2WebSql
 
 if __name__=='__main__':
     parser = optparse.OptionParser(
@@ -388,4 +526,5 @@ if __name__=='__main__':
     if args == []:
         raise Exception("No source specified")
 
-    Poi2Mapper(args,options.dest_db).proc_all()
+    #Poi2Mapper(args,options.dest_db).proc_all()
+    Poi2WebSql(args, options.dest_db).proc_all()
