@@ -246,11 +246,15 @@
                 if (request.status != 0) {
                     log('######################### request.status',request.status,request.responseText);
                 }
-            } catch (e) {
+            } catch (err) {
+                var e = err;
                 log('######################### e.code',e.code);
                 if (e.code == 101) {
-                    error('Google Chrome requires to run with "--allow-file-access-from-files" switch to load XML from local files')
+                    error('to load XML from local files Google Chrome requires to run with "--allow-file-access-from-files" switch ')
+                } else if (e.code == 19) {
+                    error('to load XML from local files Opera requires "Allow File XMLHttpRequest" turned on at config')
                 }
+                    throw e;
             }
             return request.responseText;
         }
