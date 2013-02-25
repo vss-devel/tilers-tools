@@ -30,6 +30,7 @@ import glob
 import shutil
 import logging
 import optparse
+import json
 from struct import Struct
 
 from tiler_functions import *
@@ -350,130 +351,6 @@ tile_formats.append(SASGoogle)
 
 #############################
 
-class WebSQL(TileSet):
-    'WebSQL'
-#############################
-    format, ext, input, output = 'websql', '.sqlite', True, True
-    max_zoom = 20
-
-    def __init__(self, root, options=None):
-
-        path, name = os.path.split(root)
-        root = (self.format if path in ['', '.'] else path)+self.ext
-
-        super(WebSQL, self).__init__(root, options)
-        self.name = self.options.name or os.path.splitext(name)[0]
-
-        import sqlite3
-        import base64
-        self.b64encode = base64.b64encode
-        self.b64decode = base64.b64decode
-
-        self.db = sqlite3.connect(self.root)
-        self.dbc = self.db.cursor()
-        if self.options.write:
-            self.dbc.execute (
-                "CREATE TABLE IF NOT EXISTS __WebKitDatabaseInfoTable__ ("
-                    "key TEXT NOT NULL ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE, "
-                    "value TEXT NOT NULL ON CONFLICT FAIL"
-                    ");"
-                )
-            self.dbc.execute (
-                "INSERT OR REPLACE INTO __WebKitDatabaseInfoTable__ VALUES('WebKitDatabaseVersionKey', '');"
-                )
-            self.dbc.execute (
-                "CREATE TABLE IF NOT EXISTS layers ("
-                    "layer INTEGER PRIMARY KEY NOT NULL, "
-                    "name TEXT UNIQUE NOT NULL, "
-                    "url TEXT, "
-                    "overlay BOOLEAN, "
-                    "description TEXT"
-                    ")"
-                )
-            self.dbc.execute (
-                "CREATE TABLE IF NOT EXISTS tiles ("
-                    "tile INTEGER PRIMARY KEY, "
-                    "layer INTEGER NOT NULL REFERENCES layers, "
-                    "z INTEGER, "
-                    "x INTEGER, "
-                    "y INTEGER, "
-                    "data TEXT, "
-                    "UNIQUE (layer, z, x, y)"
-                    ")"
-                )
-#                    "raster INTEGER REFERENCES rasters, "
-            #~ self.dbc.execute (
-                #~ "CREATE TABLE IF NOT EXISTS rasters ("
-                    #~ "raster INTEGER PRIMARY KEY, "
-                    #~ "tile INTEGER NOT NULL REFERENCES tiles, "
-                    #~ "layer INTEGER NOT NULL REFERENCES layers, "
-                    #~ "data TEXT"
-                    #~ ")"
-                #~ )
-#                    "mime_type TEXT, "
-            self.db.commit()
-
-            self.dbc.execute("INSERT OR IGNORE INTO layers (name) VALUES (?);",
-                (self.name, ))
-            self.dbc.execute("SELECT layer FROM layers WHERE name=?", (self.name, ))
-            row = self.dbc.fetchone()
-            self.layer_id = row[0]
-            log("self.layer", self.layer_id)
-
-            self.dbc.execute("UPDATE layers SET url=?, overlay=?, description=? WHERE name=?;",
-                (self.options.url, self.options.overlay, self.options.description, self.name))
-
-    def __del__(self):
-        self.db.commit()
-        self.db.close()
-        super(WebSQL, self).__del__()
-
-    def __iter__(self):
-        self.dbc.execute("SELECT * FROM tiles")
-        for z, x, y, data in self.dbc:
-            coord = z, x, y
-            if not self.in_range(coord):
-                continue
-            self.counter()
-            yield PixBufTile(coord, self.b64decode(data), (self.root, coord))
-
-    def store_tile(self, tile):
-        z, x, y = tile.coord()
-        log("%s -> WebSQL %s:%d, %d, %d" % (tile.path, self.name, z, x, y))
-        #~ self.dbc.execute(
-            #~ "SELECT tile, raster "
-            #~ "FROM tiles "
-            #~ "WHERE layer=? AND z=? AND x=? AND y=?",
-            #~ (self.layer_id, z, x, y))
-        #~ row=self.dbc.fetchone()
-        #~ if row:
-            #~ tile_id, raster_id=row
-            #~ self.dbc.execute("DELETE FROM rasters WHERE raster=?", (raster_id, ))
-            #~ self.dbc.execute("DELETE FROM tiles WHERE tile=?", (tile_id, ))
-
-        self.dbc.execute("INSERT INTO tiles (layer, z, x, y, data) VALUES (?, ?, ?, ?, ?);",
-            (self.layer_id, z, x, y, 'data:' + tile.get_mime() + ';base64,' + self.b64encode(tile.data())))
-
-#~ #        self.dbc.execute("INSERT INTO tiles (layer, z, x, y) VALUES (?, ?, ?, ?);",
-#~ #            (self.layer_id, z, x, y))
-        #~ tile_id=self.dbc.lastrowid
-        #~ self.dbc.execute(
-#~ #            "INSERT INTO rasters (tile, layer, mime_type, data) VALUES (?, ?, ?, ?);",
-#~ #            (tile_id, self.layer_id, tile.get_mime(), self.b64encode(tile.data()))
-            #~ "INSERT INTO rasters (tile, layer, data) VALUES (?, ?, ?);",
-            #~ (tile_id, self.layer_id, 'data:' + tile.get_mime() + ';base64,' + self.b64encode(tile.data()))
-            #~ )
-        #~ raster_id=self.dbc.lastrowid
-        #~ self.dbc.execute("UPDATE tiles SET raster=? WHERE tile=?;", (raster_id, tile_id))
-
-        self.counter()
-
-tile_formats.append(WebSQL)
-
-# WebSQL
-
-#############################
-
 class MapperSQLite(TileSet):
     'maemo-mapper SQLite cache'
 #############################
@@ -678,6 +555,110 @@ class SASBerkeley(TileDir):
 tile_formats.append(SASBerkeley)
 
 # SASBerkeley
+
+#############################
+
+class WebSQL(TileSet):
+    'WebSQL'
+#############################
+    format, ext, input, output = 'websql', '.sqlite', True, True
+    max_zoom = 20
+
+    def __init__(self, root, options=None):
+
+        path, name = os.path.split(root)
+        root = (self.format if path in ['', '.'] else path)+self.ext
+
+        super(WebSQL, self).__init__(root, options)
+        self.name = self.options.name or os.path.splitext(name)[0]
+
+        import sqlite3
+        import base64
+        self.b64encode = base64.b64encode
+        self.b64decode = base64.b64decode
+
+        self.db = sqlite3.connect(self.root)
+        self.dbc = self.db.cursor()
+        if self.options.write:
+            #~ self.dbc.execute (
+                #~ "CREATE TABLE IF NOT EXISTS __WebKitDatabaseInfoTable__ ("
+                    #~ "key TEXT NOT NULL ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE, "
+                    #~ "value TEXT NOT NULL ON CONFLICT FAIL"
+                    #~ ");"
+                #~ )
+            #~ self.dbc.execute (
+                #~ "INSERT OR REPLACE INTO __WebKitDatabaseInfoTable__ VALUES('WebKitDatabaseVersionKey', '');"
+                #~ )
+            statements = [
+            ]
+            for t in ['layers', 'tiles']:
+                self.dbc.execute (
+                    " CREATE TABLE IF NOT EXISTS %(table)s ("
+                        " id INTEGER PRIMARY KEY ASC,"
+                        " section INTEGER,"
+                        " rank INTEGER,"
+                        " xmin INTEGER,"
+                        " xmax INTEGER,"
+                        " ymin INTEGER,"
+                        " ymax INTEGER,"
+                        " geometry TEXT,"
+                        " properties TEXT,"
+                        " data TEXT"
+                    ");"
+                    % {'table': t}
+                    )
+                self.dbc.execute (
+                    " CREATE INDEX IF NOT EXISTS %(table)s_rank_bbox ON %(table)s"
+                        " (rank,xmin,xmax,ymin,ymax);"
+                    % {'table': t}
+                    )
+            self.db.commit()
+
+            properties = json.dumps(dict(
+                name = self.name,
+                url = self.options.url,
+                isBaseLayer = not self.options.overlay,
+                description = self.options.description
+            ))
+
+            self.dbc.execute(
+                "INSERT OR REPLACE INTO layers (properties) VALUES (?);",
+                (properties, )
+                )
+            self.layer_id = self.dbc.lastrowid
+            log("self.layer", self.layer_id)
+
+    def __del__(self):
+        self.db.commit()
+        self.db.close()
+        super(WebSQL, self).__del__()
+
+    def __iter__(self):
+        yield None
+        #~ self.dbc.execute("SELECT * FROM tiles")
+        #~ for z, x, y, data in self.dbc:
+            #~ coord = z, x, y
+            #~ if not self.in_range(coord):
+                #~ continue
+            #~ self.counter()
+            #~ yield PixBufTile(coord, self.b64decode(data), (self.root, coord))
+
+    def store_tile(self, tile):
+        z, x, y = tile.coord()
+        log("%s -> WebSQL %s:%d, %d, %d" % (tile.path, self.name, z, x, y))
+
+        self.dbc.execute(
+            "INSERT INTO tiles"
+            " (section, rank, xmin, xmax, ymin, ymax, geometry, properties, data)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
+            (self.layer_id, z, x, x, y, y, None, None,
+                'data:' + tile.get_mime() + ';base64,' + self.b64encode(tile.data())))
+
+        self.counter()
+
+tile_formats.append(WebSQL)
+
+# WebSQL
 
 #----------------------------
 
