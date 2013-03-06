@@ -50,14 +50,14 @@ def strip_html(text):
 
     def replace(match): # pattern replacement function
         text = match.group(0)
-        if text == "<br>":
-            return "\n"
-        if text[0] == "<":
-            return "" # ignore tags
-        if text[0] == "&":
-            if text[1] == "#":
+        if text == '<br>':
+            return '\n'
+        if text[0] == '<':
+            return '' # ignore tags
+        if text[0] == '&':
+            if text[1] == '#':
                 try:
-                    if text[2] == "x":
+                    if text[2] == 'x':
                         return unichr(int(text[3:-1], 16))
                     else:
                         return unichr(int(text[2:-1]))
@@ -68,7 +68,7 @@ def strip_html(text):
         return text # leave as is
         # fixup end
 
-    return re.sub("(?s)<[^>]*>|&#?\w+;", replace, text)
+    return re.sub('(?s)<[^>]*>|&#?\w+;', replace, text)
 
 def attr_update(self,**updates):
         self.__dict__.update(updates)
@@ -94,7 +94,7 @@ class Poi (object):
         attr_update(self,label=label,desc=desc,lat=lat,lon=lon,categ=categ.lower())
 
 class Poi2Db (object):
-    """ Generic class """
+    ''' Generic class '''
     def __init__ (self,src,dest_db):
         attr_update(self,src=src,categories={},styles={},icons={},pois=[])
 
@@ -190,37 +190,37 @@ class Poi2Db (object):
         style_id=elm.getAttribute('id')
         log(style_id)
         icon=u'__%s__.jpg' % style_id
-        if elm.getElementsByTagName("IconStyle") != []:
+        if elm.getElementsByTagName('IconStyle') != []:
             try:
-                url=elm.getElementsByTagName("href")[0].firstChild.data
+                url=elm.getElementsByTagName('href')[0].firstChild.data
                 icon=re.sub('^.*/','',url)
             except: pass
-        elif elm.getElementsByTagName("PolyStyle") != []:
+        elif elm.getElementsByTagName('PolyStyle') != []:
             icon=u'__polygon__.jpg'
-        elif elm.getElementsByTagName("LineStyle") != []:
+        elif elm.getElementsByTagName('LineStyle') != []:
             icon=u'__line__.jpg'
         return (style_id, self.categ_add_update(None,icon=icon,url=url))
 
     def get_coords(self,elm):
-        coords=elm.getElementsByTagName("coordinates")[0].firstChild.data.split()
+        coords=elm.getElementsByTagName('coordinates')[0].firstChild.data.split()
         return [map(float,c.split(',')) for c in coords]
 
     def handlePlacemark(self,pm):
-        point=pm.getElementsByTagName("Point")
+        point=pm.getElementsByTagName('Point')
         if point == []:
             return None
         coords=self.get_coords(point[0])
         (lon,lat)=coords[0][0:2]
 
-        label=pm.getElementsByTagName("name")[0].firstChild.data
-        style_id=pm.getElementsByTagName("styleUrl")[0].firstChild.data[1:]
+        label=pm.getElementsByTagName('name')[0].firstChild.data
+        style_id=pm.getElementsByTagName('styleUrl')[0].firstChild.data[1:]
         style=self.styles[style_id]
         log((label,style_id,style))
         if style.startswith('__') and style.endswith('__'):
             logging.warning(' No icon for "%s"' % label)
         desc=None
         try:
-            desc_elm=pm.getElementsByTagName("description")[0]
+            desc_elm=pm.getElementsByTagName('description')[0]
             if desc_elm.firstChild:
                 cdata=(desc_elm.firstChild.nodeType == self.doc.CDATA_SECTION_NODE)
                 desc=desc_elm.firstChild.data
@@ -256,11 +256,11 @@ class Poi2Db (object):
         self.load_categ(src)
         try: # to open as kml file
             self.doc = xml.dom.minidom.parse(src)
-            self.name=[n for n in self.doc.getElementsByTagName("Document")[0].childNodes
+            self.name=[n for n in self.doc.getElementsByTagName('Document')[0].childNodes
                         if n.nodeType == n.ELEMENT_NODE and n.tagName == 'name'][0].firstChild.data
 
-            self.styles=dict(map(self.handleStyle,self.doc.getElementsByTagName("Style")))
-            self.pois+=filter(None,map(self.handlePlacemark,self.doc.getElementsByTagName("Placemark")))
+            self.styles=dict(map(self.handleStyle,self.doc.getElementsByTagName('Style')))
+            self.pois+=filter(None,map(self.handlePlacemark,self.doc.getElementsByTagName('Placemark')))
             self.doc.unlink()
         except IOError:
             logging.warning(' No input file: %s' % src)
@@ -308,7 +308,7 @@ class Poi2Mapper (Poi2Db):
             db.close()
 
     def proc_category_icon(self, c):
-        #log("c.icons",c.icons)
+        #log('c.icons',c.icons)
         icon_file=os.path.join(self.base_dir,c.label+'.jpg')
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! Make case insensitive !!!!!!!!!!!!!!!!!!!!!!!!!!
         if not os.path.exists(icon_file):
@@ -321,7 +321,7 @@ class Poi2Mapper (Poi2Db):
         img = Image.open(icon_file)
         width, height = img.size
         x_offset, y_offset = (width/2, 0)
-        #log("icon",c.label,img.format,width,height)
+        #log('icon',c.label,img.format,width,height)
         self.dbc.execute(
             'INSERT INTO icon '
                 '(cat_id,mime_type,data,width,height,x_offset,y_offset) '
@@ -335,7 +335,7 @@ class Poi2Mapper (Poi2Db):
         self.proc_category_icon(c)
 
     def proc_poi(self,p):
-        log("poi",p.label,p.lon,p.lat)
+        log('poi',p.label,p.lon,p.lat)
         x,y=self.toGMercator.transform_point([p.lon,p.lat])
         self.dbc.execute('INSERT INTO poi (x,y,lon,lat,label,desc,cat_id) VALUES (?,?,?,?,?,?,?);',
             (x,y,p.lon,p.lat,p.label,p.desc,self.categories[p.categ].cat_id))
@@ -386,10 +386,10 @@ class Poi2Mapper (Poi2Db):
 #
 # class Poi2Mapper
 
-class Poi2WebSql (Poi2Mapper):
+class Poi2Mmap (Poi2Mapper):
 
     def __init__ (self, src, dest_db):
-        super(Poi2WebSql, self).__init__(src,dest_db)
+        super(Poi2Mmap, self).__init__(src,dest_db)
         self.inserted_icons = set()
 
     def read_db(self,path):
@@ -430,7 +430,7 @@ class Poi2WebSql (Poi2Mapper):
         img = Image.open(icon_file)
         width, height = img.size
         x_offset, y_offset = (width/2, 0)
-        #log("icon",c.label,img.format,width,height)
+        #log('icon',c.label,img.format,width,height)
 
         props = json.dumps({
             'width': width,
@@ -455,11 +455,11 @@ class Poi2WebSql (Poi2Mapper):
         self.dbc.execute('INSERT INTO categories (properties) VALUES (?);',(props,))
         c.update(cat_id=self.dbc.lastrowid)
 
-        log("c.icons",c.icons)
+        log('c.icons',c.icons)
         map(self.proc_icon, [icon] + c.icons.keys())
 
     def proc_poi(self, p):
-        log("poi",p.label,p.lon,p.lat)
+        log('poi',p.label,p.lon,p.lat)
         x, y = self.toGMercator.transform_point([p.lon, p.lat])
         props = json.dumps({
             'label': p.label,
@@ -478,53 +478,57 @@ class Poi2WebSql (Poi2Mapper):
         self.db=sqlite3.connect(self.dest_db)
         self.dbc = self.db.cursor()
         try:
+            self.dbc.execute ('PRAGMA auto_vacuum = INCREMENTAL;')
+        finally:
+            pass
+        try:
             self.dbc.execute (
-                "CREATE TABLE IF NOT EXISTS __WebKitDatabaseInfoTable__ ("
-                    "key TEXT NOT NULL ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE,"
-                    "value TEXT NOT NULL ON CONFLICT FAIL"
-                    ");"
+                'CREATE TABLE IF NOT EXISTS __WebKitDatabaseInfoTable__ ('
+                    'key TEXT NOT NULL ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE,'
+                    'value TEXT NOT NULL ON CONFLICT FAIL'
+                    ');'
                 )
             self.dbc.execute (
                 "INSERT OR REPLACE INTO __WebKitDatabaseInfoTable__ VALUES('WebKitDatabaseVersionKey','');"
                 )
             for table in ('categories', 'icons', 'pois'):
                 self.dbc.execute((
-                    "CREATE TABLE IF NOT EXISTS %s ("+
-                        "id INTEGER PRIMARY KEY,"+
-                        "section INTEGER,"+
-                        "rank INTEGER,"+
-                        "xmin FLOAT,"+
-                        "xmax FLOAT,"+
-                        "ymin FLOAT,"+
-                        "ymax FLOAT,"+
-                        "geometry TEXT,"+
-                        "properties TEXT,"+
-                        "data TEXT"+
-                    ")") % table )
+                    'CREATE TABLE IF NOT EXISTS "%s" ('+
+                        'id INTEGER PRIMARY KEY,'+
+                        '"group" INTEGER,'+
+                        'rank INTEGER,'+
+                        'xmin FLOAT,'+
+                        'xmax FLOAT,'+
+                        'ymin FLOAT,'+
+                        'ymax FLOAT,'+
+                        'geometry TEXT,'+
+                        'properties TEXT,'+
+                        'data TEXT'+
+                    ')') % table )
         #~ except:
         finally:
             pass
 #
-# class Poi2WebSql
+# class Poi2Mmap
 
 if __name__=='__main__':
     parser = optparse.OptionParser(
-        usage="usage: %prog [-o <output_db>] [<kml_file>]... [<input_db>]...",
+        usage='usage: %prog [-o <output_db>] [<kml_file>]... [<input_db>]...',
         version=version,
-        description="makes maemo-mapper POI db from a kml file(s)")
-    parser.add_option("-d", "--debug", action="store_true", dest="debug")
-    parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
-    parser.add_option("-r", "--remove-dest", action="store_true",
+        description='makes maemo-mapper POI db from a kml file(s)')
+    parser.add_option('-d', '--debug', action='store_true', dest='debug')
+    parser.add_option('-q', '--quiet', action='store_true', dest='quiet')
+    parser.add_option('-r', '--remove-dest', action='store_true',
         help='delete destination before processing')
-    parser.add_option("-o", "--output",dest="dest_db",
-                      type="string",help="output POIs db file")
+    parser.add_option('-o', '--output',dest='dest_db',
+                      type='string',help='output POIs db file')
 
     (options, args) = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if options.debug else
         (logging.ERROR if options.quiet else logging.INFO))
 
     if args == []:
-        raise Exception("No source specified")
+        raise Exception('No source specified')
 
     #Poi2Mapper(args,options.dest_db).proc_all()
-    Poi2WebSql(args, options.dest_db).proc_all()
+    Poi2Mmap(args, options.dest_db).proc_all()

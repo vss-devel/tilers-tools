@@ -117,7 +117,7 @@ class TileSet(object):
         self.pyramid = None
 
         if not self.options.write:
-            assert os.path.exists(root), "No file or directory found: %s" % root
+            assert os.path.exists(root), 'No file or directory found: %s' % root
             if self.options.region:
                 self.pyramid = Pyramid.profile_class('zxy')()
                 self.pyramid.set_zoom_range(self.options.zoom)
@@ -130,7 +130,7 @@ class TileSet(object):
                     else:
                         os.remove(self.root)
                 else:
-                    assert self.options.append, "Destination already exists: %s" % root
+                    assert self.options.append, 'Destination already exists: %s' % root
 
     def in_range(self, coords, range_lr_coords=None):
         if not coords:
@@ -143,14 +143,14 @@ class TileSet(object):
         log('self.count', self.count)
 
     def __iter__(self): # to be defined by a child
-        raise Exception("Unimplemented!")
+        raise Exception('Unimplemented!')
 
     def load_from(self, src_tiles):
         log('load_from', (src_tiles.root, self.root))
         map(self.process_tile, src_tiles)
 
     def process_tile(self, tile):
-        #log("process_tile", tile)
+        #log('process_tile', tile)
         self.store_tile(tile)
 
         # collect min max values for tiles processed
@@ -200,10 +200,10 @@ class TileDir(TileSet):
             yield self.tile_class(coord, f)
 
     def path2coord(self, tile_path):
-        raise Exception("Unimplemented!")
+        raise Exception('Unimplemented!')
 
     def coord2path(self, z, x, y):
-        raise Exception("Unimplemented!")
+        raise Exception('Unimplemented!')
 
     def dest_ext(self, tile):
         return tile.get_ext()
@@ -354,7 +354,7 @@ tile_formats.append(SASGoogle)
 class MapperSQLite(TileSet):
     'maemo-mapper SQLite cache'
 #############################
-    format, ext, input, output = 'sqlite', '.db', True, True
+    format, ext, input, output = 'mapper', '.db', True, True
     max_zoom = 20
 
     def __init__(self, root, options=None):
@@ -367,12 +367,12 @@ class MapperSQLite(TileSet):
         if self.options.write:
             try:
                 self.dbc.execute (
-                    "CREATE TABLE maps ("
-                        "zoom INTEGER, "
-                        "tilex INTEGER, "
-                        "tiley INTEGER, "
-                        "pixbuf BLOB, "
-                        "PRIMARY KEY (zoom, tilex, tiley));"
+                    'CREATE TABLE maps ('
+                        'zoom INTEGER, '
+                        'tilex INTEGER, '
+                        'tiley INTEGER, '
+                        'pixbuf BLOB, '
+                        'PRIMARY KEY (zoom, tilex, tiley));'
                     )
             except:
                 pass
@@ -383,7 +383,7 @@ class MapperSQLite(TileSet):
         TileSet.__del__(self)
 
     def __iter__(self):
-        self.dbc.execute("SELECT * FROM maps")
+        self.dbc.execute('SELECT * FROM maps')
         for z, x, y, pixbuf in self.dbc:
             coord = self.max_zoom+1-z, x, y
             if not self.in_range(coord):
@@ -396,7 +396,7 @@ class MapperSQLite(TileSet):
         # convert to maemo-mapper coords
         z = self.max_zoom+1-z
         log('%s -> SQLite %d, %d, %d' % (tile.path, z, x, y))
-        self.dbc.execute("INSERT OR REPLACE INTO maps (zoom, tilex, tiley, pixbuf) VALUES (?, ?, ?, ?);",
+        self.dbc.execute('INSERT OR REPLACE INTO maps (zoom, tilex, tiley, pixbuf) VALUES (?, ?, ?, ?);',
             (z, x, y, buffer(tile.data())))
         self.counter()
 
@@ -558,18 +558,18 @@ tile_formats.append(SASBerkeley)
 
 #############################
 
-class WebSQL(TileSet):
-    'WebSQL'
+class Mmap(TileSet):
+    'mmap'
 #############################
-    format, ext, input, output = 'websql', '.sqlite', True, True
+    format, ext, input, output = 'mmap', '.sqlite', True, True
     max_zoom = 20
 
     def __init__(self, root, options=None):
 
         path, name = os.path.split(root)
-        root = (self.format if path in ['', '.'] else path)+self.ext
+        #~ root = (self.format if path in ['', '.'] else path) + self.ext
 
-        super(WebSQL, self).__init__(root, options)
+        super(Mmap, self).__init__(root, options)
         self.name = self.options.name or os.path.splitext(name)[0]
 
         import sqlite3
@@ -579,37 +579,41 @@ class WebSQL(TileSet):
 
         self.db = sqlite3.connect(self.root)
         self.dbc = self.db.cursor()
+        try:
+            self.dbc.execute ('PRAGMA auto_vacuum = INCREMENTAL;')
+        finally:
+            pass
         if self.options.write:
             #~ self.dbc.execute (
-                #~ "CREATE TABLE IF NOT EXISTS __WebKitDatabaseInfoTable__ ("
-                    #~ "key TEXT NOT NULL ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE, "
-                    #~ "value TEXT NOT NULL ON CONFLICT FAIL"
-                    #~ ");"
+                #~ 'CREATE TABLE IF NOT EXISTS __WebKitDatabaseInfoTable__ ('
+                    #~ 'key TEXT NOT NULL ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE, '
+                    #~ 'value TEXT NOT NULL ON CONFLICT FAIL'
+                    #~ ');'
                 #~ )
             #~ self.dbc.execute (
-                #~ "INSERT OR REPLACE INTO __WebKitDatabaseInfoTable__ VALUES('WebKitDatabaseVersionKey', '');"
+                #~ 'INSERT OR REPLACE INTO __WebKitDatabaseInfoTable__ VALUES('WebKitDatabaseVersionKey', '');'
                 #~ )
             statements = [
             ]
             for t in ['layers', 'tiles']:
                 self.dbc.execute (
-                    " CREATE TABLE IF NOT EXISTS %(table)s ("
-                        " id INTEGER PRIMARY KEY ASC,"
-                        " section INTEGER,"
-                        " rank INTEGER,"
-                        " xmin INTEGER,"
-                        " xmax INTEGER,"
-                        " ymin INTEGER,"
-                        " ymax INTEGER,"
-                        " geometry TEXT,"
-                        " properties TEXT,"
-                        " data TEXT"
-                    ");"
+                    'CREATE TABLE IF NOT EXISTS "%(table)s" ('
+                        'id INTEGER PRIMARY KEY ASC,'
+                        '"group" INTEGER,'
+                        'rank INTEGER,'
+                        'xmin INTEGER,'
+                        'xmax INTEGER,'
+                        'ymin INTEGER,'
+                        'ymax INTEGER,'
+                        'geometry TEXT,'
+                        'properties TEXT,'
+                        'data TEXT'
+                    ');'
                     % {'table': t}
                     )
                 self.dbc.execute (
-                    " CREATE INDEX IF NOT EXISTS %(table)s_rank_bbox ON %(table)s"
-                        " (rank,xmin,xmax,ymin,ymax);"
+                    'CREATE INDEX IF NOT EXISTS "%(table)s_rank_bbox" ON "%(table)s"'
+                        '(xmin, xmax, ymin, ymax, rank);'
                     % {'table': t}
                     )
             self.db.commit()
@@ -622,20 +626,20 @@ class WebSQL(TileSet):
             ))
 
             self.dbc.execute(
-                "INSERT OR REPLACE INTO layers (properties) VALUES (?);",
+                'INSERT OR REPLACE INTO layers (properties) VALUES (?);',
                 (properties, )
                 )
             self.layer_id = self.dbc.lastrowid
-            log("self.layer", self.layer_id)
+            log('self.layer', self.layer_id)
 
     def __del__(self):
         self.db.commit()
         self.db.close()
-        super(WebSQL, self).__del__()
+        super(Mmap, self).__del__()
 
     def __iter__(self):
         yield None
-        #~ self.dbc.execute("SELECT * FROM tiles")
+        #~ self.dbc.execute('SELECT * FROM tiles')
         #~ for z, x, y, data in self.dbc:
             #~ coord = z, x, y
             #~ if not self.in_range(coord):
@@ -645,20 +649,20 @@ class WebSQL(TileSet):
 
     def store_tile(self, tile):
         z, x, y = tile.coord()
-        log("%s -> WebSQL %s:%d, %d, %d" % (tile.path, self.name, z, x, y))
+        log('%s -> %s:%d, %d, %d' % (tile.path, self.name, z, x, y))
 
         self.dbc.execute(
-            "INSERT INTO tiles"
-            " (section, rank, xmin, xmax, ymin, ymax, geometry, properties, data)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
+            'INSERT INTO tiles'
+                '("group", rank, xmin, xmax, ymin, ymax, geometry, properties, data)'
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
             (self.layer_id, z, x, x, y, y, None, None,
                 'data:' + tile.get_mime() + ';base64,' + self.b64encode(tile.data())))
 
         self.counter()
 
-tile_formats.append(WebSQL)
+tile_formats.append(Mmap)
 
-# WebSQL
+# Mmap
 
 #----------------------------
 
@@ -682,12 +686,12 @@ def tiles_convert(src_lst, options):
         if in_class.input and options.in_fmt == in_class.format:
             break
     else:
-        raise Exception("Invalid input format: %s" % options.in_fmt)
+        raise Exception('Invalid input format: %s' % options.in_fmt)
     for out_class in tile_formats:
         if out_class.output and options.out_fmt == out_class.format:
             break
     else:
-        raise Exception("Invalid output format: %s" % options.out_fmt)
+        raise Exception('Invalid output format: %s' % options.out_fmt)
 
     for src in src_lst:
         dest = os.path.join(options.dst_dir, os.path.splitext(os.path.split(src)[1])[0]+out_class.ext)
@@ -701,37 +705,37 @@ def main(argv):
 
 #----------------------------
     parser = optparse.OptionParser(
-        usage="usage: %prog [<options>...] <source>...",
+        usage='usage: %prog [<options>...] <source>...',
         version=version,
-        description="copies map tiles from one structure to another")
-    parser.add_option("--from", dest="in_fmt", default='zxy',
+        description='copies map tiles from one structure to another')
+    parser.add_option('--from', dest='in_fmt', default='zxy',
         help='input tiles format (default: zxy)')
-    parser.add_option("--to", dest="out_fmt", default='websql',
-        help='output tiles format (default: websql)')
-    parser.add_option("--formats", action="store_true", dest="list_formats",
+    parser.add_option('--to', dest='out_fmt', default='mmap',
+        help='output tiles format (default: mmap)')
+    parser.add_option('--formats', action='store_true', dest='list_formats',
         help='list available formats')
-    parser.add_option("-a", "--append", action="store_true", dest="append",
-        help="append tiles to an existing destination")
-    parser.add_option("-r", "--remove-dest", action="store_true",dest="remove_dest",
+    parser.add_option('-a', '--append', action='store_true', dest='append',
+        help='append tiles to an existing destination')
+    parser.add_option('-r', '--remove-dest', action='store_true',dest='remove_dest',
         help='delete destination directory before merging')
-    parser.add_option("-t", "--dest-dir", default='.', dest="dst_dir",
+    parser.add_option('-t', '--dest-dir', default='.', dest='dst_dir',
         help='destination directory (default: current)')
-    parser.add_option("--name", default=None,
+    parser.add_option('--name', default=None,
         help='map name (default: derived from the source)')
-    parser.add_option("--description", default='',
+    parser.add_option('--description', default='',
         help='map decription (default: None)')
-    parser.add_option("--overlay", action="store_true",
+    parser.add_option('--overlay', action='store_true',
         help='non-base layer (default: False)')
-    parser.add_option("--url", default=None,
+    parser.add_option('--url', default=None,
         help='URL template (default: None)')
-    parser.add_option("-l", "--link", action="store_true", dest="link",
+    parser.add_option('-l', '--link', action='store_true', dest='link',
         help='make links to source tiles instead of copying if possible')
-    parser.add_option("--region", default=None, metavar="DATASOURCE",
+    parser.add_option('--region', default=None, metavar='DATASOURCE',
         help='region to process (OGR shape)')
-    parser.add_option("-z", "--zoom", default=None,metavar="ZOOM_LIST",
+    parser.add_option('-z', '--zoom', default=None,metavar='ZOOM_LIST',
         help='list of zoom ranges to process')
-    parser.add_option("-d", "--debug", action="store_true", dest="debug")
-    parser.add_option("-q", "--quiet", action="store_true", dest="quiet")
+    parser.add_option('-d', '--debug', action='store_true', dest='debug')
+    parser.add_option('-q', '--quiet', action='store_true', dest='quiet')
 
     global options
     (options, args) = parser.parse_args(argv[1:])
