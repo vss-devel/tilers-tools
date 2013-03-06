@@ -598,7 +598,7 @@ class Mmap(TileSet):
             for t in ['layers', 'tiles']:
                 self.dbc.execute (
                     'CREATE TABLE IF NOT EXISTS "%(table)s" ('
-                        'id INTEGER PRIMARY KEY ASC,'
+                        'id INTEGER PRIMARY KEY,'
                         '"group" INTEGER,'
                         'rank INTEGER,'
                         'xmin INTEGER,'
