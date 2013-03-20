@@ -34,17 +34,11 @@ from optparse import OptionParser
 
 from tiler_functions import *
 
-from reader_bsb import BsbKapMap
-from reader_geo import GeoNosMap
-from reader_ozi import OziMap
-from reader_kml import KmlMap
-
-class_map=(
-    BsbKapMap,
-    GeoNosMap,
-    OziMap,
-    KmlMap
-    )
+import reader_backend
+import reader_bsb
+import reader_geo
+import reader_ozi
+import reader_kml
 
 options = None
 
@@ -53,7 +47,7 @@ def process_src(src, no_error=False, opt=None):
 
     with open(src,'rU') as f:
         lines=[f.readline() for i in range(30)]
-    for cls in class_map:
+    for cls in reader_backend.reader_class_map:
         patt=cls.magic
         if any((l.startswith(patt) for l in lines)):
             break

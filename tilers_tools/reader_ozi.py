@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-06-16 18:16:32 
+# 2011-06-16 18:16:32
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -72,9 +72,9 @@ def ig2coord(grid_coord,zone,hemisphere):
 
 def utm2coord(grid_coord,zone,hemisphere):
     '(UTM) Universal Transverse Mercator'
-    return (grid_coord[0] - 500000, 
-            grid_coord[1] - (0 if hemisphere.upper() == 'N' else 10000000))    
-    
+    return (grid_coord[0] - 500000,
+            grid_coord[1] - (0 if hemisphere.upper() == 'N' else 10000000))
+
 grid_map={
     '(BNG) British National Grid': bng2coord,
     '(IG) Irish Grid': ig2coord,
@@ -102,7 +102,7 @@ class OziCartesianRefPoints(RefPoints):
         res=[]
         for grid_data in zip(self.cartesian,self.zone,self.hemisphere):
             res.append(conv2cartesian(*grid_data))
-        return res        
+        return res
 
 ###############################################################################
 
@@ -124,7 +124,7 @@ class OziMap(SrcMap):
                    # 9. Sat - not used
                    #10. Path - not used
         )
-        
+
     def load_data(self):
         'load datum definitions, ellipses, projections from a file'
         self.datum_dict={}
@@ -137,11 +137,11 @@ class OziMap(SrcMap):
             }
         self.load_csv(self.data_file,csv_map)
 
-    def get_header(self): 
+    def get_header(self):
         'read map header'
         with open(self.file, 'rU') as f:
             lines=f.readlines() # non-Unicode!
-        if not (lines and lines[0].startswith('OziExplorer Map Data File')): 
+        if not (lines and lines[0].startswith('OziExplorer Map Data File')):
             raise Exception(" Invalid file: %s" % self.map_file)
         hdr=[[l.strip()] for l in lines[:3]] + [[i.strip() for i in l.split(',')] for l in lines[3:]]
         ld(hdr)
@@ -150,10 +150,12 @@ class OziMap(SrcMap):
     def get_layers(self):
         return [OziLayer(self,self.header)]
 # OziMap
+reader_class_map.append(OziMap)
+
 
 class OziLayer(SrcLayer):
 
-    def hdr_parms(self, patt): 
+    def hdr_parms(self, patt):
         'filter header for params starting with "patt"'
         return [i for i in self.data if i[0].startswith(patt)]
 
@@ -194,13 +196,13 @@ class OziLayer(SrcLayer):
 
     def get_proj_id(self):
         return self.hdr_parms('Map Projection')[0][1]
-    
+
     def get_proj(self):
         proj_id=self.get_proj_id()
         parm_lst=self.hdr_parms('Projection Setup')[0]
         try:
             proj=self.map.proj_dict[proj_id][0:1]
-        except KeyError: 
+        except KeyError:
             raise Exception("*** Unsupported projection (%s)" % proj_id)
         if '+proj=' in proj[0]: # overwise assume it already has a full data defined
             # get projection parameters
@@ -212,7 +214,7 @@ class OziLayer(SrcLayer):
                     zone=(self.refs.latlong[0][0]+180) // 6 + 1
                 proj.append('+lon_0=%i' % ((zone - 1) * 6 + 3 - 180))
             else:
-                proj.extend([ i[0]+i[1] for i in zip(self.map.proj_parms,parm_lst[1:]) 
+                proj.extend([ i[0]+i[1] for i in zip(self.map.proj_parms,parm_lst[1:])
                                 if i[1].translate(None,'0.')])
         return proj
 
@@ -226,7 +228,7 @@ class OziLayer(SrcLayer):
             if datum_def[5]: # PROJ4 datum defined ?
                 datum=[datum_def[5]]
             else:
-                datum=['+towgs84=%s,%s,%s' % tuple(datum_def[2:5])]               
+                datum=['+towgs84=%s,%s,%s' % tuple(datum_def[2:5])]
                 ellps_id=datum_def[1]
                 ellps_def=self.map.ellps_dict[ellps_id]
                 ellps=if_set(ellps_def[2])
@@ -234,8 +236,8 @@ class OziLayer(SrcLayer):
                     datum.append(ellps)
                 else:
                     datum.append('+a=%s',ellps_def[0])
-                    datum.append('+rf=%s',ellps_def[1])                        
-        except KeyError: 
+                    datum.append('+rf=%s',ellps_def[1])
+        except KeyError:
             raise Exception("*** Unsupported datum (%s)" % datum_id)
         return datum
 
@@ -269,8 +271,8 @@ class OziLayer(SrcLayer):
         for enc in self.try_encodings:
             try:
                 if enc == 'cp1251' and any([ # ascii chars ?
-                        ((c >= '\x41') and (c <= '\x5A')) or 
-                        ((c >= '\x61') and (c <= '\x7A')) 
+                        ((c >= '\x41') and (c <= '\x5A')) or
+                        ((c >= '\x61') and (c <= '\x7A'))
                             for c in ozi_name]):
                     continue # cp1251 name shouldn't have any ascii
                 ozi_name=ozi_name.decode(enc)

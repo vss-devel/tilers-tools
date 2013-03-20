@@ -42,6 +42,8 @@ except ImportError:
 
 from tiler_functions import *
 
+reader_class_map = []
+
 def dms2dec(degs='0',mins='0',ne='E',sec='0'):
     return (float(degs)+float(mins)/60+float(sec)/3600)*(-1 if ne in ('W','S') else 1 )
 

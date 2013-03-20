@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-03-01 16:32:36 
+# 2011-03-01 16:32:36
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -39,7 +39,7 @@ from reader_backend import *
 class GeoNosMap(SrcMap):
     magic='[MainChart]'
     data_file='reader_geo_data.csv'
-    
+
     def load_data(self):
         'load datum definitions, ellipses, projections from a file'
         self.datum_dict={}
@@ -50,11 +50,11 @@ class GeoNosMap(SrcMap):
             }
         self.load_csv(self.data_file,csv_map)
 
-    def get_header(self): 
+    def get_header(self):
         'read map header'
         with open(self.file, 'rU') as f:
             hdr=[[i.strip() for i in l.decode('iso8859-1','ignore').split('=')] for l in f]
-        if not (hdr and hdr[0][0] == '[MainChart]'): 
+        if not (hdr and hdr[0][0] == '[MainChart]'):
             raise Exception(" Invalid file: %s" % self.file)
         ld(hdr)
         return hdr
@@ -62,10 +62,11 @@ class GeoNosMap(SrcMap):
     def get_layers(self):
         return [GeoNosLayer(self,self.header)]
 #GeoNosMap
+reader_class_map.append(GeoNosMap)
 
 class GeoNosLayer(SrcLayer):
 
-    def hdr_parms(self, patt): 
+    def hdr_parms(self, patt):
         'filter header for params starting with "patt"'
         plen=len(patt)
         return [('%s %s' % (i[0][plen:],i[1]) if len(i[0]) > plen else i[1])
@@ -73,7 +74,7 @@ class GeoNosLayer(SrcLayer):
 
     def hdr_parms2list(self, patt):
         return [s.split() for s in self.hdr_parms(patt)]
-        
+
     def get_dtm(self):
         'get DTM northing, easting'
         dtm_parm=self.options.dtm_shift
@@ -107,12 +108,12 @@ class GeoNosLayer(SrcLayer):
 
     def get_proj_id(self):
         return self.hdr_parms('Projection')[0]
-        
+
     def get_proj(self):
         proj_id=self.get_proj_id()
         try:
             proj=[self.map.proj_dict[proj_id][0]]
-        except KeyError: 
+        except KeyError:
             raise Exception("*** Unsupported projection (%s)" % proj_id)
         return proj
 
@@ -123,10 +124,10 @@ class GeoNosLayer(SrcLayer):
         datum_id=self.get_datum_id()
         try:
             datum=self.map.datum_dict[datum_id][0]
-        except KeyError: 
+        except KeyError:
             dtm=self.get_dtm() # get northing, easting to WGS84 if any
             datum='+datum=WGS84'
-            if dtm: 
+            if dtm:
                 logging.warning(' Unknown datum "%s", assumed as WGS 84 with DTM shifts' % datum_id)
             else: # assume DTM is 0,0
                 logging.warning(' Unknown datum "%s", assumed as WGS 84' % datum_id)

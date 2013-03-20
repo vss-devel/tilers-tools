@@ -74,6 +74,7 @@ class BsbKapMap(SrcMap):
     def get_layers(self):
         return [BsbLayer(self,self.header)]
 # BsbKapMap
+reader_class_map.append(BsbKapMap)
 
 class BsbLayer(SrcLayer):
 
