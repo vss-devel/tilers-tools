@@ -30,8 +30,6 @@ import logging
 import locale
 import csv
 
-from tiler_functions import *
-
 try:
     from osgeo import gdal
     from osgeo import osr
@@ -41,6 +39,8 @@ except ImportError:
     import osr
     import gdal
     from gdalconst import *
+
+from tiler_functions import *
 
 def dms2dec(degs='0',mins='0',ne='E',sec='0'):
     return (float(degs)+float(mins)/60+float(sec)/3600)*(-1 if ne in ('W','S') else 1 )
@@ -253,35 +253,35 @@ class SrcLayer(object):
         ld('proj4',proj4)
         return ' '.join(proj4).encode('utf-8'),dtm
 
-    def convert(self,dest=None):
+    def convert(self):
         options=self.map.options
 
-        if dest:
-            base=os.path.split(dest)[0]
+        if options.after_name:
+            name_patt=self.name
+        elif options.after_map:
+            name_patt=self.map.file
         else:
-            if options.after_name:
-                name_patt=self.name
-            elif options.after_map:
-                name_patt=self.map.file
-            else:
-                name_patt=self.img_file
-            base=dst_path(name_patt,options.dst_dir)
-            if options.long_name:
-                base+=' - ' +  "".join([c for c in self.name
-                                    if c .isalpha() or c.isdigit() or c in '-_.() '])
+            name_patt=self.img_file
+        base=dst_path(name_patt,options.dst_dir)
+        if options.long_name:
+            base+=' - ' +  "".join([c for c in self.name
+                                if c .isalpha() or c.isdigit() or c in '-_.() '])
         dst_dir=os.path.split(base)[0]
         out_format='VRT'
         ext='.'+out_format.lower()
-        dst_file= os.path.basename(base+ext) # output file
 
         try:
             start_dir=os.getcwd()
             if dst_dir:
                 os.chdir(dst_dir)
 
+            dst_file = os.path.abspath(os.path.basename(base+ext)) # output file
             dst_drv = gdal.GetDriverByName(out_format)
-            dst_ds = dst_drv.CreateCopy(dst_file.encode(locale.getpreferredencoding()),
-                                        self.raster_ds,0)
+            dst_ds = dst_drv.CreateCopy(
+                dst_file.encode(locale.getpreferredencoding()),
+                self.raster_ds,
+                0
+            )
             dst_ds.SetProjection(self.srs)
 
             #double x = 0.0, double y = 0.0, double z = 0.0, double pixel = 0.0,
@@ -311,13 +311,16 @@ class SrcLayer(object):
             with open(base+'.gmt','w+') as f:
                 f.write(gmt_data)
 
-    gmt_templ='''# @VGMT1.0 @GPOLYGON
-# @Jp"%s"
-# FEATURE_DATA
->
-# @P
-%s
-'''
+        return dst_file
+
+    gmt_templ = (
+        '# @VGMT1.0 @GPOLYGON'
+        '# @Jp"%s"'
+        '# FEATURE_DATA'
+        '>'
+        '# @P'
+        '%s'
+        )
 
     def cut_poly(self,dst_ds):
         plys=self.get_plys()

@@ -29,14 +29,12 @@ import os
 import os.path
 import logging
 import shutil
-from optparse import OptionParser
 import math
-from PIL import Image
-import pickle
-import mmap
 import operator
 import struct
 import json
+from PIL import Image
+from optparse import OptionParser
 
 try:
     from osgeo import gdal
@@ -51,6 +49,7 @@ except ImportError:
     from gdalconst import *
 
 from tiler_functions import *
+import map2gdal
 
 profile_map = []
 
@@ -242,14 +241,16 @@ class Pyramid(object):
     #----------------------------
         gdal.UseExceptions()
 
+        self.temp_files = []
         self.src = src
         self.dest = dest
         self.options = LooseDict(options)
+        if self.options.delete_src:
+            self.temp_files.append(self.src)
         self.name = self.options.name
         self.tile_ext = self.options.tile_format
         self.description = ''
 
-        self.temp_files = []
         self.palette = None
         self.transparency = None
         self.zoom_range = None
@@ -313,7 +314,6 @@ class Pyramid(object):
     #----------------------------
 
         # init variables
-        self.src_path = self.src
         self.tiles_prefix = self.options.tiles_prefix
         self.src_dir, src_f = os.path.split(self.src)
         self.base = os.path.splitext(src_f)[0]
@@ -373,6 +373,7 @@ class Pyramid(object):
     #----------------------------
         override_srs = self.options.srs
 
+        self.src_path = self.src
         if os.path.exists(self.src):
             self.src_path = os.path.abspath(self.src)
 
@@ -1374,14 +1375,34 @@ profile_map.append(GenericMap)
 
 #----------------------------
 
-def proc_src(src):
+def preprocess_src(src):
 
 #----------------------------
-    cls = Pyramid.profile_class(options.profile)
-    ext = cls.defaul_ext if options.strip_dest_ext is None else ''
-    dest = dest_path(src, options.dest_dir, ext)
+    global options
+    opt = LooseDict(options)
+    vrt_files = map2gdal.process_src(src, no_error=True, opt=opt)
+    if len(vrt_files) > 0 and vrt_files[0] != src:
+        res = [(f, True) for f in vrt_files]
+    else:
+        res = [(src, False)]
+    ld('preprocess_src', res, vrt_files)
+    return res
+
+#----------------------------
+
+def process_src(src_def):
+
+#----------------------------
+    global options
+    opt = LooseDict(options)
+    cls = Pyramid.profile_class(opt.profile)
+    src, delete_src = src_def
+    opt.delete_src = delete_src
+    ext = cls.defaul_ext if opt.strip_dest_ext is None else ''
+    ld('process_src', src_def)
+    dest = dest_path(src, opt.dest_dir, ext)
     #
-    cls(src, dest, options).walk_pyramid()
+    cls(src, dest, opt).walk_pyramid()
 
 #----------------------------
 
@@ -1395,7 +1416,7 @@ def parse_args(arg_lst):
     parser.add_option('-p', '--profile', '--to', dest="profile", metavar='PROFILE',
         default='zxy', choices=Pyramid.profile_lst(),
         help='output tiles profile (default: zxy)')
-    parser.add_option("-l", "--list-profiles", action="store_true",
+    parser.add_option("-f", "--list-profiles", action="store_true",
         help='list tile profiles')
     parser.add_option("-z", "--zoom", default=None, metavar="ZOOM_LIST",
         help='list of zoom ranges to generate')
@@ -1447,6 +1468,8 @@ def parse_args(arg_lst):
         const=0, default=1, dest="verbose")
     parser.add_option("-d", "--debug", action="store_const",
         const=2, dest="verbose")
+    parser.add_option("-l", "--long-name", action="store_true",
+        help='give an output file a long name')
 
     return parser.parse_args(arg_lst)
 
@@ -1479,7 +1502,8 @@ def main(argv):
     except:
         raise Exception("No sources specified")
 
-    parallel_map(proc_src, sources)
+    res = parallel_map(preprocess_src, sources)
+    parallel_map(process_src, flatten(res))
     pf('')
 
 # main()

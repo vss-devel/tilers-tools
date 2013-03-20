@@ -46,7 +46,11 @@ class_map=(
     KmlMap
     )
 
-def proc_src(src):
+options = None
+
+def process_src(src, no_error=False, opt=None):
+    global options
+
     with open(src,'rU') as f:
         lines=[f.readline() for i in range(30)]
     for cls in class_map:
@@ -54,12 +58,21 @@ def proc_src(src):
         if any((l.startswith(patt) for l in lines)):
             break
     else:
-        raise Exception(" Invalid file: %s" % src)
+        if not no_error:
+            logging.error(" Invalid file: %s" % src)
+        return [src]
 
-    for overlay in cls(src,options=options).get_layers():
-        overlay.convert()
+    if not opt:
+        opt = LooseDict(options)
+    res = [layer.convert() for layer in cls(src,options=opt).get_layers()]
+    return res
 
-if __name__=='__main__':
+parser = None
+#----------------------------
+
+def parse_args(arg_lst):
+
+#----------------------------
     parser = OptionParser(
         usage="usage: %prog <options>... map_file...",
         version=version,
@@ -94,10 +107,13 @@ if __name__=='__main__':
 #    parser.add_option("--broken-raster", action="store_true",
 #        help='try to workaround some BSB broken rasters (requires "convert" from ImageMagick)')
 
-    (options, args) = parser.parse_args()
+    return parser.parse_args(arg_lst)
 
-    if not args:
-        parser.error('No input file(s) specified')
+if __name__=='__main__':
+    (options, args) = parse_args(argv[1:])
+
+    #~ if not args:
+        #~ parser.error('No input file(s) specified')
 
     logging.basicConfig(level=logging.DEBUG if options.debug else
         (logging.ERROR if options.quiet else logging.INFO))
@@ -105,5 +121,4 @@ if __name__=='__main__':
     ld(os.name)
     ld(options)
 
-    map(proc_src,args)
-
+    map(process_src,args)
