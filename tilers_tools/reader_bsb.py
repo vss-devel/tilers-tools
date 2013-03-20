@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-04-11 10:58:17  
+# 2011-04-11 10:58:17
 
 ###############################################################################
 # Copyright (c) 2010, Vadim Shlyakhov
@@ -53,8 +53,8 @@ class BsbKapMap(SrcMap):
             'proj_knq':     (self.knq_dict,self.ini_map),
             }
         self.load_csv(self.data_file,csv_map)
-            
-    def get_header(self): 
+
+    def get_header(self):
         'read map header'
         header=[]
         with open(self.file,'rU') as f:
@@ -67,19 +67,19 @@ class BsbKapMap(SrcMap):
                 else:
                     header.append(l.strip())
         ld(header)
-        if not (header and any(((s.startswith('BSB/') or s.startswith('KNP/')) for s in header))): 
+        if not (header and any(((s.startswith('BSB/') or s.startswith('KNP/')) for s in header))):
             raise Exception(" Invalid file: %s" % self.file)
         return header
-        
+
     def get_layers(self):
         return [BsbLayer(self,self.header)]
 # BsbKapMap
 
 class BsbLayer(SrcLayer):
 
-    def hdr_parms(self, patt): 
+    def hdr_parms(self, patt):
         'filter header for params starting with "patt/"'
-        if patt != '!': 
+        if patt != '!':
             patt += '/'
         return [i[len(patt):] for i in self.data if i.startswith(patt)]
 
@@ -112,11 +112,31 @@ class BsbLayer(SrcLayer):
 
     def get_refs(self):
         'get a list of geo refs in tuples'
+
+        # https://code.google.com/p/tilers-tools/issues/detail?id=9
+        #---- remove duplicate refs
+        #compensate for NOAA charts having
+        #duplicate REF entries in 2013 catalog
+
+        refLst = self.hdr_parms2list('REF')
+
+        unique = []
+
+        for ref in refLst:
+            u = ref[1:len(ref)]
+            if unique.count(u) != 0:
+                refLst.remove(ref)
+            unique.append(u)
+
+        for rIndex in range(len(refLst)):
+            refLst[rIndex][0] = str(rIndex+1)
+        #----
+
         refs=LatLonRefPoints(self,[(
             i[0],                                   # id
             (int(i[1]),int(i[2])),                  # pixel
             (float(i[4]),float(i[3]))               # lat/long
-            ) for i in self.hdr_parms2list('REF')])
+            ) for i in refLst])
         return refs
 
     def get_plys(self):
@@ -126,7 +146,7 @@ class BsbLayer(SrcLayer):
             for i in self.hdr_parms2list('PLY')])
         return plys
 
-    def assemble_parms(self,parm_map,parm_info):    
+    def assemble_parms(self,parm_map,parm_info):
         check_parm=lambda s: (s not in ['NOT_APPLICABLE','UNKNOWN']) and s.replace('0','').replace('.','')
         return ['+%s=%s' % (parm_map[i],parm_info[i]) for i in parm_map
                         if  i in parm_info and check_parm(parm_info[i])]
@@ -138,10 +158,10 @@ class BsbLayer(SrcLayer):
         knp_info=self.hdr_parm2dict('KNP')
         ld(knp_info)
         proj_id=self.get_proj_id()
-        try:            
+        try:
             knp_parm=self.map.knp_dict[proj_id.upper()]
             ld(knp_parm)
-        except KeyError: 
+        except KeyError:
             raise Exception(' Unsupported projection %s' % proj_id)
         # get projection and parameters
         proj=[knp_parm['PROJ4']]
@@ -164,7 +184,7 @@ class BsbLayer(SrcLayer):
         datum_id=self.get_datum_id()
         try:
             datum=self.map.datum_dict[datum_id.upper()][0]
-        except KeyError: 
+        except KeyError:
             # try to guess the datum by comment and copyright string(s)
             crr=' '.join(self.hdr_parms('!')+self.hdr_parms('CRR'))
             try:
@@ -175,7 +195,7 @@ class BsbLayer(SrcLayer):
                 # datum still not found
                 dtm=self.get_dtm() # get northing, easting to WGS 84 if any
                 datum='+datum=WGS84'
-                if dtm: 
+                if dtm:
                     logging.warning(' Unknown datum "%s", assumed as WGS 84 with DTM shifts' % datum_id)
                 else: # assume DTM is 0,0
                     logging.warning(' Unknown datum "%s", assumed as WGS 84' % datum_id)
