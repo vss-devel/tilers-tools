@@ -579,42 +579,37 @@ class Mmap(TileSet):
 
         self.db = sqlite3.connect(self.root)
         self.dbc = self.db.cursor()
-        try:
-            self.dbc.execute ('PRAGMA auto_vacuum = INCREMENTAL;')
-        finally:
-            pass
         if self.options.write:
-            #~ self.dbc.execute (
-                #~ 'CREATE TABLE IF NOT EXISTS __WebKitDatabaseInfoTable__ ('
-                    #~ 'key TEXT NOT NULL ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE, '
-                    #~ 'value TEXT NOT NULL ON CONFLICT FAIL'
-                    #~ ');'
-                #~ )
-            #~ self.dbc.execute (
-                #~ 'INSERT OR REPLACE INTO __WebKitDatabaseInfoTable__ VALUES('WebKitDatabaseVersionKey', '');'
-                #~ )
+            try:
+                self.dbc.execute ('PRAGMA auto_vacuum = INCREMENTAL;')
+            finally:
+                pass
+            self.dbc.execute (
+                'CREATE TABLE IF NOT EXISTS __WebKitDatabaseInfoTable__ ('
+                    'key TEXT NOT NULL ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE,'
+                    'value TEXT NOT NULL ON CONFLICT FAIL'
+                    ');'
+                )
+            self.dbc.execute (
+                "INSERT OR REPLACE INTO __WebKitDatabaseInfoTable__ VALUES('WebKitDatabaseVersionKey','');"
+                )
             statements = [
             ]
-            for t in ['layers', 'tiles']:
+            for table in ['layers', 'tiles']:
                 self.dbc.execute (
                     'CREATE TABLE IF NOT EXISTS "%(table)s" ('
                         'id INTEGER PRIMARY KEY,'
-                        '"group" INTEGER,'
                         'rank INTEGER,'
                         'xmin INTEGER,'
                         'xmax INTEGER,'
                         'ymin INTEGER,'
                         'ymax INTEGER,'
+                        '"group" INTEGER,'
                         'geometry TEXT,'
                         'properties TEXT,'
                         'data TEXT'
                     ');'
-                    % {'table': t}
-                    )
-                self.dbc.execute (
-                    'CREATE INDEX IF NOT EXISTS "%(table)s_rank_bbox" ON "%(table)s"'
-                        '(xmin, xmax, ymin, ymax, rank);'
-                    % {'table': t}
+                    % {'table': table}
                     )
             self.db.commit()
 
@@ -633,6 +628,13 @@ class Mmap(TileSet):
             log('self.layer', self.layer_id)
 
     def __del__(self):
+        if self.options.write:
+            for table in ['layers', 'tiles']:
+                self.dbc.execute (
+                    'CREATE INDEX IF NOT EXISTS "%(table)s_rank_bbox" ON "%(table)s"'
+                        '(rank, xmin, xmax, ymin, ymax);'
+                    % {'table': table}
+                    )
         self.db.commit()
         self.db.close()
         super(Mmap, self).__del__()
@@ -653,9 +655,9 @@ class Mmap(TileSet):
 
         self.dbc.execute(
             'INSERT INTO tiles'
-                '("group", rank, xmin, xmax, ymin, ymax, geometry, properties, data)'
+                '(rank, xmin, xmax, ymin, ymax, "group", geometry, properties, data)'
                 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
-            (self.layer_id, z, x, x, y, y, None, None,
+            (z, x, x, y, y, self.layer_id, None, None,
                 'data:' + tile.get_mime() + ';base64,' + self.b64encode(tile.data())))
 
         self.counter()
@@ -757,4 +759,3 @@ def main(argv):
 if __name__ == '__main__':
 
     main(sys.argv)
-

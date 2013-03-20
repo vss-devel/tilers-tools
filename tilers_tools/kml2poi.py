@@ -98,7 +98,7 @@ class Poi2Db (object):
     def __init__ (self,src,dest_db):
         attr_update(self,src=src,categories={},styles={},icons={},pois=[])
 
-        self.toGMercator=MyTransformer(SRC_SRS='+init=epsg:4326',DST_SRS='+init=epsg:3857')
+        self.toGMercator = GdalTransformer(SRC_SRS='EPSG:4326',DST_SRS='EPSG:3857')
 
         if dest_db:
             self.base=os.path.splitext(dest_db)[0]
@@ -474,7 +474,6 @@ class Poi2Mmap (Poi2Mapper):
             (x,y,x,y,geom,props))
 
     def create_db(self):
-
         self.db=sqlite3.connect(self.dest_db)
         self.dbc = self.db.cursor()
         try:
@@ -495,12 +494,12 @@ class Poi2Mmap (Poi2Mapper):
                 self.dbc.execute((
                     'CREATE TABLE IF NOT EXISTS "%s" ('+
                         'id INTEGER PRIMARY KEY,'+
-                        '"group" INTEGER,'+
                         'rank INTEGER,'+
                         'xmin FLOAT,'+
                         'xmax FLOAT,'+
                         'ymin FLOAT,'+
                         'ymax FLOAT,'+
+                        '"group" INTEGER,'+
                         'geometry TEXT,'+
                         'properties TEXT,'+
                         'data TEXT'+
@@ -508,6 +507,15 @@ class Poi2Mmap (Poi2Mapper):
         #~ except:
         finally:
             pass
+
+    def close_db(self):
+        for table in ('categories', 'icons', 'pois'):
+            self.dbc.execute (
+                'CREATE INDEX IF NOT EXISTS "%(table)s_rank_bbox" ON "%(table)s"'
+                    '(rank, xmin, xmax, ymin, ymax);'
+                % {'table': table}
+
+        super(Poi2Mmap, self).close_db()
 #
 # class Poi2Mmap
 

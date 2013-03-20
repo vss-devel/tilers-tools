@@ -71,7 +71,7 @@ class RefPoints(object):
     @staticmethod
     def transpose(ref_lst): # helper function for children classes
         return [list(i) for i in zip(*ref_lst)]
-    
+
     def __init__(self,owner,
             ids=None,pixels=None,latlong=None,cartesian=None,zone=None,hemisphere=None):
         self.owner=owner
@@ -108,20 +108,20 @@ class RefPoints(object):
     def __iter__(self):
         for i in zip(self.ids,self.pix_coords(),self.proj_coords()):
             yield i
-    
+
     def pix_coords(self,dataset=None):
         if self.pixels:
             return self.pixels
         p_dst=self.proj_coords()
         ld(p_dst)
-        pix_tr=MyTransformer(dataset,METHOD='GCP_TPS')
+        pix_tr = GdalTransformer(dataset, METHOD='GCP_TPS')
         p_pix=pix_tr.transform(p_dst,inv=True)
         ld(p_pix)
         return [(p[0],p[1]) for p in p_pix]
 
     def grid2coord(self): # to re-implemented by children if applicable
         return self.cartesian
-        
+
     def proj_coords(self):
         if self.cartesian:
             return self.grid2coord()
@@ -129,7 +129,7 @@ class RefPoints(object):
         if not dtm:
             dtm=[0,0]
         latlong=[(lon+dtm[0],lat+dtm[1]) for lon,lat in self.latlong]
-        srs_tr=MyTransformer(SRC_SRS=proj_cs2geog_cs(self.owner.srs),DST_SRS=self.owner.srs)
+        srs_tr = GdalTransformer(SRC_SRS=proj_cs2geog_cs(self.owner.srs), DST_SRS=self.owner.srs)
         coords=srs_tr.transform(latlong)
         return coords
 
@@ -210,11 +210,11 @@ class SrcLayer(object):
         self.img_file=self.get_raster()
         logging.info(' %s : %s (%s)' % (self.map.file,self.name,self.img_file))
         self.raster_ds = gdal.Open(self.img_file.encode(locale.getpreferredencoding()),GA_ReadOnly)
-        
+
         self.dtm=None
         self.refs=self.get_refs()           # fetch reference points
         self.srs,self.dtm=self.get_srs()    # estimate SRS
-        
+
     def __del__(self):
         del self.raster_ds
 
@@ -226,7 +226,7 @@ class SrcLayer(object):
         dtm=None
         proj4=[]
         logging.info(' %s, %s' % (self.get_datum_id(),self.get_proj_id()))
-        
+
         # compute chart's projection
         if options.proj:
             proj4.append(options.proj)
@@ -237,14 +237,14 @@ class SrcLayer(object):
         leftmost=self.refs.over_180()
         if leftmost and '+lon_0=' not in proj4[0]:
             proj4.append(' +lon_0=%i' % int(leftmost))
-        
+
         # compute chart's datum
-        if options.datum: 
+        if options.datum:
             proj4.append(options.datum)
         elif options.force_dtm or options.dtm_shift:
             dtm=self.get_dtm() # get northing, easting to WGS84 if any
             proj4.append('+datum=WGS84')
-        elif not '+proj=' in proj4[0]: 
+        elif not '+proj=' in proj4[0]:
             pass # assume datum is defined already
         else:
             datum=self.get_datum()
@@ -255,7 +255,7 @@ class SrcLayer(object):
 
     def convert(self,dest=None):
         options=self.map.options
-        
+
         if dest:
             base=os.path.split(dest)[0]
         else:
@@ -267,7 +267,7 @@ class SrcLayer(object):
                 name_patt=self.img_file
             base=dst_path(name_patt,options.dst_dir)
             if options.long_name:
-                base+=' - ' +  "".join([c for c in self.name 
+                base+=' - ' +  "".join([c for c in self.name
                                     if c .isalpha() or c.isdigit() or c in '-_.() '])
         dst_dir=os.path.split(base)[0]
         out_format='VRT'
@@ -284,7 +284,7 @@ class SrcLayer(object):
                                         self.raster_ds,0)
             dst_ds.SetProjection(self.srs)
 
-            #double x = 0.0, double y = 0.0, double z = 0.0, double pixel = 0.0, 
+            #double x = 0.0, double y = 0.0, double z = 0.0, double pixel = 0.0,
             #double line = 0.0, char info = "", char id = ""
             gcps=[gdal.GCP(c[0],c[1],0,p[0],p[1],'',i) for i,p,c in self.refs]
             dst_ds.SetGCPs(gcps,self.refs.srs())
@@ -342,4 +342,3 @@ class SrcLayer(object):
 # SrcLayer
 
 ###############################################################################
-

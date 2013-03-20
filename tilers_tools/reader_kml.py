@@ -78,7 +78,7 @@ class KmlLayer(SrcLayer):
             north,south,east,west=[float(kml_parm(layer,parm)) for parm in ('north','south','east','west')]
             src_refs=[(west,south),(east,south),(east,north),(west,north)]
 
-        dst_refs=MyTransformer(SRC_SRS=proj_cs2geog_cs(self.map.proj),DST_SRS=self.map.proj).transform(src_refs)
+        dst_refs = GdalTransformer(SRC_SRS=proj_cs2geog_cs(self.map.proj), DST_SRS=self.map.proj).transform(src_refs)
         if '<rotation>' in layer:
             north,south,east,west=[float(dst_refs[i][j]) for i,j in ((2,1),(0,1),(1,0),(0,0))]
             angle=math.radians(float(kml_parm(layer,'rotation')))

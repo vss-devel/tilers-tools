@@ -275,7 +275,7 @@ class Pyramid(object):
         self.geog_srs = proj_cs2geog_cs(self.proj_srs)
         ld('proj, longlat', self.proj_srs, self.geog_srs)
 
-        self.proj2geog = MyTransformer(SRC_SRS=self.proj_srs, DST_SRS=self.geog_srs)
+        self.proj2geog = GdalTransformer(SRC_SRS=self.proj_srs, DST_SRS=self.geog_srs)
         max_x = self.proj2geog.transform_point((180, 0), inv=True)[0] # Equator's half length
 
         # pixel resolution at the zoom 0
@@ -287,20 +287,22 @@ class Pyramid(object):
 
         # adjust tile origins to the limits of a world raster
         max_lat = self.proj2geog.transform_point(self.pix_origin)[1]
-        to_lon, to_lat = self.tile_origin_lonlat
+        to_lon, to_lat = self.tile_geo_origin
 
         # self.tile_origin may be changed later to avoid crossing longitude 180
-        # but self.tile_origin_lonlat will retain the original setting
-        self.tile_origin_lonlat = (to_lon, (max_lat if max_lat < to_lat else (-max_lat if -max_lat > to_lat else to_lat)))
-        self.tile_origin = self.proj2geog.transform_point(self.tile_origin_lonlat, inv=True)
+        # but self.tile_geo_origin will retain the original setting
+        self.tile_geo_origin = (to_lon, (max_lat if max_lat < to_lat else (-max_lat if -max_lat > to_lat else to_lat)))
+        self.tile_origin = self.proj2geog.transform_point(self.tile_geo_origin, inv=True)
 
-        ld('zoom0_tiles', self.zoom0_tiles, 'tile_dim', self.tile_dim, 'pix_origin', self.pix_origin, 'tile_origin', self.tile_origin, self.tile_origin_lonlat)
+        ld('zoom0_tiles', self.zoom0_tiles, 'tile_dim', self.tile_dim, 'pix_origin', self.pix_origin, 'tile_origin', self.tile_origin, self.tile_geo_origin)
 
         # default map bounds to maximum limits (world map)
         ul = self.pix2coord(0, (0, 0))
         lr = [-ul[0], -ul[1]]
         self.bounds = (  ul, # upper left
                      (-ul[0], -ul[1]))    # lower right
+
+        ld('max extent', self.bounds)
 
     #----------------------------
 
@@ -334,17 +336,17 @@ class Pyramid(object):
 
         # shift target SRS to avoid crossing 180 meridian
         shifted_srs = self.shift_srs(self.max_zoom)
-        shift_x = MyTransformer(SRC_SRS=shifted_srs, DST_SRS=self.proj_srs).transform_point((0, 0))[0]
+        shift_x = GdalTransformer(SRC_SRS=shifted_srs, DST_SRS=self.proj_srs).transform_point((0, 0))[0]
         if shift_x != 0:
             self.proj_srs = shifted_srs
-            self.proj2geog = MyTransformer(SRC_SRS=self.proj_srs, DST_SRS=self.geog_srs)
+            self.proj2geog = GdalTransformer(SRC_SRS=self.proj_srs, DST_SRS=self.geog_srs)
             self.pix_origin = (self.pix_origin[0]-shift_x, self.pix_origin[1])
             self.tile_origin = (self.tile_origin[0]-shift_x, self.tile_origin[1])
             ld('new_srs', shifted_srs, 'shift_x', shift_x, 'pix_origin', self.pix_origin)
 
         # get corners at the target SRS
-        target_ds = gdal.AutoCreateWarpedVRT(self.src_ds, None, proj4wkt(shifted_srs))
-        target_bounds = MyTransformer(target_ds).transform([
+        target_ds = gdal.AutoCreateWarpedVRT(self.src_ds, None, proj2wkt(shifted_srs))
+        target_bounds = GdalTransformer(target_ds).transform([
             (0, 0),
             (target_ds.RasterXSize, target_ds.RasterYSize)])
 
@@ -357,7 +359,7 @@ class Pyramid(object):
         ld('target raster')
         ld('Upper Left', self.bounds[0], target_bounds[0], self.proj2geog.transform([self.bounds[0], target_bounds[0]]))
         ld('Lower Right', self.bounds[1], target_bounds[1], self.proj2geog.transform([self.bounds[1], target_bounds[1]]))
-#        orig_ul = MyTransformer(SRC_SRS=self.geog_srs, DST_SRS=self.srs).transform_point(
+#        orig_ul = GdalTransformer(SRC_SRS=self.geog_srs, DST_SRS=self.srs).transform_point(
 #            self.proj2geog.transform_point(target_bounds[0]))
 #        ld(orig_ul[0]-target_bounds[0][0], orig_ul)
         return True
@@ -381,13 +383,13 @@ class Pyramid(object):
         os.makedirs(self.dest)
 
         src_geotr = src_ds.GetGeoTransform()
-        src_proj = wkt2proj4(src_ds.GetProjection())
+        src_proj = proj2proj4(src_ds.GetProjection())
         gcps = src_ds.GetGCPs()
         if gcps:
             ld('src GCPsToGeoTransform', gdal.GCPsToGeoTransform(gcps))
 
         if not src_proj and gcps :
-            src_proj = wkt2proj4(src_ds.GetGCPProjection())
+            src_proj = proj2proj4(src_ds.GetGCPProjection())
 
         if self.options.srs is not None:
             src_proj = self.options.srs
@@ -431,7 +433,7 @@ class Pyramid(object):
                     gcp_lst = '\n'.join((gcp_templ % (g.Id, g.GCPPixel, g.GCPLine, g.GCPX, g.GCPY, g.GCPZ)
                                         for g in gcps))
                     if self.options.srs is None:
-                        gcp_proj = wkt2proj4(src_ds.GetGCPProjection())
+                        gcp_proj = proj2proj4(src_ds.GetGCPProjection())
                     else:
                         gcp_proj = src_proj
                     gcplst_txt = gcplst_templ % (gcp_proj, gcp_lst)
@@ -484,15 +486,15 @@ class Pyramid(object):
             vrt_drv = gdal.GetDriverByName('VRT')
             self.src_ds = vrt_drv.CreateCopy(src_vrt, src_ds) # replace src dataset
 
-            self.src_ds.SetProjection(proj4wkt(override_srs)) # replace source SRS
+            self.src_ds.SetProjection(proj2wkt(override_srs)) # replace source SRS
             gcps = self.src_ds.GetGCPs()
             if gcps :
-                self.src_ds.SetGCPs(gcps, proj4wkt(override_srs))
+                self.src_ds.SetGCPs(gcps, proj2wkt(override_srs))
 
         # debug print
-#        src_origin, src_extent = MyTransformer(src_ds).transform([(0, 0), (src_ds.RasterXSize, src_ds.RasterYSize)])
-#        src_proj = wkt2proj4(src_ds.GetProjection())
-#        src_proj2geog = MyTransformer(SRC_SRS=src_proj, DST_SRS=proj_cs2geog_cs(src_proj))
+#        src_origin, src_extent = GdalTransformer(src_ds).transform([(0, 0), (src_ds.RasterXSize, src_ds.RasterYSize)])
+#        src_proj = proj2proj4(src_ds.GetProjection())
+#        src_proj2geog = GdalTransformer(SRC_SRS=src_proj, DST_SRS=proj_cs2geog_cs(src_proj))
 #        ld('source_raster')
 #        ld('Upper Left', src_origin, src_proj2geog.transform([src_origin]))
 #        ld('Lower Right', src_extent, src_proj2geog.transform([src_extent]))
@@ -502,7 +504,7 @@ class Pyramid(object):
     def shift_srs(self, zoom=None):
         'change prime meridian to allow charts crossing 180 meridian'
     #----------------------------
-        ul, lr = MyTransformer(self.src_ds, DST_SRS=self.geog_srs).transform([
+        ul, lr = GdalTransformer(self.src_ds, DST_SRS=self.geog_srs).transform([
             (0, 0),
             (self.src_ds.RasterXSize, self.src_ds.RasterYSize)])
         ld('shift_srs ul', ul, 'lr', lr)
@@ -533,7 +535,7 @@ class Pyramid(object):
         # modify target srs to allow charts crossing meridian 180
         shifted_srs = self.shift_srs()
 
-        t_ds = gdal.AutoCreateWarpedVRT(self.src_ds, None, proj4wkt(shifted_srs))
+        t_ds = gdal.AutoCreateWarpedVRT(self.src_ds, None, proj2wkt(shifted_srs))
         geotr = t_ds.GetGeoTransform()
         res = (geotr[1], geotr[5])
         max_zoom = max(self.res2zoom_xy(res))
@@ -573,7 +575,7 @@ class Pyramid(object):
 
         # generate warp transform
         src_geotr = self.src_ds.GetGeoTransform()
-        src_proj = wkt2proj4(self.src_ds.GetProjection())
+        src_proj = proj2proj4(self.src_ds.GetProjection())
         gcp_proj = None
 
         if not self.options.tps and src_geotr and src_geotr != (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
@@ -586,9 +588,9 @@ class Pyramid(object):
 
             gcp_lst = [(g.Id, g.GCPPixel, g.GCPLine, g.GCPX, g.GCPY, g.GCPZ) for g in gcps]
             ld('src_proj', self.src_ds.GetProjection(), 'gcp_proj', self.src_ds.GetGCPProjection())
-            gcp_proj = wkt2proj4(self.src_ds.GetGCPProjection())
+            gcp_proj = proj2proj4(self.src_ds.GetGCPProjection())
             if src_proj and gcp_proj != src_proj:
-                coords = MyTransformer(SRC_SRS=gcp_proj, DST_SRS=src_proj).transform([g[3:6] for g in gcp_lst])
+                coords = GdalTransformer(SRC_SRS=gcp_proj, DST_SRS=src_proj).transform([g[3:6] for g in gcp_lst])
                 gcp_lst = [tuple(p[:3]+c) for p, c in zip(gcp_lst, coords)]
 
             gcp_txt = '\n'.join((gcp_templ % g for g in gcp_lst))
@@ -891,10 +893,10 @@ class Pyramid(object):
             } [self.tile_ext]
 
         # reproject extents back to the unshifted SRS
-        bbox = MyTransformer(SRC_SRS=self.proj_srs, DST_SRS=self.srs).transform(self.bounds)
+        bbox = GdalTransformer(SRC_SRS=self.proj_srs, DST_SRS=self.srs).transform(self.bounds)
         # get back unshifted tile origin
-        un_tile_origin = MyTransformer(SRC_SRS=self.geog_srs, DST_SRS=self.srs).transform_point(self.tile_origin_lonlat)
-        ld('un_tile_origin', un_tile_origin, self.tile_origin_lonlat, self.geog_srs, self.srs)
+        un_tile_origin = GdalTransformer(SRC_SRS=self.geog_srs, DST_SRS=self.srs).transform_point(self.tile_geo_origin)
+        ld('un_tile_origin', un_tile_origin, self.tile_geo_origin, self.geog_srs, self.srs)
 
         tilemap = {
             'type':       'TileMap',
@@ -1082,7 +1084,7 @@ class Pyramid(object):
 
     def set_region(self, point_lst, source_srs=None):
         if source_srs and source_srs != self.proj_srs:
-            point_lst = MyTransformer(SRC_SRS=source_srs, DST_SRS=self.proj_srs).transform(point_lst)
+            point_lst = GdalTransformer(SRC_SRS=source_srs, DST_SRS=self.proj_srs).transform(point_lst)
 
         x_coords, y_coords = zip(*point_lst)[0:2]
         upper_left = min(x_coords), max(y_coords)
@@ -1131,11 +1133,11 @@ class TilingScheme(object):
     pass
 
 class ZXYtiling(TilingScheme):
-    tile_origin_lonlat = (-180, 90)
+    tile_geo_origin = (-180, 90)
     tile_dim = (256, -256) # tile size in pixels
 
 class TMStiling(TilingScheme):
-    tile_origin_lonlat = (-180, -90)
+    tile_geo_origin = (-180, -90)
     tile_dim = (256, 256) # tile size in pixels
 
 
@@ -1158,9 +1160,9 @@ class PlateCarree(Pyramid):
     srs = '+proj=eqc +datum=WGS84 +ellps=WGS84'
 
     # set units to degrees, this makes this SRS essentially equivalent to EPSG:4326
-    srs += ' +to_meter=%f' % (
-        MyTransformer(DST_SRS=srs, SRC_SRS=proj_cs2geog_cs(srs)
-        ).transform_point((1, 0))[0])
+    srs += ' +to_meter=%f' % (GdalTransformer(DST_SRS=srs, SRC_SRS=proj_cs2geog_cs(srs)).transform_point((1, 0))[0])
+
+    #~ srs = 'EPSG:4326'
 
     def kml_child_links(self, children, parent=None, path_prefix=''):
         kml_links = []
@@ -1315,7 +1317,8 @@ class GMercator(Pyramid):
     zoom0_tiles = [1, 1] # tiles at zoom 0
 
     # Global Mercator (EPSG:3857, aka EPSG:900913) http://docs.openlayers.org/library/spherical_mercator.html
-    srs = '+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs'
+    #~ srs = '+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs'
+    srs = 'EPSG:3857'
 
     tilemap_crs = 'EPSG:3857'
 
@@ -1391,13 +1394,13 @@ def parse_args(arg_lst):
     parser.add_option("-z", "--zoom", default=None, metavar="ZOOM_LIST",
         help='list of zoom ranges to generate')
     parser.add_option("--t-srs", default=None, metavar="TARGET_SRS",
-        help='generic profile: PROJ.4 definition for target srs (default: None)')
+        help='generic profile: definition for target srs (default: None)')
     parser.add_option("--tile-size", default='256,256', metavar="SIZE_X,SIZE_Y",
         help='generic profile: tile size (default: 256,256)')
     parser.add_option("--zoom0-tiles", default='1,1', metavar="NTILES_X,NTILES_Y",
         help='generic profile: number of tiles along the axis at the zoom 0 (default: 1,1)')
-    parser.add_option("--srs", default=None, metavar="PROJ4_SRS",
-        help="override source's spatial reference system with PROJ.4 definition")
+    parser.add_option("--srs", default=None, metavar="SOURCE_SRS",
+        help="override source's spatial reference system")
     parser.add_option('--overview-resampling', default='nearest', metavar="METHOD1",
         choices=resampling_lst(),
         help='overview tiles resampling method (default: nearest)')

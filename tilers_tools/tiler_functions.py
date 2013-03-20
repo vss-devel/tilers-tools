@@ -185,35 +185,40 @@ class LooseDict(object):
 #
 #############################
 
-def wkt2proj4(wkt):
-    if wkt and wkt.startswith('+'):
-        return wkt # already proj4
+def proj2srs(proj):
     srs = osr.SpatialReference()
-    srs.ImportFromWkt(wkt)
-    return srs.ExportToProj4()
+    if proj.startswith('PROJCS') or proj.startswith('GEOGCS'):
+        srs.ImportFromWkt(proj)
+    if proj.startswith('EPSG'):
+        #~ epsg = proj.split(':')[1]
+        #~ srs.importFromEPSG(epsg)
+        proj = '+init=' + proj.lower()
+    if proj.startswith('+'):
+        srs.ImportFromProj4(proj)
+    return srs
 
-def proj4wkt(proj4):
-    srs = osr.SpatialReference()
-    srs.ImportFromProj4(proj4)
+def proj2wkt(proj):
+    srs = proj2srs(proj)
     return srs.ExportToWkt()
 
-def proj_cs2geog_cs(proj4):
-    srs_proj = osr.SpatialReference()
-    srs_proj.ImportFromProj4(proj4)
+def proj2proj4(proj):
+    srs = proj2srs(proj)
+    return srs.ExportToProj4()
+
+def proj_cs2geog_cs(proj):
+    srs = proj2srs(proj)
     srs_geo = osr.SpatialReference()
-    srs_geo.CopyGeogCSFrom(srs_proj)
+    srs_geo.CopyGeogCSFrom(srs)
     return srs_geo.ExportToProj4()
 
-class MyTransformer(gdal.Transformer):
+class GdalTransformer(gdal.Transformer):
     def __init__(self, src_ds=None, dst_ds=None, **options):
         for key in ('SRC_SRS', 'DST_SRS'):
             try:
-                srs = options[key]
-                if srs.startswith('+'):
-                    options[key] = proj4wkt(srs)
+                options[key] = proj2wkt(options[key]) # convert to wkt
             except: pass
         opt_lst = ['%s=%s' % (key, options[key]) for key in options]
-        super(MyTransformer, self).__init__(src_ds, dst_ds, opt_lst)
+        super(GdalTransformer, self).__init__(src_ds, dst_ds, opt_lst)
 
     def transform(self, points, inv=False):
         if not points:
@@ -224,7 +229,7 @@ class MyTransformer(gdal.Transformer):
 
     def transform_point(self, point, inv=False):
         return self.transform([point], inv=inv)[0]
-# MyTransformer
+# GdalTransformer
 
 def sasplanet_hlg2ogr(fname):
     with open(fname) as f:
@@ -299,7 +304,7 @@ def shape2mpointlst(datasource, dst_srs, feature_name=None):
         layer_proj = layer_srs.ExportToProj4()
     else:
         layer_proj = dst_srs
-    srs_tr = MyTransformer(SRC_SRS=layer_proj, DST_SRS=dst_srs)
+    srs_tr = GdalTransformer(SRC_SRS=layer_proj, DST_SRS=dst_srs)
     if layer_proj == dst_srs:
         srs_tr.transform = lambda x:x
 
@@ -319,12 +324,12 @@ def shape2mpointlst(datasource, dst_srs, feature_name=None):
 
 def shape2cutline(cutline_ds, raster_ds, feature_name=None):
     mpoly = []
-    raster_proj = wkt2proj4(raster_ds.GetProjection())
+    raster_proj = proj2proj4(raster_ds.GetProjection())
     if not raster_proj:
-        raster_proj = wkt2proj4(raster_ds.GetGCPProjection())
+        raster_proj = proj2proj4(raster_ds.GetGCPProjection())
     ld(raster_proj, raster_ds.GetProjection(), raster_ds)
 
-    pix_tr = MyTransformer(raster_ds)
+    pix_tr = GdalTransformer(raster_ds)
     for points in shape2mpointlst(cutline_ds, raster_proj, feature_name):
         p_pix = pix_tr.transform(points, inv=True)
         mpoly.append(','.join(['%r %r' % (p[0], p[1]) for p in p_pix]))
