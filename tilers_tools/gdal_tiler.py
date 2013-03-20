@@ -52,6 +52,8 @@ except ImportError:
 
 from tiler_functions import *
 
+profile_map = []
+
 #############################
 
 class BaseImg(object):
@@ -1111,22 +1113,6 @@ class Pyramid(object):
 
 #############################
 
-class GenericMap(Pyramid):
-    'full profile options are to be specified'
-#############################
-    profile = 'generic'
-    defaul_ext = '.generic'
-
-    def __init__(self, src=None, dest=None, options=None):
-        super(GenericMap, self).__init__(src, dest, options)
-
-        self.srs = self.options.t_srs
-        assert self.proj_srs, 'Target SRS is not specified'
-        self.zoom0_tiles = map(int, self.options.zoom0_tiles.split(','))
-        self.tile_dim = tuple(map(int, self.options.tile_dim.split(',')))
-
-#############################
-
 class TilingScheme(object):
 
 #############################
@@ -1226,6 +1212,9 @@ class PlateCarreeZXY(PlateCarree, ZXYtiling):
     profile = 'zxy-geo'
     defaul_ext = '.geo'
     tms_profile = 'zxy-geodetic' # non-standard profile
+#
+profile_map.append(PlateCarreeZXY)
+#
 
 #############################
 
@@ -1235,8 +1224,9 @@ class PlateCarreeTMS(PlateCarree, TMStiling):
     profile = 'tms-geo'
     defaul_ext = '.tms-geo'
     tms_profile = 'global-geodetic'
-
-# PlateCarreeTMS
+#
+profile_map.append(PlateCarreeTMS)
+#
 
 kml_templ = '''<?xml version="1.0" encoding="utf-8"?>
 <kml xmlns="http://earth.google.com/kml/2.1">
@@ -1291,15 +1281,17 @@ kml_link_templ = '''
             </Link>
         </NetworkLink>'''
 
-##############################
-#
-#class Yandex(Pyramid):
-#    'Yandex Maps (WGS 84 / World Mercator, epsg:3395)'
-##############################
-#    profile = 'yandex'
-#    defaul_ext = '.yandex'
-#    srs = '+proj=merc +datum=WGS84 +ellps=WGS84'
-## Yandex
+#~ ##############################
+#~
+#~ class Yandex(Pyramid):
+    #~ 'Yandex Maps (WGS 84 / World Mercator, epsg:3395)'
+#~ ##############################
+    #~ profile = 'yandex'
+    #~ defaul_ext = '.yandex'
+    #~ srs = '+proj=merc +datum=WGS84 +ellps=WGS84'
+#~ #
+#~ profile_map.append(Yandex)
+#~ #
 
 #############################
 
@@ -1345,6 +1337,9 @@ class GMercatorZXY(GMercator, ZXYtiling):
     profile = 'zxy'
     defaul_ext = '.zxy'
     tms_profile = 'zxy-mercator' # non-standard profile
+#
+profile_map.append(GMercatorZXY)
+#
 
 #############################
 
@@ -1354,17 +1349,28 @@ class GMercatorTMS(GMercator, TMStiling):
     profile = 'tms'
     defaul_ext = '.tms'
     tms_profile = 'global-mercator'
+#
+profile_map.append(GMercatorTMS)
+#
 
-# GMercatorTMS
+#############################
 
-profile_map = (
-    GMercatorZXY,
-    GMercatorTMS,
-    PlateCarreeZXY,
-    PlateCarreeTMS,
-#    Yandex,
-    GenericMap,
-    )
+class GenericMap(Pyramid):
+    'full profile options are to be specified'
+#############################
+    profile = 'generic'
+    defaul_ext = '.generic'
+
+    def __init__(self, src=None, dest=None, options=None):
+        super(GenericMap, self).__init__(src, dest, options)
+
+        self.srs = self.options.t_srs
+        assert self.proj_srs, 'Target SRS is not specified'
+        self.zoom0_tiles = map(int, self.options.zoom0_tiles.split(','))
+        self.tile_dim = tuple(map(int, self.options.tile_dim.split(',')))
+#
+profile_map.append(GenericMap)
+#
 
 #----------------------------
 
