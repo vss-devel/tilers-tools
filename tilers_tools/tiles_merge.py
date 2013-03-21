@@ -77,7 +77,7 @@ class MergeSet:
             cwd=os.getcwd()
             os.chdir(src_dir)
             self.src_lst=glob.glob('z[0-9]*/*/*.%s' % self.src['tiles']['ext'])
-            self.max_zoom=max([int(i) for i in glob.glob('[0-9]*')])
+            self.max_zoom=max([int(d[1:]) for d in glob.glob('z[0-9]*')])
         finally:
             os.chdir(cwd)
         #ld(self.src_lst)
@@ -134,7 +134,9 @@ class MergeSet:
         dst_tiles=[(dx,dy),  (dx+1,dy),
                    (dx,dy+1),(dx+1,dy+1)]
         for (dst_xy,src_area) in zip(dst_tiles,self.underlay_map):
-            dst_tile='%i/%i/%i%s' % (dz,dst_xy[0],dst_xy[1],ext)
+            dst_tile='z%i/%i/%i%s' % (dz,dst_xy[1],dst_xy[0],ext)
+            #~ if options.debug:
+                #~ pf(tile,z,y,x,dst_tile)
             dst_path=os.path.join(self.dst_dir,dst_tile)
             if not os.path.exists(dst_path):
                 continue
@@ -149,7 +151,7 @@ class MergeSet:
             out_raster.save(dst_path)
 
             if options.debug:
-                pf('%i'%level,end='')
+                pf('%i' % level,end='')
             else:
                 pf('#',end='')
             self.underlay(dst_tile,dst_path,out_raster,level)
@@ -218,7 +220,7 @@ if __name__=='__main__':
     parser.add_option("-x", "--add-src-ext", default=None,
         help='add extension suffix to a source parameter')
     parser.add_option('-u',"--underlay", type='int', default=0,
-        help="underlay semitransparent tiles with a zoomed-in raster from a higher level")
+        help="underlay partially filled tiles with a zoomed-in raster from a higher level")
     parser.add_option("-q", "--quiet", action="store_true")
     parser.add_option("-d", "--debug", action="store_true")
     parser.add_option("--nothreads", action="store_true",
