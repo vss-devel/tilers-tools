@@ -20,7 +20,7 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 #  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 #  DEALINGS IN THE SOFTWARE.
-#******************************************************************************
+###############################################################################
 
 import sys
 import os
@@ -44,9 +44,11 @@ def counter():
     else:
         return False
 
+pngnq = None # path to pngnq
+
 def optimize_png(src,dst,dpath):
     'optimize png using pngnq utility'
-    command(['pngnq','-n',options.colors,'-e','.png','-d',dpath,src])
+    command([pngnq,'-n',options.colors,'-e','.png','-d',dpath,src])
 
 def to_jpeg(src,dst,dpath):
     'convert to jpeg'
@@ -105,6 +107,12 @@ if __name__=='__main__':
     if options.jpeg:
         optimize_png=to_jpeg
         dst_ext='.jpeg'
+    else:
+        try: # check if pngnq is available
+            pngnq = command(['which','pngnq']).strip()
+            #~ pf('pngnq', pngnq)
+        except:
+            raise Exception('Can not find pngnq executable')
 
     for src_dir in args:
         dst_dir=src_dir+dst_ext
