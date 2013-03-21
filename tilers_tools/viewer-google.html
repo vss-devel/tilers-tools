@@ -226,7 +226,6 @@
                     tile_coord.y >= max_y || tile_coord.y < 0)
                         return transparent_url;
                 */
-                var prefix=zoom; //tileset_lst[zoom].prefix;
                 var y=tile_coord.y;
                 if (!tilemap.tiles.inversion[1]) {
                     y= -y -1;
@@ -235,7 +234,7 @@
                 var x=tile_coord.x % max_x;
                 if (x < 0)
                     x=max_x+x;
-                var url=prefix+"/"+x+"/"+y+"."+(this.isPng ? 'png' : 'jpg');
+                var url = 'z'+zoom+"/"+y+"/"+x+"."+(this.isPng ? 'png' : 'jpg');
                 //log(url);
                 return url;
                 }

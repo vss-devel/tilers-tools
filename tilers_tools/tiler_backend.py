@@ -24,17 +24,11 @@
 ###############################################################################
 
 from __future__ import print_function
-import sys
 import os
 import os.path
-import logging
 import shutil
 import math
-import operator
-import struct
-import json
 from PIL import Image
-from optparse import OptionParser
 
 try:
     from osgeo import gdal
@@ -79,15 +73,30 @@ def base_resampling_lst():
 class TilingScheme(object):
 
 #############################
-    pass
+    #----------------------------
 
-class ZXYtiling(TilingScheme):
-    tile_geo_origin = (-180, 90)
-    tile_dim = (256, -256) # tile size in pixels
+    def tile_path(self, tile):
+        'relative path to a tile'
+    #----------------------------
+        z, x, y = tile
+        return '%i/%i/%i.%s' % (z, x, y, self.tile_ext)
 
 class TMStiling(TilingScheme):
     tile_geo_origin = (-180, -90)
     tile_dim = (256, 256) # tile size in pixels
+
+class XYZtiling(TilingScheme):
+    tile_geo_origin = (-180, 90)
+    tile_dim = (256, -256) # tile size in pixels
+
+class ZYXtiling(XYZtiling):
+    #----------------------------
+
+    def tile_path(self, tile):
+        'relative path to a tile'
+    #----------------------------
+        z, x, y = tile
+        return 'z%i/%i/%i.%s' % (z, y, x, self.tile_ext)
 
 #############################
 
@@ -142,106 +151,6 @@ class BaseImg(object):
         return img, opacity
 # BaseImg
 
-#----------------------------
-#
-# templates for VRT XML
-#
-#----------------------------
-
-def xml_txt(name, value=None, indent=0, **attr_dict):
-    attr_txt = ''.join((' %s="%s"' % (key, attr_dict[key]) for key in attr_dict))
-    val_txt = ('>%s</%s' % (value, name)) if value else '/'
-    return '%s<%s%s%s>' % (' '*indent, name, attr_txt, val_txt)
-
-warp_vrt = '''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d" subClass="VRTWarpedDataset">
-  <SRS>%(srs)s</SRS>
-%(geotr)s%(band_list)s
-  <BlockXSize>%(blxsize)d</BlockXSize>
-  <BlockYSize>%(blysize)d</BlockYSize>
-  <GDALWarpOptions>
-    <!-- <WarpMemoryLimit>6.71089e+07</WarpMemoryLimit> -->
-    <ResampleAlg>%(wo_ResampleAlg)s</ResampleAlg>
-    <WorkingDataType>Byte</WorkingDataType>
-    <SourceDataset relativeToVRT="0">%(wo_src_path)s</SourceDataset>
-%(warp_options)s
-    <Transformer>
-      <ApproxTransformer>
-        <MaxError>0.125</MaxError>
-        <BaseTransformer>
-          <GenImgProjTransformer>
-%(wo_src_transform)s
-%(wo_dst_transform)s
-            <ReprojectTransformer>
-              <ReprojectionTransformer>
-                <SourceSRS>%(wo_src_srs)s</SourceSRS>
-                <TargetSRS>%(wo_dst_srs)s</TargetSRS>
-              </ReprojectionTransformer>
-            </ReprojectTransformer>
-          </GenImgProjTransformer>
-        </BaseTransformer>
-      </ApproxTransformer>
-    </Transformer>
-    <BandList>
-%(wo_BandList)s
-    </BandList>
-%(wo_DstAlphaBand)s%(wo_Cutline)s  </GDALWarpOptions>
-</VRTDataset>
-'''
-warp_band = '  <VRTRasterBand dataType="Byte" band="%d" subClass="VRTWarpedRasterBand"%s>'
-warp_band_color = '>\n    <ColorInterp>%s</ColorInterp>\n  </VRTRasterBand'
-warp_dst_alpha_band = '    <DstAlphaBand>%d</DstAlphaBand>\n'
-warp_cutline = '    <Cutline>%s</Cutline>\n'
-warp_dst_geotr = '            <DstGeoTransform> %r, %r, %r, %r, %r, %r</DstGeoTransform>'
-warp_dst_igeotr = '            <DstInvGeoTransform> %r, %r, %r, %r, %r, %r</DstInvGeoTransform>'
-warp_src_geotr = '            <SrcGeoTransform> %r, %r, %r, %r, %r, %r</SrcGeoTransform>'
-warp_src_igeotr = '            <SrcInvGeoTransform> %r, %r, %r, %r, %r, %r</SrcInvGeoTransform>'
-warp_band_mapping = '      <BandMapping src="%d" dst="%d"%s>'
-warp_band_src_nodata = '''
-        <SrcNoDataReal>%d</SrcNoDataReal>
-        <SrcNoDataImag>%d</SrcNoDataImag>'''
-warp_band_dst_nodata = '''
-        <DstNoDataReal>%d</DstNoDataReal>
-        <DstNoDataImag>%d</DstNoDataImag>'''
-warp_band_mapping_nodata = '''>%s%s
-      </BandMapping'''
-warp_src_gcp_transformer = '''            <SrcGCPTransformer>
-              <GCPTransformer>
-                <Order>%d</Order>
-                <Reversed>0</Reversed>
-                <GCPList>
-%s
-                </GCPList>
-              </GCPTransformer>
-            </SrcGCPTransformer>'''
-warp_src_tps_transformer = '''            <SrcTPSTransformer>
-              <TPSTransformer>
-                <Reversed>0</Reversed>
-                <GCPList>
-%s
-                </GCPList>
-              </TPSTransformer>
-            </SrcTPSTransformer>'''
-
-gcp_templ = '    <GCP Id="%s" Pixel="%r" Line="%r" X="%r" Y="%r" Z="%r"/>'
-gcplst_templ = '  <GCPList Projection="%s">\n%s\n  </GCPList>\n'
-geotr_templ = '  <GeoTransform> %r, %r, %r, %r, %r, %r</GeoTransform>\n'
-meta_templ = '  <Metadata>\n%s\n  </Metadata>\n'
-band_templ = '''  <VRTRasterBand dataType="Byte" band="%(band)d">
-    <ColorInterp>%(color)s</ColorInterp>
-    <ComplexSource>
-      <SourceFilename relativeToVRT="0">%(src)s</SourceFilename>
-      <SourceBand>%(srcband)d</SourceBand>
-      <SourceProperties RasterXSize="%(xsize)d" RasterYSize="%(ysize)d" DataType="Byte" BlockXSize="%(blxsize)d" BlockYSize="%(blysize)d"/>
-      <SrcRect xOff="0" yOff="0" xSize="%(xsize)d" ySize="%(ysize)d"/>
-      <DstRect xOff="0" yOff="0" xSize="%(xsize)d" ySize="%(ysize)d"/>
-      <ColorTableComponent>%(band)d</ColorTableComponent>
-    </ComplexSource>
-  </VRTRasterBand>
-'''
-srs_templ = '  <SRS>%s</SRS>\n'
-vrt_templ = '''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d">
-%(metadata)s%(srs)s%(geotr)s%(gcp_list)s%(band_list)s</VRTDataset>
-'''
 
 #############################
 
@@ -885,14 +794,6 @@ class Pyramid(object):
 
     #----------------------------
 
-    def tile_path(self, tile):
-        'relative path to a tile'
-    #----------------------------
-        z, x, y = tile
-        return '%i/%i/%i.%s' % (z, x, y, self.tile_ext)
-
-    #----------------------------
-
     def write_metadata(self, tile=None, children=[]):
 
     #----------------------------
@@ -1099,7 +1000,6 @@ class Pyramid(object):
                 range_lr_y > zoom_ul_y or range_ul_y < zoom_lr_x
                 )
 
-
     def set_region(self, point_lst, source_srs=None):
         if source_srs and source_srs != self.proj_srs:
             point_lst = GdalTransformer(SRC_SRS=source_srs, DST_SRS=self.proj_srs).transform(point_lst)
@@ -1127,21 +1027,103 @@ class Pyramid(object):
             return False
 # Pyramid
 
-#############################
-
-class GenericMap(Pyramid):
-    'full profile options are to be specified'
-#############################
-    profile = 'generic'
-    defaul_ext = '.generic'
-
-    def __init__(self, src=None, dest=None, options=None):
-        super(GenericMap, self).__init__(src, dest, options)
-
-        self.srs = self.options.t_srs
-        assert self.proj_srs, 'Target SRS is not specified'
-        self.zoom0_tiles = map(int, self.options.zoom0_tiles.split(','))
-        self.tile_dim = tuple(map(int, self.options.tile_dim.split(',')))
+#----------------------------
 #
-profile_map.append(GenericMap)
+# templates for VRT XML
 #
+#----------------------------
+
+def xml_txt(name, value=None, indent=0, **attr_dict):
+    attr_txt = ''.join((' %s="%s"' % (key, attr_dict[key]) for key in attr_dict))
+    val_txt = ('>%s</%s' % (value, name)) if value else '/'
+    return '%s<%s%s%s>' % (' '*indent, name, attr_txt, val_txt)
+
+warp_vrt = '''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d" subClass="VRTWarpedDataset">
+  <SRS>%(srs)s</SRS>
+%(geotr)s%(band_list)s
+  <BlockXSize>%(blxsize)d</BlockXSize>
+  <BlockYSize>%(blysize)d</BlockYSize>
+  <GDALWarpOptions>
+    <!-- <WarpMemoryLimit>6.71089e+07</WarpMemoryLimit> -->
+    <ResampleAlg>%(wo_ResampleAlg)s</ResampleAlg>
+    <WorkingDataType>Byte</WorkingDataType>
+    <SourceDataset relativeToVRT="0">%(wo_src_path)s</SourceDataset>
+%(warp_options)s
+    <Transformer>
+      <ApproxTransformer>
+        <MaxError>0.125</MaxError>
+        <BaseTransformer>
+          <GenImgProjTransformer>
+%(wo_src_transform)s
+%(wo_dst_transform)s
+            <ReprojectTransformer>
+              <ReprojectionTransformer>
+                <SourceSRS>%(wo_src_srs)s</SourceSRS>
+                <TargetSRS>%(wo_dst_srs)s</TargetSRS>
+              </ReprojectionTransformer>
+            </ReprojectTransformer>
+          </GenImgProjTransformer>
+        </BaseTransformer>
+      </ApproxTransformer>
+    </Transformer>
+    <BandList>
+%(wo_BandList)s
+    </BandList>
+%(wo_DstAlphaBand)s%(wo_Cutline)s  </GDALWarpOptions>
+</VRTDataset>
+'''
+warp_band = '  <VRTRasterBand dataType="Byte" band="%d" subClass="VRTWarpedRasterBand"%s>'
+warp_band_color = '>\n    <ColorInterp>%s</ColorInterp>\n  </VRTRasterBand'
+warp_dst_alpha_band = '    <DstAlphaBand>%d</DstAlphaBand>\n'
+warp_cutline = '    <Cutline>%s</Cutline>\n'
+warp_dst_geotr = '            <DstGeoTransform> %r, %r, %r, %r, %r, %r</DstGeoTransform>'
+warp_dst_igeotr = '            <DstInvGeoTransform> %r, %r, %r, %r, %r, %r</DstInvGeoTransform>'
+warp_src_geotr = '            <SrcGeoTransform> %r, %r, %r, %r, %r, %r</SrcGeoTransform>'
+warp_src_igeotr = '            <SrcInvGeoTransform> %r, %r, %r, %r, %r, %r</SrcInvGeoTransform>'
+warp_band_mapping = '      <BandMapping src="%d" dst="%d"%s>'
+warp_band_src_nodata = '''
+        <SrcNoDataReal>%d</SrcNoDataReal>
+        <SrcNoDataImag>%d</SrcNoDataImag>'''
+warp_band_dst_nodata = '''
+        <DstNoDataReal>%d</DstNoDataReal>
+        <DstNoDataImag>%d</DstNoDataImag>'''
+warp_band_mapping_nodata = '''>%s%s
+      </BandMapping'''
+warp_src_gcp_transformer = '''            <SrcGCPTransformer>
+              <GCPTransformer>
+                <Order>%d</Order>
+                <Reversed>0</Reversed>
+                <GCPList>
+%s
+                </GCPList>
+              </GCPTransformer>
+            </SrcGCPTransformer>'''
+warp_src_tps_transformer = '''            <SrcTPSTransformer>
+              <TPSTransformer>
+                <Reversed>0</Reversed>
+                <GCPList>
+%s
+                </GCPList>
+              </TPSTransformer>
+            </SrcTPSTransformer>'''
+
+gcp_templ = '    <GCP Id="%s" Pixel="%r" Line="%r" X="%r" Y="%r" Z="%r"/>'
+gcplst_templ = '  <GCPList Projection="%s">\n%s\n  </GCPList>\n'
+geotr_templ = '  <GeoTransform> %r, %r, %r, %r, %r, %r</GeoTransform>\n'
+meta_templ = '  <Metadata>\n%s\n  </Metadata>\n'
+band_templ = '''  <VRTRasterBand dataType="Byte" band="%(band)d">
+    <ColorInterp>%(color)s</ColorInterp>
+    <ComplexSource>
+      <SourceFilename relativeToVRT="0">%(src)s</SourceFilename>
+      <SourceBand>%(srcband)d</SourceBand>
+      <SourceProperties RasterXSize="%(xsize)d" RasterYSize="%(ysize)d" DataType="Byte" BlockXSize="%(blxsize)d" BlockYSize="%(blysize)d"/>
+      <SrcRect xOff="0" yOff="0" xSize="%(xsize)d" ySize="%(ysize)d"/>
+      <DstRect xOff="0" yOff="0" xSize="%(xsize)d" ySize="%(ysize)d"/>
+      <ColorTableComponent>%(band)d</ColorTableComponent>
+    </ComplexSource>
+  </VRTRasterBand>
+'''
+srs_templ = '  <SRS>%s</SRS>\n'
+vrt_templ = '''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d">
+%(metadata)s%(srs)s%(geotr)s%(gcp_list)s%(band_list)s</VRTDataset>
+'''

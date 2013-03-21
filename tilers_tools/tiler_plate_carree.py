@@ -106,14 +106,26 @@ class PlateCarree(Pyramid):
 
 #############################
 
-class PlateCarreeZXY(PlateCarree, ZXYtiling):
-    'Plate Carrée, top-to-bottom tile numbering  (a la Google Earth)'
+class PlateCarreeZYX(PlateCarree, ZYXtiling):
+    'Plate Carrée, top-to-bottom tile numbering (a la Google Earth) ZYX directory structure'
 #############################
-    profile = 'zxy-geo'
-    defaul_ext = '.geo'
+    profile = 'geo'
+    defaul_ext = '.zxy-geo'
     tms_profile = 'zxy-geodetic' # non-standard profile
 #
-profile_map.append(PlateCarreeZXY)
+profile_map.append(PlateCarreeZYX)
+#
+
+#############################
+
+class PlateCarreeXYZ(PlateCarree, XYZtiling):
+    'Plate Carrée, top-to-bottom tile numbering  (a la Google Earth)'
+#############################
+    profile = 'xyz-geo'
+    defaul_ext = '.xyz-geo'
+    tms_profile = 'xyz-geodetic' # non-standard profile
+#
+profile_map.append(PlateCarreeXYZ)
 #
 
 #############################
@@ -180,94 +192,3 @@ kml_link_templ = '''
                 <href>%(href)s</href>
             </Link>
         </NetworkLink>'''
-
-#~ ##############################
-#~
-#~ class Yandex(Pyramid):
-    #~ 'Yandex Maps (WGS 84 / World Mercator, epsg:3395)'
-#~ ##############################
-    #~ profile = 'yandex'
-    #~ defaul_ext = '.yandex'
-    #~ srs = '+proj=merc +datum=WGS84 +ellps=WGS84'
-#~ #
-#~ profile_map.append(Yandex)
-#~ #
-
-#############################
-
-class GMercator(Pyramid):
-    'base class for Global Mercator'
-#############################
-
-    # OpenLayers-2.12/lib/OpenLayers/Projection.js
-    #
-    # "EPSG:900913": {
-    #     units: "m",
-    #     maxExtent: [-20037508.34, -20037508.34, 20037508.34, 20037508.34]
-    # }
-
-    zoom0_tiles = [1, 1] # tiles at zoom 0
-
-    # Global Mercator (EPSG:3857, aka EPSG:900913) http://docs.openlayers.org/library/spherical_mercator.html
-    #~ srs = '+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs'
-    srs = 'EPSG:3857'
-
-    tilemap_crs = 'EPSG:3857'
-
-    def write_metadata(self, tile=None, children=[]):
-        super(GMercator, self).write_metadata(tile, children)
-
-        if not tile: # only for a top level of a pyramid
-            self.copy_viewer()
-
-    def copy_viewer(self):
-        for f in ['viewer-google.html', 'viewer-openlayers.html']:
-            src = os.path.join(data_dir(), f)
-            dst = os.path.join(self.dest, f)
-            try:
-                os.link(src, dst) # hard links as FF loves to dereference htmls
-            except OSError: # non POSIX or cross-device link?
-                shutil.copy(src, dst)
-
-#############################
-
-class GMercatorZXY(GMercator, ZXYtiling):
-    'Global Mercator, top-to-bottom tile numbering (a la Google Maps, OSM etc)'
-#############################
-    profile = 'zxy'
-    defaul_ext = '.zxy'
-    tms_profile = 'zxy-mercator' # non-standard profile
-#
-profile_map.append(GMercatorZXY)
-#
-
-#############################
-
-class GMercatorTMS(GMercator, TMStiling):
-    'Global Mercator, TMS tile numbering'
-#############################
-    profile = 'tms'
-    defaul_ext = '.tms'
-    tms_profile = 'global-mercator'
-#
-profile_map.append(GMercatorTMS)
-#
-
-#############################
-
-class GenericMap(Pyramid):
-    'full profile options are to be specified'
-#############################
-    profile = 'generic'
-    defaul_ext = '.generic'
-
-    def __init__(self, src=None, dest=None, options=None):
-        super(GenericMap, self).__init__(src, dest, options)
-
-        self.srs = self.options.t_srs
-        assert self.proj_srs, 'Target SRS is not specified'
-        self.zoom0_tiles = map(int, self.options.zoom0_tiles.split(','))
-        self.tile_dim = tuple(map(int, self.options.tile_dim.split(',')))
-#
-profile_map.append(GenericMap)
-#

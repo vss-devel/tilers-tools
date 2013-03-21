@@ -279,10 +279,10 @@ tile_formats.append(TMStiles)
 
 #############################
 
-class ZXYtiles(TileMapDir): # http://code.google.com/apis/maps/documentation/javascript/v2/overlays.html#Google_Maps_Coordinates
-    'Popular ZXY aka XYZ format (Google Maps, OSM, mappero-compatible)'
+class XYZtiles(TileMapDir): # http://code.google.com/apis/maps/documentation/javascript/v2/overlays.html#Google_Maps_Coordinates
+    'Popular XYZ format (Google Maps, OSM, mappero-compatible)'
 #############################
-    format, ext, input, output = 'zxy', '.zxy', True, True
+    format, ext, input, output = 'xyz', '.xyz', True, True
     dir_pattern = '[0-9]*/*/*.*'
 
     def path2coord(self, tile_path):
@@ -291,7 +291,24 @@ class ZXYtiles(TileMapDir): # http://code.google.com/apis/maps/documentation/jav
     def coord2path(self, z, x, y):
         return '%d/%d/%d' % (z, x, y)
 
-tile_formats.append(ZXYtiles)
+tile_formats.append(XYZtiles)
+
+#############################
+
+class ZYXtiles(TileDir):
+    'ZYX aka Global Mapper (SASPlanet compatible)'
+#############################
+    format, ext, input, output = 'zyx', '.zyx', True, True
+    dir_pattern = 'z[0-9]*/*/*.*'
+
+    def path2coord(self, tile_path):
+        z, y, x = path2list(tile_path)[-4:-1]
+        return map(int, (z[1:], x, y))
+
+    def coord2path(self, z, x, y):
+        return 'z%d/%d/%d' % (z, y, x)
+
+tile_formats.append(ZYXtiles)
 
 #############################
 
@@ -313,41 +330,6 @@ class MapNav(TileDir): # http://mapnav.spb.ru/site/e107_plugins/forum/forum_view
         return 'Z%d/%d/%d' % (z, y, x)
 
 tile_formats.append(MapNav)
-
-#############################
-
-class SASPlanet(TileDir): # http://sasgis.ru/forum/viewtopic.php?f=2&t=24
-    'SASPlanet cache'
-#############################
-    format, ext, input, output = 'sasplanet', '.sasplanet', True, True
-    dir_pattern = 'z[0-9]*/*/x[0-9]*/*/y[0-9]*.*'
-
-    def path2coord(self, tile_path):
-        z, dx, x, dy, y = path2list(tile_path)[-6:-1]
-        z, x, y = map(int, (z[1:], x[1:], y[1:]))
-        return (z-1, x, y)
-
-    def coord2path(self, z, x, y):
-        return 'z%d/%d/x%d/%d/y%d' % (z+1, x//1024, x, y//1024, y)
-
-tile_formats.append(SASPlanet)
-
-#############################
-
-class SASGoogle(TileDir):
-    'SASPlanet google maps cache'
-#############################
-    format, ext, input, output = 'sasgoogle', '.sasgoogle', True, True
-    dir_pattern = 'z[0-9]*/*/*.*'
-
-    def path2coord(self, tile_path):
-        z, y, x = path2list(tile_path)[-4:-1]
-        return map(int, (z[1:], x, y))
-
-    def coord2path(self, z, x, y):
-        return 'z%d/%d/%d' % (z, x, y)
-
-tile_formats.append(SASGoogle)
 
 #############################
 
@@ -451,8 +433,25 @@ class MapperGDBM(TileSet): # due to GDBM weirdness on ARM this only works if run
         self.counter()
 
 tile_formats.append(MapperGDBM)
-
 # MapperGDBM
+
+#############################
+
+class SASPlanet(TileDir): # http://sasgis.ru/forum/viewtopic.php?f=2&t=24
+    'SASPlanet cache'
+#############################
+    format, ext, input, output = 'sasplanet', '.sasplanet', True, True
+    dir_pattern = 'z[0-9]*/*/x[0-9]*/*/y[0-9]*.*'
+
+    def path2coord(self, tile_path):
+        z, dx, x, dy, y = path2list(tile_path)[-6:-1]
+        z, x, y = map(int, (z[1:], x[1:], y[1:]))
+        return (z-1, x, y)
+
+    def coord2path(self, z, x, y):
+        return 'z%d/%d/x%d/%d/y%d' % (z+1, x//1024, x, y//1024, y)
+
+tile_formats.append(SASPlanet)
 
 #############################
 

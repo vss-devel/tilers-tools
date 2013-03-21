@@ -26,18 +26,6 @@
 from tiler_functions import *
 from tiler_backend import *
 
-#~ ##############################
-#~
-#~ class Yandex(Pyramid):
-    #~ 'Yandex Maps (WGS 84 / World Mercator, epsg:3395)'
-#~ ##############################
-    #~ profile = 'yandex'
-    #~ defaul_ext = '.yandex'
-    #~ srs = '+proj=merc +datum=WGS84 +ellps=WGS84'
-#~ #
-#~ profile_map.append(Yandex)
-#~ #
-
 #############################
 
 class GMercator(Pyramid):
@@ -76,14 +64,26 @@ class GMercator(Pyramid):
 
 #############################
 
-class GMercatorZXY(GMercator, ZXYtiling):
-    'Global Mercator, top-to-bottom tile numbering (a la Google Maps, OSM etc)'
+class GMercatorZYX(GMercator, ZYXtiling):
+    'Global Mercator, top-to-bottom tile numbering ZYX directory structure'
 #############################
-    profile = 'zxy'
-    defaul_ext = '.zxy'
-    tms_profile = 'zxy-mercator' # non-standard profile
+    profile = 'zyx'
+    defaul_ext = '.zyx'
+    tms_profile = 'zyx-mercator' # non-standard profile
 #
-profile_map.append(GMercatorZXY)
+profile_map.append(GMercatorZYX)
+#
+
+#############################
+
+class GMercatorXYZ(GMercator, XYZtiling):
+    'Global Mercator, top-to-bottom tile numbering OSM directory structure'
+#############################
+    profile = 'xyz'
+    defaul_ext = '.xyz'
+    tms_profile = 'xyz-mercator' # non-standard profile
+#
+profile_map.append(GMercatorXYZ)
 #
 
 #############################

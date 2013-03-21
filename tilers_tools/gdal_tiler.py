@@ -27,8 +27,9 @@ from optparse import OptionParser
 
 from tiler_functions import *
 import tiler_backend
-import tiler_plate_carree
 import tiler_global_mercator
+import tiler_plate_carree
+import tiler_misc
 
 import map2gdal
 
@@ -69,7 +70,7 @@ def parse_args(arg_lst):
         version=version,
         description='Tile cutter for GDAL-compatible raster maps')
     parser.add_option('-p', '--profile', '--to', dest="profile", metavar='PROFILE',
-        default='zxy', choices=tiler_backend.Pyramid.profile_lst(),
+        default='zyx', choices=tiler_backend.Pyramid.profile_lst(),
         help='output tiles profile (default: zxy)')
     parser.add_option("-f", "--list-profiles", action="store_true",
         help='list tile profiles')
@@ -144,7 +145,7 @@ def main(argv):
     ld(options)
 
     if options.list_profiles:
-        Pyramid.profile_lst(tty=True)
+        tiler_backend.Pyramid.profile_lst(tty=True)
         sys.exit(0)
 
     if options.release:
