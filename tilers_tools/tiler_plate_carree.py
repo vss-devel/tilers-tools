@@ -110,8 +110,8 @@ class PlateCarreeZYX(PlateCarree, ZYXtiling):
     'Plate Carrée, top-to-bottom tile numbering (a la Google Earth) ZYX directory structure'
 #############################
     profile = 'geo'
-    defaul_ext = '.zxy-geo'
-    tms_profile = 'zxy-geodetic' # non-standard profile
+    defaul_ext = '.zyx-geo'
+    tms_profile = 'zyx-geodetic' # non-standard profile
 #
 profile_map.append(PlateCarreeZYX)
 #

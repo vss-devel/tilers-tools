@@ -26,7 +26,7 @@
 from optparse import OptionParser
 
 from tiler_functions import *
-import tiler_backend
+from tiler_backend import Pyramid, resampling_lst, base_resampling_lst
 import tiler_global_mercator
 import tiler_plate_carree
 import tiler_misc
@@ -54,7 +54,7 @@ def process_src(src_def):
     src, delete_src = src_def
     opt.delete_src = delete_src
 
-    profile = tiler_backend.Pyramid.profile_class(opt.profile)
+    profile = Pyramid.profile_class(opt.profile)
     ext = profile.defaul_ext if opt.strip_dest_ext is None else ''
     dest = dest_path(src, opt.dest_dir, ext)
 
@@ -70,8 +70,8 @@ def parse_args(arg_lst):
         version=version,
         description='Tile cutter for GDAL-compatible raster maps')
     parser.add_option('-p', '--profile', '--to', dest="profile", metavar='PROFILE',
-        default='zyx', choices=tiler_backend.Pyramid.profile_lst(),
-        help='output tiles profile (default: zxy)')
+        default='zyx', choices=Pyramid.profile_lst(),
+        help='output tiles profile (default: zyx)')
     parser.add_option("-f", "--list-profiles", action="store_true",
         help='list tile profiles')
     parser.add_option("-z", "--zoom", default=None, metavar="ZOOM_LIST",
@@ -85,10 +85,10 @@ def parse_args(arg_lst):
     parser.add_option("--srs", default=None, metavar="SOURCE_SRS",
         help="override source's spatial reference system")
     parser.add_option('--overview-resampling', default='nearest', metavar="METHOD1",
-        choices=tiler_backend.resampling_lst(),
+        choices=resampling_lst(),
         help='overview tiles resampling method (default: nearest)')
     parser.add_option('--base-resampling', default='nearest', metavar="METHOD2",
-        choices=tiler_backend.base_resampling_lst(),
+        choices=base_resampling_lst(),
         help='base image resampling method (default: nearest)')
     parser.add_option('-r', '--release', action="store_true",
         help='set resampling options to (antialias,bilinear)')
@@ -145,7 +145,7 @@ def main(argv):
     ld(options)
 
     if options.list_profiles:
-        tiler_backend.Pyramid.profile_lst(tty=True)
+        Pyramid.profile_lst(tty=True)
         sys.exit(0)
 
     if options.release:
