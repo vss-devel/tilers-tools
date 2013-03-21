@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 ###############################################################################
-# Copyright (c) 2010,2011 Vadim Shlyakhov
+# Copyright (c) 2010-2013 Vadim Shlyakhov
 #
 #  Permission is hereby granted, free of charge, to any person obtaining a
 #  copy of this software and associated documentation files (the "Software"),
@@ -76,7 +76,7 @@ class MergeSet:
         try:
             cwd=os.getcwd()
             os.chdir(src_dir)
-            self.src_lst=glob.glob('[0-9]*/*/*.%s' % self.src['tiles']['ext'])
+            self.src_lst=glob.glob('z[0-9]*/*/*.%s' % self.src['tiles']['ext'])
             self.max_zoom=max([int(i) for i in glob.glob('[0-9]*')])
         finally:
             os.chdir(cwd)
@@ -124,9 +124,9 @@ class MergeSet:
             return
         level -= 1
         (s,ext)=os.path.splitext(tile)
-        (s,y)=os.path.split(s)
-        (z,x)=os.path.split(s)
-        (z,y,x)=map(int,(z,y,x))
+        (s,x)=os.path.split(s)
+        (z,y)=os.path.split(s)
+        (z,y,x)=map(int,(z[1:],y,x))
         if z < self.max_zoom:
             return
 

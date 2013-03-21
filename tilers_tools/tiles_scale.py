@@ -63,10 +63,10 @@ class ZoomSet:
                     (x*2,y*2+1),(x*2+1,y*2+1)]
         for (src_xy,out_loc) in zip(tiles_in,self.tile_offsets):
             if src_xy in self.src_lst:
-                src_path='%i/%i/%i.%s' % (z+1,src_xy[0],src_xy[1],ext)
+                src_path='z%i/%i/%i.%s' % (z+1,src_xy[1],src_xy[0],ext)
                 im.paste(Image.open(src_path).resize((128,128),Image.ANTIALIAS),out_loc)
 
-        dst_path='%i/%i/%i.%s' % (z,x,y,ext)
+        dst_path='z%i/%i/%i.%s' % (z,y,x,ext)
         im.save(dst_path)
         pf('.',end='')
 
@@ -89,8 +89,8 @@ class ZoomSet:
                     "href": unicode(zoom),
                     "units_per_pixel": tilesets[zoom+1]["units_per_pixel"]*2}
 
-                shutil.rmtree('%i' % zoom,ignore_errors=True)
-                os.chdir(os.path.join(self.tiles_root,'%i' % (zoom+1)))
+                shutil.rmtree('z%i' % zoom, ignore_errors=True)
+                os.chdir(os.path.join(self.tiles_root,'z%i' % (zoom+1)))
 
                 self.src_lst=set(
                     [tuple(map(int,path2list(f)[:-1]))
@@ -103,8 +103,8 @@ class ZoomSet:
 
                 dest_lst=set([(zoom,src_x/2,src_y/2) for (src_x,src_y) in self.src_lst])
 
-                for i in set([x for z,x,y in dest_lst]):
-                    os.makedirs('%i/%i' % (zoom,i))
+                for i in set([y for z,x,y in dest_lst]):
+                    os.makedirs('z%i/%i' % (zoom,i))
 
                 parallel_map(self,dest_lst)
 

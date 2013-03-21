@@ -843,7 +843,7 @@ class Pyramid(object):
                 },
             'tilesets': dict([
                 (zoom,
-                    {"href": str(zoom),
+                    {"href": 'z%d' % zoom,
                     "units_per_pixel": self.zoom2res(zoom)[0]})
                 for zoom in reversed(self.zoom_range)]),
             }
