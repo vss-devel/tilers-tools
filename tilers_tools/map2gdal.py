@@ -54,11 +54,11 @@ def process_src(src, no_error=False, opt=None):
     else:
         if not no_error:
             logging.error(" Invalid file: %s" % src)
-        return [src]
+        return [(src, False)]
 
     if not opt:
         opt = LooseDict(options)
-    res = [layer.convert() for layer in cls(src,options=opt).get_layers()]
+    res = [(layer.convert(), True) for layer in cls(src,options=opt).get_layers()]
     return res
 
 parser = None

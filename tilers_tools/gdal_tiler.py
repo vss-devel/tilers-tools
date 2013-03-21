@@ -39,12 +39,8 @@ def preprocess_src(src):
 #----------------------------
     global options
     opt = LooseDict(options)
-    vrt_files = map2gdal.process_src(src, no_error=True, opt=opt)
-    if len(vrt_files) > 0 and vrt_files[0] != src:
-        res = [(f, True) for f in vrt_files]
-    else:
-        res = [(src, False)]
-    ld('preprocess_src', res, vrt_files)
+    res = map2gdal.process_src(src, no_error=True, opt=opt)
+    ld('preprocess_src', res)
     return res
 
 #----------------------------
@@ -54,14 +50,14 @@ def process_src(src_def):
 #----------------------------
     global options
     opt = LooseDict(options)
-    cls = tiler_backend.Pyramid.profile_class(opt.profile)
     src, delete_src = src_def
     opt.delete_src = delete_src
-    ext = cls.defaul_ext if opt.strip_dest_ext is None else ''
-    ld('process_src', src_def)
+
+    profile = tiler_backend.Pyramid.profile_class(opt.profile)
+    ext = profile.defaul_ext if opt.strip_dest_ext is None else ''
     dest = dest_path(src, opt.dest_dir, ext)
-    #
-    cls(src, dest, opt).walk_pyramid()
+
+    profile(src, dest, opt).walk_pyramid()
 
 #----------------------------
 
