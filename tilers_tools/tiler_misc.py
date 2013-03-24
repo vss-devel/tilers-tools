@@ -47,7 +47,7 @@ profile_map.append(GenericMap)
 #
 
 #~ class Yandex(Pyramid):
-    #~ 'Yandex Maps (WGS 84 / World Mercator, epsg:3395)'
+    #~ 'Yandex Maps (WGS 84 / World Mercator, EPSG:3395)'
 #~ ##############################
     #~ profile = 'yandex'
     #~ defaul_ext = '.yandex'
@@ -55,4 +55,3 @@ profile_map.append(GenericMap)
 #~ #
 #~ profile_map.append(Yandex)
 #~ #
-

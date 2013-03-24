@@ -191,7 +191,7 @@ class LooseDict(object):
 
 def proj2srs(proj):
     srs = osr.SpatialReference()
-    if proj.startswith('PROJCS') or proj.startswith('GEOGCS'):
+    if proj.startswith(("GEOGCS", "GEOCCS", "PROJCS", "LOCAL_CS"))
         srs.ImportFromWkt(proj)
     if proj.startswith('EPSG'):
         #~ epsg = proj.split(':')[1]
