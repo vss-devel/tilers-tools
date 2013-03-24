@@ -104,7 +104,7 @@ def parse_args(arg_lst):
     return parser.parse_args(arg_lst)
 
 if __name__=='__main__':
-    (options, args) = parse_args(argv[1:])
+    (options, args) = parse_args(sys.argv[1:])
 
     #~ if not args:
         #~ parser.error('No input file(s) specified')
