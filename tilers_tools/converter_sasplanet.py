@@ -72,6 +72,7 @@ class SASBerkeley(TileDir):
         for db_file in glob.iglob(os.path.join(self.root, self.dir_pattern)):
             log('db_file', db_file)
             for coord, tile, path in self.iter_tiles(db_file):
+                #~ log('db tile', coord, tile[:20], path)
                 self.counter()
                 yield PixBufTile(coord, tile, path)
 
@@ -88,8 +89,9 @@ class SASBerkeley(TileDir):
             coord = self.get_coord(zoom, key)
             if self.in_range(coord):
                 data = c.current()[1]
-                tile = self.get_tile(data)
+                tile = self.get_image(data)
                 if tile:
+                    log('tile', coord)
                     yield coord, tile, [db_path, key]
             item = c.next(dlen=0, doff=0)
         d.close()
@@ -100,10 +102,11 @@ class SASBerkeley(TileDir):
         x_min, y_min = [int(d) << 8 for d in xy8.split('.')]
         x_max, y_max = [d | 0xFF for d in x_min, y_min]
 
-        if self.in_range((zoom, x_min, y_min), (zoom, x_max, y_max)):
-            return zoom
-        else:
+        if not self.in_range((zoom, x_min, y_min), (zoom, x_max, y_max)):
             return None
+            pass
+        log('get_zoom', zoom, x_min, x_max, y_min, y_max,db_path)
+        return zoom
 
     def get_coord(self, zoom, key): # u_BerkeleyDBKey.pas TBerkeleyDBKey.PointToKey
         if key == '\xff\xff\xff\xff\xff\xff\xff\xff':
@@ -115,14 +118,14 @@ class SASBerkeley(TileDir):
             xy[x0y1] += (kxy >> bit_n & 1) << (bit_n - x0y1) / 2
 
         coord = [zoom] + xy
-        log('get_coord', coord, zoom, key, hex(kxy), hex(xy[0]), hex(xy[1]))
+        #~ log('get_coord', coord, zoom, key, hex(kxy), hex(xy[0]), hex(xy[1]))
         return coord
 
-    def get_tile(self, data): # u_BerkeleyDBValue
+    def get_image(self, data): # u_BerkeleyDBValue
 
         magic, magic_v, crc32, tile_size, tile_date = self.header.unpack_from(data)
         if magic != 'TLD' or magic_v != 3:
-            log('get_tile', 'wrong magic', magic, magic_v)
+            log('get_image', 'wrong magic', magic, magic_v)
             return None
 
         strings = []
@@ -138,7 +141,7 @@ class SASBerkeley(TileDir):
         tile_version, content_type = strings
         tile_data = data[start: start + tile_size]
 
-        log('get_tile', self.header.size, magic, magic_v, tile_version, content_type, tile_size, tile_data[:20])#, data[4:60:2])
+        #~ log('get_image', self.header.size, magic, magic_v, tile_version, content_type, tile_size, tile_data[:20])#, data[4:60:2])
         return tile_data
 
 tile_formats.append(SASBerkeley)
