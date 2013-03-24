@@ -115,23 +115,19 @@ class BsbLayer(SrcLayer):
         'get a list of geo refs in tuples'
 
         # https://code.google.com/p/tilers-tools/issues/detail?id=9
-        #---- remove duplicate refs
-        #compensate for NOAA charts having
-        #duplicate REF entries in 2013 catalog
+        # ---- remove duplicate refs
+        # compensate for NOAA charts having
+        # duplicate REF entries in 2013 catalog
 
         refLst = self.hdr_parms2list('REF')
 
-        unique = []
-
+        unique_refs = set()
         for ref in refLst:
-            u = ref[1:len(ref)]
-            if unique.count(u) != 0:
+            val = tuple(ref[1:len(ref)])
+            if val not in unique_refs:
+                unique_refs.add(val)
+            else:
                 refLst.remove(ref)
-            unique.append(u)
-
-        for rIndex in range(len(refLst)):
-            refLst[rIndex][0] = str(rIndex+1)
-        #----
 
         refs=LatLonRefPoints(self,[(
             i[0],                                   # id
