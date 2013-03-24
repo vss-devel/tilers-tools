@@ -82,7 +82,11 @@ def parallel_map(func, iterable):
 
 def log(*parms):
     logging.debug(' '.join(itertools.imap(repr, parms)))
+
 ld = log
+
+def error(*parms):
+    logging.error(' '.join(itertools.imap(repr, parms)))
 
 def ld_nothing(*parms):
     return
@@ -383,31 +387,34 @@ def write_transparency(dst_dir, transparency):
 
 ext_map = (
     ('\x89PNG\x0D\x0A\x1A\x0A', '.png'),
+    ('\xFF\xD8\xFF\xE0', '.jpg'),
     ('GIF89a', '.gif'),
     ('GIF87a', '.gif'),
-    ('\xFF\xD8\xFF\xE0', '.jpg'),
     )
 
 def ext_from_buffer(buf):
     for magic, ext in ext_map:
         if buf.startswith(magic):
             return ext
-    raise Exception('Cannot determing image type in a buffer')
+    error('Cannot determing image type in a buffer: %s', buf[:20])
+    raise KeyError('Cannot determing image type in a buffer')
 
 def ext_from_file(path):
     with file(path, "r") as f:
         buf = f.read(512)
         return ext_from_buffer(buf)
 
-mime_map = (
-    ['.png', 'image/png'],
-    ['.gif', 'image/gif'],
-    ['.jpg', 'image/jpeg'],
-    ['.jpeg', 'image/jpeg'],
-    )
+mime_map = {
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    }
 
 def mime_from_ext(ext):
-    for patt, mime in mime_map:
-        if ext.startswith(patt):
-            return mime
-    raise Exception('Cannot determing image MIME type')
+    try:
+        mime_type = mime_map[ext.lower()]
+        return mime_type
+    except KeyError:
+        error('Cannot determing image MIME type')
+        raise

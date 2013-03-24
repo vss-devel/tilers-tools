@@ -92,7 +92,11 @@ class PixBufTile(Tile):
         return self.pixbuf
 
     def get_ext(self):
-        ext = ext_from_buffer(self.pixbuf)
+        try:
+            ext = ext_from_buffer(self.pixbuf)
+        except KeyError:
+            error('PixBufTile: wrong data', self.coord())
+            raise
         return ext
 
     def copy2file(self, dest_path, link=False):
@@ -206,7 +210,10 @@ class TileDir(TileSet):
         return tile.get_ext()
 
     def store_tile(self, tile):
-        self.tile_ext = self.dest_ext(tile)
+        try:
+            self.tile_ext = self.dest_ext(tile)
+        except KeyError:
+            self.tile_ext = '.xxx' # invalid file type
         dest_path = os.path.join(self.root, self.coord2path(*tile.coord())) + self.tile_ext
         log('%s -> %s' % (tile.path, dest_path))
         try:

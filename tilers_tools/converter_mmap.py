@@ -122,12 +122,18 @@ class Mmap(TileSet):
         z, x, y = tile.coord()
         log('%s -> %s:%d, %d, %d' % (tile.path, self.name, z, x, y))
 
+        try:
+            mime_type = tile.get_mime()
+        except KeyError:
+            return
+        b64_data = self.b64encode(tile.data())
+        data_url = 'data:' + mime_type + ';base64,' + b64_data
         self.dbc.execute(
             'INSERT INTO tiles'
                 '(rank, xmin, xmax, ymin, ymax, "group", geometry, properties, data)'
                 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
-            (z, x, x, y, y, self.layer_id, None, None,
-                'data:' + tile.get_mime() + ';base64,' + self.b64encode(tile.data())))
+            (z, x, x, y, y, self.layer_id, None, None, data_url)
+        )
 
         self.counter()
 
