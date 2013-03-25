@@ -84,6 +84,8 @@ def parse_args(arg_lst):
         help='generic profile: number of tiles along the axis at the zoom 0 (default: 1,1)')
     parser.add_option("--srs", default=None, metavar="SOURCE_SRS",
         help="override source's spatial reference system")
+    parser.add_option("--to-srs", default=None, metavar="TARGET_SRS",
+        help="target SRS for generic profile")
     parser.add_option('--overview-resampling', default='nearest', metavar="METHOD1",
         choices=resampling_lst(),
         help='overview tiles resampling method (default: nearest)')

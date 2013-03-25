@@ -178,6 +178,7 @@ class Pyramid(object):
         self.palette = None
         self.transparency = None
         self.zoom_range = None
+        self.max_extent = None
 
         self.init_tile_grid()
 
@@ -204,6 +205,7 @@ class Pyramid(object):
 
         self.proj2geog = GdalTransformer(SRC_SRS=self.proj_srs, DST_SRS=self.geog_srs)
         max_x = self.proj2geog.transform_point((180, 0), inv=True)[0] # Equator's half length
+        ld('max_x', max_x)
 
         # pixel resolution at the zoom 0
         res0 = max_x*2/abs(self.zoom0_tiles[0]*self.tile_dim[0])
@@ -226,10 +228,12 @@ class Pyramid(object):
         # default map bounds to maximum limits (world map)
         ul = self.pix2coord(0, (0, 0))
         lr = [-ul[0], -ul[1]]
+
         self.bounds = (  ul, # upper left
                      (-ul[0], -ul[1]))    # lower right
 
-        ld('max extent', self.bounds)
+        self.max_extent = (ul[0], lr[1], lr[0], ul[1])
+        ld('max extent', self.max_extent)
 
     #----------------------------
 
@@ -829,6 +833,7 @@ class Pyramid(object):
                 'ext':          self.tile_ext,
                 'mime':         tile_mime,
                 'origin':       un_tile_origin,
+                'max_extent': self.max_extent
                 },
             'bbox': (
                 bbox[0][0],
@@ -838,7 +843,7 @@ class Pyramid(object):
             'crs': {
                 "type": "name",
                 "properties": {
-                    "name":     self.tilemap_crs
+                    "name":     self.tilemap_crs,
                     }
                 },
             'tilesets': dict([

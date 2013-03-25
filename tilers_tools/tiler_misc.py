@@ -29,29 +29,41 @@ from tiler_backend import *
 
 #############################
 
-class GenericMap(Pyramid):
+class GenericMap(Pyramid, ZYXtiling):
     'full profile options are to be specified'
 #############################
     profile = 'generic'
     defaul_ext = '.generic'
 
     def __init__(self, src=None, dest=None, options=None):
-        super(GenericMap, self).__init__(src, dest, options)
 
-        self.srs = self.options.t_srs
-        assert self.proj_srs, 'Target SRS is not specified'
-        self.zoom0_tiles = map(int, self.options.zoom0_tiles.split(','))
-        self.tile_dim = tuple(map(int, self.options.tile_dim.split(',')))
+        options = LooseDict(options)
+
+        self.srs = options.to_srs
+        assert self.srs, 'Target SRS is not specified'
+        self.tilemap_crs = self.srs
+
+        self.zoom0_tiles = map(int, options.zoom0_tiles.split(','))
+        tile_size = tuple(map(int, options.tile_size.split(',')))
+        self.tile_dim = (tile_size[0], -tile_size[1])
+
+        super(GenericMap, self).__init__(src, dest, options)
 #
 profile_map.append(GenericMap)
 #
 
-class Yandex(Pyramid):
+#############################
+
+class Yandex(Pyramid, ZYXtiling):
     'Yandex Maps (WGS 84 / World Mercator, EPSG:3395)'
 ##############################
     profile = 'yandex'
     defaul_ext = '.yandex'
-    srs = '+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs'
+    zoom0_tiles = [1, 1] # tiles at zoom 0
+
+    #~ srs = '+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs'
+    srs = 'EPSG:3395'
+    tilemap_crs = 'EPSG:3395'
 #
 profile_map.append(Yandex)
 #
