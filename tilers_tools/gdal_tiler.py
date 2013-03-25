@@ -66,7 +66,7 @@ def parse_args(arg_lst):
 
 #----------------------------
     parser = OptionParser(
-        usage = "usage: %prog <options>... input_file...",
+        usage = "usage: %prog <options>... source...",
         version=version,
         description='Tile cutter for GDAL-compatible raster maps')
     parser.add_option('-p', '--profile', '--to', dest="profile", metavar='PROFILE',
@@ -95,7 +95,7 @@ def parse_args(arg_lst):
     parser.add_option('--tps', action="store_true",
         help='Force use of thin plate spline transformer based on available GCPs)')
     parser.add_option("-c", "--cut", action="store_true",
-        help='cut the raster as per cutline provided')
+        help='cut the raster as per cutline provided either by source or by "--cutline" option')
     parser.add_option("--cutline", default=None, metavar="DATASOURCE",
         help='cutline data: OGR datasource')
     parser.add_option("--cutline-match-name", action="store_true",
@@ -115,7 +115,7 @@ def parse_args(arg_lst):
     parser.add_option("-t", "--dest-dir", dest="dest_dir", default=None,
         help='destination directory (default: source)')
     parser.add_option("--noclobber", action="store_true",
-        help='skip processing if the target pyramyd already exists')
+        help='skip processing if the target pyramid already exists')
     parser.add_option("-s", "--strip-dest-ext", action="store_true",
         help='do not add a default extension suffix from a destination directory')
 #    parser.add_option("--viewer-copy", action="store_true",

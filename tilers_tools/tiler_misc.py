@@ -46,12 +46,12 @@ class GenericMap(Pyramid):
 profile_map.append(GenericMap)
 #
 
-#~ class Yandex(Pyramid):
-    #~ 'Yandex Maps (WGS 84 / World Mercator, EPSG:3395)'
-#~ ##############################
-    #~ profile = 'yandex'
-    #~ defaul_ext = '.yandex'
-    #~ srs = '+proj=merc +datum=WGS84 +ellps=WGS84'
-#~ #
-#~ profile_map.append(Yandex)
-#~ #
+class Yandex(Pyramid):
+    'Yandex Maps (WGS 84 / World Mercator, EPSG:3395)'
+##############################
+    profile = 'yandex'
+    defaul_ext = '.yandex'
+    srs = '+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs'
+#
+profile_map.append(Yandex)
+#

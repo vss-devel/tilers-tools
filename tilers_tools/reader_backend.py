@@ -118,7 +118,7 @@ class RefPoints(object):
         ld(p_dst)
         pix_tr = GdalTransformer(
             dataset,
-            METHOD='GCP_POLYNOMIAL' if not self.owner.map.options.use_tps else 'GCP_TPS'
+            METHOD='GCP_POLYNOMIAL' if not self.owner.map.options.tps else 'GCP_TPS'
         )
         p_pix=pix_tr.transform(p_dst,inv=True)
         ld(p_pix)
