@@ -54,16 +54,16 @@ profile_map.append(GenericMap)
 
 #############################
 
-class Yandex(Pyramid, ZYXtiling):
-    'Yandex Maps (WGS 84 / World Mercator, EPSG:3395)'
+class Wgs84(Pyramid, ZYXtiling):
+    'WGS 84 / World Mercator, EPSG:3395 (compatible with Yandex maps)'
 ##############################
-    profile = 'yandex'
-    defaul_ext = '.yandex'
+    profile = 'wgs84'
+    defaul_ext = '.wgs84'
     zoom0_tiles = [1, 1] # tiles at zoom 0
 
     #~ srs = '+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs'
     srs = 'EPSG:3395'
     tilemap_crs = 'EPSG:3395'
 #
-profile_map.append(Yandex)
+profile_map.append(Wgs84)
 #
