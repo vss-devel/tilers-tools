@@ -33,7 +33,7 @@ import optparse
 
 from tiler_functions import *
 
-import converter_backend
+from converter_backend import TileSet
 import converter_xyz
 import converter_maemomapper
 import converter_sasplanet
@@ -41,38 +41,16 @@ import converter_mmap
 
 #----------------------------
 
-def list_formats():
-
-#----------------------------
-    for cl in converter_backend.tile_formats:
-        print '%10s\t%s%s\t%s' % (
-            cl.format,
-            'r' if cl.input else ' ',
-            'w' if cl.output else ' ',
-            cl.__doc__
-            )
+def convert(src_lst, options):
 
 #----------------------------
 
-def tiles_convert(src_lst, options):
-
-#----------------------------
-    for in_class in converter_backend.tile_formats:
-        if in_class.input and options.in_fmt == in_class.format:
-            break
-    else:
-        raise Exception('Invalid input format: %s' % options.in_fmt)
-    for out_class in converter_backend.tile_formats:
-        if out_class.output and options.out_fmt == out_class.format:
-            break
-    else:
-        raise Exception('Invalid output format: %s' % options.out_fmt)
+    in_class = TileSet.get_class(options.in_fmt, write=False)
+    out_class = TileSet.get_class(options.out_fmt, write=True)
 
     for src in src_lst:
-        dest = os.path.join(options.dst_dir, os.path.splitext(os.path.split(src)[1])[0]+out_class.ext)
-        pf('%s -> %s ' % (src, dest), end='')
-        out_class(dest, LooseDict(options, write=True)).load_from(in_class(src, options))
-        pf('')
+        src_tiles = in_class(src, options)
+        out_class(options=options, src=src_tiles).convert()
 
 #----------------------------
 
@@ -96,9 +74,9 @@ def main(argv):
     parser.add_option('-t', '--dest-dir', default='.', dest='dst_dir',
         help='destination directory (default: current)')
     parser.add_option('--name', default=None,
-        help='map name (default: derived from the source)')
+        help='layer name (default: derived from the source)')
     parser.add_option('--description', default='',
-        help='map decription (default: None)')
+        help='layer decription (default: None)')
     parser.add_option('--overlay', action='store_true',
         help='non-base layer (default: False)')
     parser.add_option('--url', default=None,
@@ -107,6 +85,8 @@ def main(argv):
         help='make links to source tiles instead of copying if possible')
     parser.add_option('--region', default=None, metavar='DATASOURCE',
         help='region to process (OGR shape)')
+    parser.add_option("--tiles-srs", "--srs", default='EPSG:3857', metavar="TILES_SRS",
+        help="tiles' spatial reference system (default is EPSG:3857, aka EPSG:900913")
     parser.add_option('-z', '--zoom', default=None,metavar='ZOOM_LIST',
         help='list of zoom ranges to process')
     parser.add_option('-d', '--debug', action='store_true', dest='debug')
@@ -125,7 +105,7 @@ def main(argv):
 
     src_lst=args
 
-    tiles_convert(src_lst, LooseDict(options))
+    convert(src_lst, LooseDict(options))
 
 # main()
 

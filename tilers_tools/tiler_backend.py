@@ -158,6 +158,8 @@ class Pyramid(object):
     '''Tile pyramid generator and utilities'''
 #############################
 
+    zoom0_tiles = [1, 1] # tiles at zoom 0, default value
+
     #----------------------------
 
     def __init__(self, src=None, dest=None, options=None):
@@ -949,10 +951,10 @@ class Pyramid(object):
         t_lr = self.pix2tile(zoom, (p_lr[0], p_lr[1]))
 
         box_ul, box_lr = [self.tile_bounds(t) for t in (t_ul, t_lr)]
-        ld('corner_tiles zoom', zoom,
-            'p_ul', p_ul, 'p_lr', p_lr, 't_ul', t_ul, 't_lr', t_lr,
-            'longlat', self.coords2longlat([box_ul[0], box_lr[1]])
-            )
+        #~ ld('corner_tiles zoom', zoom,
+            #~ 'p_ul', p_ul, 'p_lr', p_lr, 't_ul', t_ul, 't_lr', t_lr,
+            #~ 'longlat', self.coords2longlat([box_ul[0], box_lr[1]])
+            #~ )
         return t_ul, t_lr
 
     def set_zoom_range(self, zoom_parm, defaults=(0, 22)):
@@ -990,9 +992,6 @@ class Pyramid(object):
         if not ul_coords:
             return False
         zoom, ul_x, ul_y = ul_coords
-        if not lr_coords:
-            lr_coords = ul_coords
-        z, lr_x, lr_y = lr_coords
 
         if self.zoom_range and zoom not in self.zoom_range:
             return False
@@ -1000,12 +999,39 @@ class Pyramid(object):
         z_ul, z_lr = self.corner_tiles(zoom)
         z, zoom_ul_x, zoom_ul_y = z_ul
         z, zoom_lr_x, zoom_lr_y = z_lr
-        # y axis goes downwards
-        log('in_range', ul_coords, lr_coords, z_ul, z_lr, ul_x > zoom_lr_x, lr_x < zoom_ul_x, ul_y > zoom_lr_x, lr_y < zoom_ul_y)
-        return not (
-            ul_x > zoom_lr_x or lr_x < zoom_ul_x or
-            ul_y > zoom_lr_x or lr_y < zoom_ul_y
-            )
+        if not lr_coords:
+            lr_coords = ul_coords
+            return ul_x >= zoom_ul_x and ul_y >= zoom_ul_y and ul_x <= zoom_lr_x and ul_y <= zoom_lr_y
+        else:
+            z, lr_x, lr_y = lr_coords
+            # y axis goes downwards
+            log('in_range', ul_coords, lr_coords, z_ul, z_lr, ul_x > zoom_lr_x, lr_x < zoom_ul_x, ul_y > zoom_lr_x, lr_y < zoom_ul_y)
+            return not (
+                ul_x > zoom_lr_x or lr_x < zoom_ul_x or
+                ul_y > zoom_lr_x or lr_y < zoom_ul_y
+                )
+
+    #~ def in_range(self, ul_coords, lr_coords=None):
+        #~ if not ul_coords:
+            #~ return False
+        #~ zoom, ul_x, ul_y = ul_coords
+#~
+        #~ if self.zoom_range and zoom not in self.zoom_range:
+            #~ return False
+        #~ z_ul, z_lr = self.corner_tiles(zoom)
+        #~ z, zoom_ul_x, zoom_ul_y = z_ul
+        #~ z, zoom_lr_x, zoom_lr_y = z_lr
+        #~ if not lr_coords:
+            #~ return ul_x >= zoom_ul_x and ul_y >= zoom_ul_y and ul_x <= zoom_lr_x and ul_y <= zoom_lr_y
+        #~ else:
+            #~ z, lr_x, lr_y = lr_coords
+            #~ # y axis goes downwards
+            #~ log('in_range', ul_coords, lr_coords, z_ul, z_lr, ul_x > zoom_lr_x, lr_x < zoom_ul_x, ul_y > zoom_lr_x, lr_y < zoom_ul_y)
+            #~ return not (
+                    #~ ul_x > zoom_lr_x or lr_x < zoom_ul_x or
+                    #~ ul_y > zoom_lr_x or lr_y < zoom_ul_y
+                #~ )
+
 
     def set_region(self, point_lst, source_srs=None):
         if source_srs and source_srs != self.proj_srs:

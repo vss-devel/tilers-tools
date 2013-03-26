@@ -60,7 +60,7 @@ tile_formats.append(XYZtiles)
 
 #############################
 
-class ZYXtiles(TileDir):
+class ZYXtiles(TileMapDir):
     'ZYX aka Global Mapper (SASPlanet compatible)'
 #############################
     format, ext, input, output = 'zyx', '.zyx', True, True

@@ -109,21 +109,36 @@ tile_formats = []
 class TileSet(object):
 
 #############################
-    def __init__(self, root, options=None):
-        options = options or LooseDict()
-        log('root', root, options)
+    def __init__(self, root=None, options=None, src=None):
+        options = LooseDict(options)
+        options.write = src
+
         self.root = root
         self.options = options
+        self.src = src
+
+        self.srs = self.options.tiles_srs
+
         self.zoom_levels = {}
         self.pyramid = None
 
         if not self.options.write:
             assert os.path.exists(root), 'No file or directory found: %s' % root
             if self.options.region:
-                self.pyramid = Pyramid.profile_class('zyx')()
+                self.pyramid = Pyramid.profile_class('generic')(options=options)
                 self.pyramid.set_zoom_range(self.options.zoom)
                 self.pyramid.load_region(self.options.region)
+
         else:
+            basename = os.path.splitext(os.path.basename(self.root or src.root))[0]
+            df_name = os.path.splitext(basename)[0]
+            if self.options.region:
+                df_name += '-' + os.path.splitext(self.options.region)[0]
+            self.name = self.options.name or df_name
+
+            if not self.root:
+                self.root = os.path.join(options.dst_dir, self.name + self.ext)
+
             if os.path.exists(self.root):
                 if self.options.remove_dest:
                     if os.path.isdir(self.root):
@@ -132,6 +147,24 @@ class TileSet(object):
                         os.remove(self.root)
                 else:
                     assert self.options.append, 'Destination already exists: %s' % root
+
+    @staticmethod
+    def get_class(profile, write=False):
+        for cls in tile_formats:
+            if profile == cls.format and ((not write and cls.input) or (write and cls.output)):
+                return cls
+        else:
+            raise Exception('Invalid format: %s' % profile)
+
+    @staticmethod
+    def list_formats():
+        for cl in tile_formats:
+            print '%10s\t%s%s\t%s' % (
+                cl.format,
+                'r' if cl.input else ' ',
+                'w' if cl.output else ' ',
+                cl.__doc__
+                )
 
     def in_range(self, coords, range_lr_coords=None):
         if not coords:
@@ -146,9 +179,10 @@ class TileSet(object):
     def __iter__(self): # to be defined by a child
         raise Exception('Unimplemented!')
 
-    def load_from(self, src_tiles):
-        log('load_from', (src_tiles.root, self.root))
-        map(self.process_tile, src_tiles)
+    def convert(self):
+        pf('%s -> %s ' % (self.src.root, self.root), end='')
+        map(self.process_tile, self.src)
+        pf('')
 
     def process_tile(self, tile):
         #log('process_tile', tile)
@@ -183,9 +217,8 @@ class TileDir(TileSet):
 #############################
     tile_class = FileTile
 
-
-    def __init__(self, root, options=None):
-        super(TileDir, self).__init__(root, options)
+    def __init__(self, *args, **kw_args):
+        super(TileDir, self).__init__(*args, **kw_args)
 
         if self.options.write:
             try:
@@ -242,7 +275,7 @@ class TileMapDir(TileDir):
         prm = Pyramid.profile_class(self.format)(
             dest = self.root,
             options = dict(
-                name=os.path.split(self.root)[1],
+                name=self.name,
                 tile_format=self.tile_ext[1:]
                 )
             )

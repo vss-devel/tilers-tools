@@ -33,13 +33,9 @@ class Mmap(TileSet):
     format, ext, input, output = 'mmap', '.sqlite', True, True
     max_zoom = 20
 
-    def __init__(self, root, options=None):
+    def __init__(self, *args, **kw_args):
 
-        path, name = os.path.split(root)
-        #~ root = (self.format if path in ['', '.'] else path) + self.ext
-
-        super(Mmap, self).__init__(root, options)
-        self.name = self.options.name or os.path.splitext(name)[0]
+        super(Mmap, self).__init__(*args, **kw_args)
 
         import sqlite3
         import base64
@@ -86,6 +82,7 @@ class Mmap(TileSet):
                 name = self.name,
                 url = self.options.url,
                 isBaseLayer = not self.options.overlay,
+                projection = self.srs,
                 description = self.options.description
             ))
 
@@ -97,13 +94,16 @@ class Mmap(TileSet):
             log('self.layer', self.layer_id)
 
     def __del__(self):
+        self.db.commit()
         if self.options.write:
             for table in ['layers', 'tiles']:
-                self.dbc.execute (
-                    'CREATE INDEX IF NOT EXISTS "%(table)s_rank_bbox" ON "%(table)s"'
+                stmt = (
+                    'CREATE INDEX IF NOT EXISTS "%(table)s_rank_bbox" ON "%(table)s" '
                         '(rank, xmin, xmax, ymin, ymax);'
                     % {'table': table}
                     )
+                self.dbc.execute (stmt)
+
         self.db.commit()
         self.db.close()
         super(Mmap, self).__del__()

@@ -39,13 +39,15 @@ class GenericMap(Pyramid, ZYXtiling):
 
         options = LooseDict(options)
 
-        self.srs = options.to_srs
+        self.srs = options.tiles_srs
         assert self.srs, 'Target SRS is not specified'
         self.tilemap_crs = self.srs
 
-        self.zoom0_tiles = map(int, options.zoom0_tiles.split(','))
-        tile_size = tuple(map(int, options.tile_size.split(',')))
-        self.tile_dim = (tile_size[0], -tile_size[1])
+        if options.zoom0_tiles:
+            self.zoom0_tiles = map(int, options.zoom0_tiles.split(','))
+        if options.tile_size:
+            tile_size = tuple(map(int, options.tile_size.split(',')))
+            self.tile_dim = (tile_size[0], -tile_size[1])
 
         super(GenericMap, self).__init__(src, dest, options)
 #
@@ -59,7 +61,6 @@ class Wgs84(Pyramid, ZYXtiling):
 ##############################
     profile = 'wgs84'
     defaul_ext = '.wgs84'
-    zoom0_tiles = [1, 1] # tiles at zoom 0
 
     #~ srs = '+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs'
     srs = 'EPSG:3395'

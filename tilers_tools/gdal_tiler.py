@@ -76,16 +76,14 @@ def parse_args(arg_lst):
         help='list tile profiles')
     parser.add_option("-z", "--zoom", default=None, metavar="ZOOM_LIST",
         help='list of zoom ranges to generate')
-    parser.add_option("--t-srs", default=None, metavar="TARGET_SRS",
-        help='generic profile: definition for target srs (default: None)')
+    parser.add_option("--srs", default=None, metavar="SOURCE_SRS",
+        help="override source's spatial reference system")
+    parser.add_option("--tiles-srs", default=None, metavar="TILES_SRS",
+        help="target SRS for generic profile")
     parser.add_option("--tile-size", default='256,256', metavar="SIZE_X,SIZE_Y",
         help='generic profile: tile size (default: 256,256)')
     parser.add_option("--zoom0-tiles", default='1,1', metavar="NTILES_X,NTILES_Y",
         help='generic profile: number of tiles along the axis at the zoom 0 (default: 1,1)')
-    parser.add_option("--srs", default=None, metavar="SOURCE_SRS",
-        help="override source's spatial reference system")
-    parser.add_option("--to-srs", default=None, metavar="TARGET_SRS",
-        help="target SRS for generic profile")
     parser.add_option('--overview-resampling', default='nearest', metavar="METHOD1",
         choices=resampling_lst(),
         help='overview tiles resampling method (default: nearest)')
