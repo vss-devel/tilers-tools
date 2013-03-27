@@ -28,7 +28,6 @@ from __future__ import with_statement
 import os
 import logging
 import locale
-import csv
 
 try:
     from osgeo import gdal
@@ -166,37 +165,18 @@ class LatLonRefPoints(RefPoints):
 class SrcMap(object):
 
 ###############################################################################
+
+    srs_defs = None
+
     def __init__(self,src_file,options=None):
         self.options=options
         gdal.UseExceptions()
 
-        self.load_data() # load datum definitions, ellipses, projections
+        # load datum definitions, ellipses, projections
+        self.srs_defs = load_geo_defs(self.data_file)
+
         self.file=src_file.decode(locale.getpreferredencoding(),'ignore')
         self.header=self.get_header()       # Read map header
-
-    def load_csv(self,csv_file,csv_map):
-        'load datum definitions, ellipses, projections from a file'
-        csv.register_dialect('strip', skipinitialspace=True)
-        with open(os.path.join(data_dir(),csv_file),'rb') as data_f:
-            data_csv=csv.reader(data_f,'strip')
-            for row in data_csv:
-                row=[s.decode('utf-8') for s in row]
-                #ld(row)
-                try:
-                    dct,unpack=csv_map[row[0]]
-                    unpack(dct,row)
-                except IndexError:
-                    pass
-                except KeyError:
-                    pass
-        for dct,func in csv_map.values():
-            ld(dct)
-
-    def ini_lst(self,dct,row):
-        dct[row[1]]=row[2:]
-
-    def ini_map(self,dct,row):
-        dct[row[1]]=dict((i.split(':',1) for i in row[2:] if ':' in i))
 
 #    def get_layers(self):
 #        pass

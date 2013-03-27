@@ -37,18 +37,8 @@ from tiler_functions import *
 from reader_backend import *
 
 class GeoNosMap(SrcMap):
-    magic='[MainChart]'
-    data_file='reader_geo_data.csv'
-
-    def load_data(self):
-        'load datum definitions, ellipses, projections from a file'
-        self.datum_dict={}
-        self.proj_dict={}
-        csv_map={
-            'datum': (self.datum_dict,self.ini_lst),
-            'proj': (self.proj_dict,self.ini_lst),
-            }
-        self.load_csv(self.data_file,csv_map)
+    magic = '[MainChart]'
+    data_file = 'data_bsb.csv'
 
     def get_header(self):
         'read map header'
@@ -112,7 +102,8 @@ class GeoNosLayer(SrcLayer):
     def get_proj(self):
         proj_id=self.get_proj_id()
         try:
-            proj=[self.map.proj_dict[proj_id][0]]
+            proj_parm=self.map.srs_defs['proj'][proj_id.upper()]
+            proj = [proj_parm[0]]
         except KeyError:
             raise Exception("*** Unsupported projection (%s)" % proj_id)
         return proj
@@ -123,7 +114,7 @@ class GeoNosLayer(SrcLayer):
     def get_datum(self):
         datum_id=self.get_datum_id()
         try:
-            datum=self.map.datum_dict[datum_id][0]
+            datum=self.map.srs_defs['datum'][datum_id.upper()][0]
         except KeyError:
             dtm=self.get_dtm() # get northing, easting to WGS84 if any
             datum='+datum=WGS84'

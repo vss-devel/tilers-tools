@@ -109,8 +109,8 @@ class OziCartesianRefPoints(RefPoints):
 class OziMap(SrcMap):
 
 ###############################################################################
-    magic='OziExplorer Map Data File'
-    data_file='reader_ozi_data.csv'
+    magic = 'OziExplorer Map Data File'
+    data_file = 'data_ozi.csv'
 
     proj_parms=(
         '+lat_0=', # 1. Latitude Origin
@@ -201,7 +201,8 @@ class OziLayer(SrcLayer):
         proj_id=self.get_proj_id()
         parm_lst=self.hdr_parms('Projection Setup')[0]
         try:
-            proj=self.map.proj_dict[proj_id][0:1]
+            proj_parm=self.map.srs_defs['proj'][proj_id.upper()]
+            proj = [proj_parm[0]]
         except KeyError:
             raise Exception("*** Unsupported projection (%s)" % proj_id)
         if '+proj=' in proj[0]: # overwise assume it already has a full data defined
@@ -224,19 +225,18 @@ class OziLayer(SrcLayer):
     def get_datum(self):
         datum_id=self.get_datum_id()
         try:
-            datum_def=self.map.datum_dict[datum_id]
-            if datum_def[5]: # PROJ4 datum defined ?
-                datum=[datum_def[5]]
-            else:
-                datum=['+towgs84=%s,%s,%s' % tuple(datum_def[2:5])]
-                ellps_id=datum_def[1]
-                ellps_def=self.map.ellps_dict[ellps_id]
-                ellps=if_set(ellps_def[2])
+            datum_def=self.map.srs_defs['datum'][datum_id.upper()]
+            datum=[datum_def[0]] # PROJ4 datum defined ?
+            if not datum: # PROJ4 datum not defined
+                datum=['+towgs84=%s,%s,%s' % tuple(datum_def[3:6])]
+                ellps_id=datum_def[2]
+                ellps_def=self.map.srs_defs['ellps'][ellps_id.upper()]
+                ellps = ellps_def[0]
                 if ellps:
                     datum.append(ellps)
                 else:
-                    datum.append('+a=%s',ellps_def[0])
-                    datum.append('+rf=%s',ellps_def[1])
+                    datum.append('+a=%s',ellps_def[1])
+                    datum.append('+rf=%s',ellps_def[2])
         except KeyError:
             raise Exception("*** Unsupported datum (%s)" % datum_id)
         return datum
@@ -290,4 +290,3 @@ if __name__=='__main__':
 
     print('\nPlease use convert2gdal.py\n')
     sys.exit(1)
-

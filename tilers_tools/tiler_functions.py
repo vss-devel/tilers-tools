@@ -37,7 +37,7 @@ import itertools
 import re
 import shutil
 import locale
-#from optparse import OptionParser
+import csv
 
 import json
 
@@ -189,8 +189,41 @@ class LooseDict(object):
 #
 #############################
 
-def proj2srs(proj):
+def load_geo_defs(csv_file):
+    'load datum definitions, ellipses, projections from a file'
+    defs = {
+        'proj':{},
+        'datum':{},
+        'ellps':{},
+    }
+    try:
+        csv.register_dialect('strip', skipinitialspace=True)
+        with open(os.path.join(data_dir(),csv_file),'rb') as data_f:
+            data_csv=csv.reader(data_f,'strip')
+            for row in data_csv:
+                row=[s.decode('utf-8') for s in row]
+                ld(row)
+                try:
+                    rec_type = row[0]
+                    rec_id = row[1]
+                    rec_data = row[2:]
+                    if not rec_type in defs:
+                        defs[rec_type] = {}
+                    defs[rec_type][rec_id.upper()] = rec_data
+                except IndexError:
+                    pass
+                except KeyError:
+                    pass
+    except IOError:
+        pass
+    return defs
+
+geo_defs_override_file = 'data_override.csv'
+geo_defs_override = load_geo_defs(geo_defs_override_file)
+
+def txt2srs(proj):
     srs = osr.SpatialReference()
+    proj = geo_defs_override['proj'].get(proj, proj)
     if proj.startswith(("GEOGCS", "GEOCCS", "PROJCS", "LOCAL_CS")):
         srs.ImportFromWkt(proj)
     if proj.startswith('EPSG'):
@@ -201,16 +234,16 @@ def proj2srs(proj):
         srs.ImportFromProj4(proj)
     return srs
 
-def proj2wkt(proj):
-    srs = proj2srs(proj)
+def txt2wkt(proj):
+    srs = txt2srs(proj)
     return srs.ExportToWkt()
 
-def proj2proj4(proj):
-    srs = proj2srs(proj)
+def txt2proj4(proj):
+    srs = txt2srs(proj)
     return srs.ExportToProj4()
 
 def proj_cs2geog_cs(proj):
-    srs = proj2srs(proj)
+    srs = txt2srs(proj)
     srs_geo = osr.SpatialReference()
     srs_geo.CopyGeogCSFrom(srs)
     return srs_geo.ExportToProj4()
@@ -219,7 +252,7 @@ class GdalTransformer(gdal.Transformer):
     def __init__(self, src_ds=None, dst_ds=None, **options):
         for key in ('SRC_SRS', 'DST_SRS'):
             try:
-                options[key] = proj2wkt(options[key]) # convert to wkt
+                options[key] = txt2wkt(options[key]) # convert to wkt
             except: pass
         opt_lst = ['%s=%s' % (key, options[key]) for key in options]
         super(GdalTransformer, self).__init__(src_ds, dst_ds, opt_lst)
@@ -256,7 +289,7 @@ def sasplanet_hlg2ogr(fname):
     ds = ogr.GetDriverByName('Memory').CreateDataSource( 'wrk' )
     assert ds is not None, 'Unable to create datasource'
 
-    src_srs = proj2srs('EPSG:4326')#'+proj=latlong +a=6378137 +b=6378137 +datum=WGS84  +nadgrids=@null +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +no_defs')
+    src_srs = txt2srs('EPSG:4326')#'+proj=latlong +a=6378137 +b=6378137 +datum=WGS84  +nadgrids=@null +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +no_defs')
 
     layer = ds.CreateLayer('sasplanet_hlg', srs=src_srs)
 
@@ -327,9 +360,9 @@ def shape2mpointlst(datasource, dst_srs, feature_name=None):
 
 def shape2cutline(cutline_ds, raster_ds, feature_name=None):
     mpoly = []
-    raster_proj = proj2proj4(raster_ds.GetProjection())
+    raster_proj = txt2proj4(raster_ds.GetProjection())
     if not raster_proj:
-        raster_proj = proj2proj4(raster_ds.GetGCPProjection())
+        raster_proj = txt2proj4(raster_ds.GetGCPProjection())
     ld(raster_proj, raster_ds.GetProjection(), raster_ds)
 
     pix_tr = GdalTransformer(raster_ds)

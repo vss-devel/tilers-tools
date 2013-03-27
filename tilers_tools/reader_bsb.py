@@ -37,22 +37,8 @@ from tiler_functions import *
 from reader_backend import *
 
 class BsbKapMap(SrcMap):
-    magic='KNP/'
-    data_file='reader_bsb_data.csv'
-
-    def load_data(self):
-        'load datum definitions, ellipses, projections from a file'
-        self.datum_dict={}
-        self.guess_dict={}
-        self.knp_dict={}
-        self.knq_dict={}
-        csv_map={
-            'datum':        (self.datum_dict,self.ini_lst),
-            'datum_guess':  (self.guess_dict,self.ini_lst),
-            'proj_knp':     (self.knp_dict,self.ini_map),
-            'proj_knq':     (self.knq_dict,self.ini_map),
-            }
-        self.load_csv(self.data_file,csv_map)
+    magic = 'KNP/'
+    data_file = 'data_bsb.csv'
 
     def get_header(self):
         'read map header'
@@ -156,22 +142,24 @@ class BsbLayer(SrcLayer):
         ld(knp_info)
         proj_id=self.get_proj_id()
         try:
-            knp_parm=self.map.knp_dict[proj_id.upper()]
-            ld(knp_parm)
+            proj_parm=self.map.srs_defs['proj'][proj_id.upper()]
+            proj = [proj_parm[0]]
+            knp_parm = dict((i.split(':',1) for i in proj_parm[1:] if ':' in i))
+            ld('get_proj KNP', proj_id, proj, knp_parm)
         except KeyError:
             raise Exception(' Unsupported projection %s' % proj_id)
         # get projection and parameters
-        proj=[knp_parm['PROJ4']]
         try: # extra projection parameters for BSB 3.xx, put them before KNP parms
             knq_info=self.hdr_parm2dict('KNQ')
-            ld(knq_info)
-            knq_parm=self.map.knq_dict[proj_id.upper()]
+            knq_parm = dict((i.split(':',1) for i in knp_parm['KNQ'].split(',')))
+            ld('get_proj KNQ', knq_info, knq_parm)
             proj.extend(self.assemble_parms(knq_parm,knq_info))
         except IndexError:  # No KNQ
             pass
         except KeyError:    # No such proj in KNQ map
             pass
         proj.extend(self.assemble_parms(knp_parm,knp_info))
+        ld('get_proj', proj)
         return proj
 
     def get_datum_id(self):
@@ -180,13 +168,13 @@ class BsbLayer(SrcLayer):
     def get_datum(self):
         datum_id=self.get_datum_id()
         try:
-            datum=self.map.datum_dict[datum_id.upper()][0]
+            datum=self.map.srs_defs['datum'][datum_id.upper()][0]
         except KeyError:
             # try to guess the datum by comment and copyright string(s)
             crr=' '.join(self.hdr_parms('!')+self.hdr_parms('CRR'))
             try:
-                datum=[self.map.guess_dict[crr_patt][0]
-                    for crr_patt in self.map.guess_dict if crr_patt in crr][0]
+                guess_dict = self.map.srs_defs['datum_guess']
+                datum=[guess_dict[crr_patt][0] for crr_patt in guess_dict if crr_patt in crr][0]
                 logging.warning(' Unknown datum "%s", guessed as "%s"' % (datum_id,datum))
             except IndexError:
                 # datum still not found

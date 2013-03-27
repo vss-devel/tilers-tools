@@ -277,7 +277,7 @@ class Pyramid(object):
             ld('new_srs', shifted_srs, 'shift_x', shift_x, 'pix_origin', self.pix_origin)
 
         # get corners at the target SRS
-        target_ds = gdal.AutoCreateWarpedVRT(self.src_ds, None, proj2wkt(shifted_srs))
+        target_ds = gdal.AutoCreateWarpedVRT(self.src_ds, None, txt2wkt(shifted_srs))
         target_bounds = GdalTransformer(target_ds).transform([
             (0, 0),
             (target_ds.RasterXSize, target_ds.RasterYSize)])
@@ -316,13 +316,13 @@ class Pyramid(object):
         os.makedirs(self.dest)
 
         src_geotr = src_ds.GetGeoTransform()
-        src_proj = proj2proj4(src_ds.GetProjection())
+        src_proj = txt2proj4(src_ds.GetProjection())
         gcps = src_ds.GetGCPs()
         if gcps:
             ld('src GCPsToGeoTransform', gdal.GCPsToGeoTransform(gcps))
 
         if not src_proj and gcps :
-            src_proj = proj2proj4(src_ds.GetGCPProjection())
+            src_proj = txt2proj4(src_ds.GetGCPProjection())
 
         if self.options.srs is not None:
             src_proj = self.options.srs
@@ -366,7 +366,7 @@ class Pyramid(object):
                     gcp_lst = '\n'.join((gcp_templ % (g.Id, g.GCPPixel, g.GCPLine, g.GCPX, g.GCPY, g.GCPZ)
                                         for g in gcps))
                     if self.options.srs is None:
-                        gcp_proj = proj2proj4(src_ds.GetGCPProjection())
+                        gcp_proj = txt2proj4(src_ds.GetGCPProjection())
                     else:
                         gcp_proj = src_proj
                     gcplst_txt = gcplst_templ % (gcp_proj, gcp_lst)
@@ -419,14 +419,14 @@ class Pyramid(object):
             vrt_drv = gdal.GetDriverByName('VRT')
             self.src_ds = vrt_drv.CreateCopy(src_vrt, src_ds) # replace src dataset
 
-            self.src_ds.SetProjection(proj2wkt(override_srs)) # replace source SRS
+            self.src_ds.SetProjection(txt2wkt(override_srs)) # replace source SRS
             gcps = self.src_ds.GetGCPs()
             if gcps :
-                self.src_ds.SetGCPs(gcps, proj2wkt(override_srs))
+                self.src_ds.SetGCPs(gcps, txt2wkt(override_srs))
 
         # debug print
 #        src_origin, src_extent = GdalTransformer(src_ds).transform([(0, 0), (src_ds.RasterXSize, src_ds.RasterYSize)])
-#        src_proj = proj2proj4(src_ds.GetProjection())
+#        src_proj = txt2proj4(src_ds.GetProjection())
 #        src_proj2geog = GdalTransformer(SRC_SRS=src_proj, DST_SRS=proj_cs2geog_cs(src_proj))
 #        ld('source_raster')
 #        ld('Upper Left', src_origin, src_proj2geog.transform([src_origin]))
@@ -468,7 +468,7 @@ class Pyramid(object):
         # modify target srs to allow charts crossing meridian 180
         shifted_srs = self.shift_srs()
 
-        t_ds = gdal.AutoCreateWarpedVRT(self.src_ds, None, proj2wkt(shifted_srs))
+        t_ds = gdal.AutoCreateWarpedVRT(self.src_ds, None, txt2wkt(shifted_srs))
         geotr = t_ds.GetGeoTransform()
         res = (geotr[1], geotr[5])
         max_zoom = max(self.res2zoom_xy(res))
@@ -508,7 +508,7 @@ class Pyramid(object):
 
         # generate warp transform
         src_geotr = self.src_ds.GetGeoTransform()
-        src_proj = proj2proj4(self.src_ds.GetProjection())
+        src_proj = txt2proj4(self.src_ds.GetProjection())
         gcp_proj = None
 
         if not self.options.tps and src_geotr and src_geotr != (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
@@ -521,7 +521,7 @@ class Pyramid(object):
 
             gcp_lst = [(g.Id, g.GCPPixel, g.GCPLine, g.GCPX, g.GCPY, g.GCPZ) for g in gcps]
             ld('src_proj', self.src_ds.GetProjection(), 'gcp_proj', self.src_ds.GetGCPProjection())
-            gcp_proj = proj2proj4(self.src_ds.GetGCPProjection())
+            gcp_proj = txt2proj4(self.src_ds.GetGCPProjection())
             if src_proj and gcp_proj != src_proj:
                 coords = GdalTransformer(SRC_SRS=gcp_proj, DST_SRS=src_proj).transform([g[3:6] for g in gcp_lst])
                 gcp_lst = [tuple(p[:3]+c) for p, c in zip(gcp_lst, coords)]
