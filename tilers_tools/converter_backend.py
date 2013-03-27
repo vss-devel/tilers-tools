@@ -117,7 +117,9 @@ class TileSet(object):
         self.options = options
         self.src = src
 
-        self.srs = self.options.tiles_srs
+        self.srs = self.options.proj4def or self.options.tiles_srs
+        self.tilemap_crs = self.options.tiles_srs or self.tilemap_crs
+        self.options.tiles_srs = self.srs
 
         self.zoom_levels = {}
         self.pyramid = None

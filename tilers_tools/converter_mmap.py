@@ -82,7 +82,8 @@ class Mmap(TileSet):
                 name = self.name,
                 url = self.options.url,
                 isBaseLayer = not self.options.overlay,
-                projection = self.srs,
+                projection = self.tilemap_crs,
+                proj4def = self.options.proj4def,
                 description = self.options.description
             ))
 
@@ -97,12 +98,11 @@ class Mmap(TileSet):
         self.db.commit()
         if self.options.write:
             for table in ['layers', 'tiles']:
-                stmt = (
+                self.dbc.execute (
                     'CREATE INDEX IF NOT EXISTS "%(table)s_rank_bbox" ON "%(table)s" '
                         '(rank, xmin, xmax, ymin, ymax);'
                     % {'table': table}
-                    )
-                self.dbc.execute (stmt)
+                )
 
         self.db.commit()
         self.db.close()

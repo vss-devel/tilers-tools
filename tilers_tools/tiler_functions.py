@@ -256,8 +256,7 @@ def sasplanet_hlg2ogr(fname):
     ds = ogr.GetDriverByName('Memory').CreateDataSource( 'wrk' )
     assert ds is not None, 'Unable to create datasource'
 
-    src_srs = osr.SpatialReference()
-    src_srs.ImportFromProj4('+proj=latlong +a=6378137 +b=6378137 +nadgrids=@null +wktext')
+    src_srs = proj2srs('EPSG:4326')#'+proj=latlong +a=6378137 +b=6378137 +datum=WGS84  +nadgrids=@null +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +no_defs')
 
     layer = ds.CreateLayer('sasplanet_hlg', srs=src_srs)
 
@@ -319,9 +318,9 @@ def shape2mpointlst(datasource, dst_srs, feature_name=None):
             assert ln.GetGeometryName() == 'LINEARRING'
             src_points = [ln.GetPoint(n) for n in range(ln.GetPointCount())]
             dst_points = srs_tr.transform(src_points)
-            ld(src_points)
+            #~ ld(src_points)
             multipoint_lst.append(dst_points)
-    ld('mpointlst', multipoint_lst, layer_proj, dst_srs)
+    ld('mpointlst', layer_proj, dst_srs, multipoint_lst)
 
     feature.Destroy()
     return multipoint_lst

@@ -87,6 +87,8 @@ def main(argv):
         help='region to process (OGR shape)')
     parser.add_option("--tiles-srs", "--srs", default='EPSG:3857', metavar="TILES_SRS",
         help="tiles' spatial reference system (default is EPSG:3857, aka EPSG:900913")
+    parser.add_option("--proj4def", default=None, metavar="PROJ4_SRS",
+        help="projection code")
     parser.add_option('-z', '--zoom', default=None,metavar='ZOOM_LIST',
         help='list of zoom ranges to process')
     parser.add_option('-d', '--debug', action='store_true', dest='debug')
