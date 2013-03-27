@@ -223,7 +223,9 @@ geo_defs_override = load_geo_defs(geo_defs_override_file)
 
 def txt2srs(proj):
     srs = osr.SpatialReference()
-    proj = geo_defs_override['proj'].get(proj, proj)
+    proj_ovr = geo_defs_override['proj'].get(proj)
+    if proj_ovr:
+        proj = str(proj_ovr[0])
     if proj.startswith(("GEOGCS", "GEOCCS", "PROJCS", "LOCAL_CS")):
         srs.ImportFromWkt(proj)
     if proj.startswith('EPSG'):

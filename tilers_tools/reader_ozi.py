@@ -205,7 +205,7 @@ class OziLayer(SrcLayer):
             proj = [proj_parm[0]]
         except KeyError:
             raise Exception("*** Unsupported projection (%s)" % proj_id)
-        if '+proj=' in proj[0]: # overwise assume it already has a full data defined
+        if not ('+init=' in proj[0] or '+datum=' in proj[0] or '+towgs84=' in proj[0]): # ooverwise assume it already has a full data defined
             # get projection parameters
             if self.get_proj_id() == '(UTM) Universal Transverse Mercator':
                 assert '+proj=tmerc' in proj[0]
