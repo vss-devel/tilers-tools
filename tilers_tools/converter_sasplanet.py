@@ -41,7 +41,7 @@ class SASPlanet(TileDir): # http://sasgis.ru/forum/viewtopic.php?f=2&t=24
     def coord2path(self, z, x, y):
         return 'z%d/%d/x%d/%d/y%d' % (z+1, x//1024, x, y//1024, y)
 
-tile_formats.append(SASPlanet)
+tile_profiles.append(SASPlanet)
 
 #############################
 
@@ -144,6 +144,6 @@ class SASBerkeley(TileDir):
         #~ log('get_image', self.header.size, magic, magic_v, tile_version, content_type, tile_size, tile_data[:20])#, data[4:60:2])
         return tile_data
 
-tile_formats.append(SASBerkeley)
+tile_profiles.append(SASBerkeley)
 
 # SASBerkeley

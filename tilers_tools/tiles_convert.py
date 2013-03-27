@@ -62,11 +62,11 @@ def main(argv):
         version=version,
         description='copies map tiles from one structure to another')
     parser.add_option('--from', dest='in_fmt', default='zyx',
-        help='input tiles format (default: zyx)')
+        help='input tiles profile (default: zyx)')
     parser.add_option('--to', dest='out_fmt', default='mmap',
-        help='output tiles format (default: mmap)')
-    parser.add_option('-f', '--formats', action='store_true', dest='list_formats',
-        help='list available formats')
+        help='output tiles profile (default: mmap)')
+    parser.add_option('-f', '--profiles', action='store_true', dest='list_profiles',
+        help='list available profiles')
     parser.add_option('-a', '--append', action='store_true', dest='append',
         help='append tiles to an existing destination')
     parser.add_option('-r', '--remove-dest', action='store_true',dest='remove_dest',
@@ -101,8 +101,8 @@ def main(argv):
         (logging.ERROR if options.quiet else logging.INFO))
     log(options.__dict__)
 
-    if options.list_formats:
-        list_formats()
+    if options.list_profiles:
+        list_profiles()
         sys.exit(0)
 
     src_lst=args

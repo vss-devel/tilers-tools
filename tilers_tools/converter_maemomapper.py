@@ -76,7 +76,7 @@ class MapperSQLite(TileSet):
             (z, x, y, buffer(tile.data())))
         self.counter()
 
-tile_formats.append(MapperSQLite)
+tile_profiles.append(MapperSQLite)
 
 # MapperSQLite
 
@@ -126,5 +126,5 @@ class MapperGDBM(TileSet): # due to GDBM weirdness on ARM this only works if run
         self.db[key] = tile.data()
         self.counter()
 
-tile_formats.append(MapperGDBM)
+tile_profiles.append(MapperGDBM)
 # MapperGDBM

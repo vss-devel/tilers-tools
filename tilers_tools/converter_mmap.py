@@ -137,6 +137,6 @@ class Mmap(TileSet):
 
         self.counter()
 
-tile_formats.append(Mmap)
+tile_profiles.append(Mmap)
 
 # Mmap

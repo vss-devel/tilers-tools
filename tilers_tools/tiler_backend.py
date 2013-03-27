@@ -174,7 +174,7 @@ class Pyramid(object):
         if self.options.delete_src:
             self.temp_files.append(self.src)
         self.name = self.options.name
-        self.tile_ext = self.options.tile_format
+        self.tile_ext = self.options.tile_ext
         self.description = ''
 
         self.palette = None

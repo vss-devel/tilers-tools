@@ -102,7 +102,7 @@ class PixBufTile(Tile):
     def copy2file(self, dest_path, link=False):
         open(dest_path, 'wb').write(self.pixbuf)
 
-tile_formats = []
+tile_profiles = []
 
 #############################
 
@@ -152,15 +152,15 @@ class TileSet(object):
 
     @staticmethod
     def get_class(profile, write=False):
-        for cls in tile_formats:
+        for cls in tile_profiles:
             if profile == cls.format and ((not write and cls.input) or (write and cls.output)):
                 return cls
         else:
             raise Exception('Invalid format: %s' % profile)
 
     @staticmethod
-    def list_formats():
-        for cl in tile_formats:
+    def list_profiles():
+        for cl in tile_profiles:
             print '%10s\t%s%s\t%s' % (
                 cl.format,
                 'r' if cl.input else ' ',
@@ -278,7 +278,7 @@ class TileMapDir(TileDir):
             dest = self.root,
             options = dict(
                 name=self.name,
-                tile_format=self.tile_ext[1:]
+                tile_ext=self.tile_ext[1:]
                 )
             )
         # compute "effective" covered area
