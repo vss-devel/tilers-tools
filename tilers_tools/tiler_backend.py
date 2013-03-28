@@ -79,7 +79,7 @@ class TilingScheme(object):
         'relative path to a tile'
     #----------------------------
         z, x, y = tile
-        return '%i/%i/%i.%s' % (z, x, y, self.tile_ext)
+        return '%i/%i/%i%s' % (z, x, y, self.tile_ext)
 
 class TMStiling(TilingScheme):
     tile_geo_origin = (-180, -90)
@@ -96,7 +96,7 @@ class ZYXtiling(XYZtiling):
         'relative path to a tile'
     #----------------------------
         z, x, y = tile
-        return 'z%i/%i/%i.%s' % (z, y, x, self.tile_ext)
+        return 'z%i/%i/%i%s' % (z, y, x, self.tile_ext)
 
 #############################
 
@@ -776,7 +776,7 @@ class Pyramid(object):
             os.makedirs(os.path.dirname(full_path))
         except: pass
 
-        if self.options.paletted and self.tile_ext == 'png':
+        if self.options.paletted and self.tile_ext == '.png':
             try:
                 tile_img = tile_img.convert('P', palette=Image.ADAPTIVE, colors=255)
             except ValueError:
@@ -811,11 +811,6 @@ class Pyramid(object):
     def write_tilemap(self):
         '''Generate JSON for a tileset description'''
     #----------------------------
-        tile_mime = {
-            'png':  'image/png',
-            'jpeg': 'image/jpeg',
-            'jpg':  'image/jpeg',
-            } [self.tile_ext]
 
         # reproject extents back to the unshifted SRS
         bbox = GdalTransformer(SRC_SRS=self.proj_srs, DST_SRS=self.srs).transform(self.bounds)
@@ -823,6 +818,7 @@ class Pyramid(object):
         un_tile_origin = GdalTransformer(SRC_SRS=self.geog_srs, DST_SRS=self.srs).transform_point(self.tile_geo_origin)
         ld('un_tile_origin', un_tile_origin, self.tile_geo_origin, self.geog_srs, self.srs)
 
+        tile_mime = mime_from_ext(self.tile_ext)
         tilemap = {
             'type':       'TileMap',
             'properties': {
@@ -1031,7 +1027,6 @@ class Pyramid(object):
                     #~ ul_x > zoom_lr_x or lr_x < zoom_ul_x or
                     #~ ul_y > zoom_lr_x or lr_y < zoom_ul_y
                 #~ )
-
 
     def set_region(self, point_lst, source_srs=None):
         if source_srs and source_srs != self.proj_srs:

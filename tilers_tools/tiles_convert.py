@@ -94,8 +94,10 @@ def main(argv):
     parser.add_option('-d', '--debug', action='store_true', dest='debug')
     parser.add_option('-q', '--quiet', action='store_true', dest='quiet')
 
-    global options
+    #~ global options
     (options, args) = parser.parse_args(argv[1:])
+
+    pf(options, args)
 
     logging.basicConfig(level=logging.DEBUG if options.debug else
         (logging.ERROR if options.quiet else logging.INFO))

@@ -202,7 +202,6 @@ def load_geo_defs(csv_file):
             data_csv=csv.reader(data_f,'strip')
             for row in data_csv:
                 row=[s.decode('utf-8') for s in row]
-                ld(row)
                 try:
                     rec_type = row[0]
                     rec_id = row[1]

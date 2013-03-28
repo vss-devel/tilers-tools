@@ -94,7 +94,7 @@ class Mmap(TileSet):
             self.layer_id = self.dbc.lastrowid
             log('self.layer', self.layer_id)
 
-    def __del__(self):
+    def finalize_tileset(self):
         self.db.commit()
         if self.options.write:
             for table in ['layers', 'tiles']:
@@ -106,7 +106,6 @@ class Mmap(TileSet):
 
         self.db.commit()
         self.db.close()
-        super(Mmap, self).__del__()
 
     def __iter__(self):
         yield None

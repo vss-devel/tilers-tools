@@ -39,9 +39,9 @@ class GenericMap(Pyramid, ZYXtiling):
 
         options = LooseDict(options)
 
-        self.srs = options.tiles_srs
+        self.srs = options.proj4def or options.tiles_srs
         assert self.srs, 'Target SRS is not specified'
-        self.tilemap_crs = self.srs
+        self.tilemap_crs = options.tiles_srs
 
         if options.zoom0_tiles:
             self.zoom0_tiles = map(int, options.zoom0_tiles.split(','))

@@ -122,12 +122,11 @@ class TileSet(object):
         self.options.tiles_srs = self.srs
 
         self.zoom_levels = {}
-        self.pyramid = None
+        self.pyramid = Pyramid.profile_class('generic')(options=options)
 
         if not self.options.write:
             assert os.path.exists(root), 'No file or directory found: %s' % root
             if self.options.region:
-                self.pyramid = Pyramid.profile_class('generic')(options=options)
                 self.pyramid.set_zoom_range(self.options.zoom)
                 self.pyramid.load_region(self.options.region)
 
@@ -184,6 +183,8 @@ class TileSet(object):
     def convert(self):
         pf('%s -> %s ' % (self.src.root, self.root), end='')
         map(self.process_tile, self.src)
+        self.finalize_pyramid()
+        self.finalize_tileset()
         pf('')
 
     def process_tile(self, tile):
@@ -193,12 +194,35 @@ class TileSet(object):
         # collect min max values for tiles processed
         zxy = list(tile.coord())
         z = zxy[0]
-        min_max = self.zoom_levels.get(z)
-        if min_max is None:
-            self.zoom_levels[z] = [zxy, zxy] # min, max
-        else:
-            zz, xx, yy = zip(*(min_max+[zxy]))
-            self.zoom_levels[z] = [[z, min(xx), min(yy)], [z, max(xx), max(yy)]]
+
+        min_max = self.zoom_levels.get(z, []) # min, max
+        zzz, xxx, yyy = zip(*(min_max+[zxy]))
+        self.zoom_levels[z] = [[z, min(xxx), min(yyy)], [z, max(xxx), max(yyy)]]
+
+    def finalize_pyramid(self):
+        log('self.zoom_levels', self.zoom_levels)
+
+        # compute "effective" covered area
+        prev_sq = 0
+        for z in reversed(sorted(self.zoom_levels)):
+            ul_zxy, lr_zxy = self.zoom_levels[z]
+            ul_c = self.pyramid.tile_bounds(ul_zxy)[0]
+            lr_c = self.pyramid.tile_bounds(lr_zxy)[1]
+            sq = (lr_c[0]-ul_c[0])*(ul_c[1]-lr_c[1])
+            area_diff = round(prev_sq/sq, 5)
+            log('ul_c, lr_c', z, ul_c, lr_c, sq, area_diff)
+            if area_diff == 0.25:
+                break # this must be an exact zoom of a previous level
+            area_coords = [ul_c, lr_c]
+            prev_sq = sq
+
+        self.pyramid.set_region(area_coords)
+        self.pyramid.set_zoom_range(','.join(map(str, self.zoom_levels.keys())))
+
+        self.pyramid.name = self.name
+
+    def finalize_tileset(self):
+        pass
 
     count = 0
     tick_rate = 100
@@ -246,10 +270,11 @@ class TileDir(TileSet):
 
     def store_tile(self, tile):
         try:
-            self.tile_ext = self.dest_ext(tile)
+            tile_ext = self.dest_ext(tile)
+            self.tile_ext = tile_ext
         except KeyError:
-            self.tile_ext = '.xxx' # invalid file type
-        dest_path = os.path.join(self.root, self.coord2path(*tile.coord())) + self.tile_ext
+            tile_ext = '.xxx' # invalid file type
+        dest_path = os.path.join(self.root, self.coord2path(*tile.coord())) + tile_ext
         log('%s -> %s' % (tile.path, dest_path))
         try:
             os.makedirs(os.path.split(dest_path)[0])
@@ -263,40 +288,11 @@ class TileDir(TileSet):
 class TileMapDir(TileDir):
 
 #############################
-    def __del__(self):
-        if self.options.write:
-            self.store_metadata()
 
-    def store_metadata(self):
-        prm = self.init_pyramid()
-        prm.write_tilemap()
-        prm.write_metadata()
-
-    def init_pyramid(self):
-        log('self.zoom_levels', self.zoom_levels)
-        prm = Pyramid.profile_class(self.format)(
-            dest = self.root,
-            options = dict(
-                name=self.name,
-                tile_ext=self.tile_ext[1:]
-                )
-            )
-        # compute "effective" covered area
-        prev_sq = 0
-        for z in reversed(sorted(self.zoom_levels)):
-            ul_zxy, lr_zxy = self.zoom_levels[z]
-            ul_c = prm.tile_bounds(ul_zxy)[0]
-            lr_c = prm.tile_bounds(lr_zxy)[1]
-            sq = (lr_c[0]-ul_c[0])*(ul_c[1]-lr_c[1])
-            area_diff = round(prev_sq/sq, 5)
-            log('ul_c, lr_c', z, ul_c, lr_c, sq, area_diff)
-            if area_diff == 0.25:
-                break # this must be an exact zoom of a previous level
-            area_coords = [ul_c, lr_c]
-            prev_sq = sq
-
-        prm.set_region(area_coords)
-        prm.set_zoom_range(','.join(map(str, self.zoom_levels.keys())))
-        return prm
+    def finalize_tileset(self):
+        self.pyramid.tile_ext = self.tile_ext
+        self.pyramid.dest = self.root
+        self.pyramid.write_tilemap()
+        self.pyramid.write_metadata()
 
 # TileMapDir

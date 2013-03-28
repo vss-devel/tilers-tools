@@ -51,6 +51,7 @@ def process_src(src_def):
 #----------------------------
     global options
     opt = LooseDict(options)
+    opt.tile_ext = '.' + opt.tile_format.lower()
     src, delete_src = src_def
     opt.delete_src = delete_src
 
@@ -109,7 +110,7 @@ def parse_args(arg_lst):
     parser.add_option("--tiles-prefix", default='', metavar="URL",
         help='prefix for tile URLs at googlemaps.hml')
     parser.add_option("--tile-format", default='png', metavar="FMT",
-        help='tile image format (default: PNG)')
+        help='tile image format (default: png)')
     parser.add_option("--paletted", action="store_true",
         help='convert tiles to paletted format (8 bit/pixel)')
     parser.add_option("-t", "--dest-dir", dest="dest_dir", default=None,

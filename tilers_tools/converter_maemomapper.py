@@ -53,10 +53,9 @@ class MapperSQLite(TileSet):
             except:
                 pass
 
-    def __del__(self):
+    def finalize_tileset(self):
         self.db.commit()
         self.db.close()
-        TileSet.__del__(self)
 
     def __iter__(self):
         self.dbc.execute('SELECT * FROM maps')
@@ -101,10 +100,9 @@ class MapperGDBM(TileSet): # due to GDBM weirdness on ARM this only works if run
 
         self.key = Struct('>III')
 
-    def __del__(self):
+    def finalize_tileset(self):
         self.db.sync()
         self.db.close()
-        TileSet.__del__(self)
 
     def __iter__(self):
         key = self.db.firstkey()
