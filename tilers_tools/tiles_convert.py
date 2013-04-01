@@ -97,8 +97,6 @@ def main(argv):
     #~ global options
     (options, args) = parser.parse_args(argv[1:])
 
-    pf(options, args)
-
     logging.basicConfig(level=logging.DEBUG if options.debug else
         (logging.ERROR if options.quiet else logging.INFO))
     log(options.__dict__)

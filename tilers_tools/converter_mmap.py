@@ -78,17 +78,12 @@ class Mmap(TileSet):
                     )
             self.db.commit()
 
-            properties = json.dumps(dict(
-                name = self.name,
-                url = self.options.url,
-                isBaseLayer = not self.options.overlay,
-                projection = self.tilemap_crs,
-                proj4def = self.options.proj4def,
-                description = self.options.description
-            ))
+            properties = json.dumps({
+                "name": self.name,
+            })
 
             self.dbc.execute(
-                'INSERT OR REPLACE INTO layers (properties) VALUES (?);',
+                'INSERT INTO layers (properties) VALUES (?);',
                 (properties, )
                 )
             self.layer_id = self.dbc.lastrowid
@@ -97,6 +92,23 @@ class Mmap(TileSet):
     def finalize_tileset(self):
         self.db.commit()
         if self.options.write:
+            properties = json.dumps({
+                "name": self.name,
+                "url": self.options.url,
+                "isBaseLayer": not self.options.overlay,
+                "projection": self.tilemap_crs,
+                "proj4": txt2proj4(self.pyramid.srs),
+                "maxExtent": self.pyramid.max_extent,
+                #~ "maxResolution": self.pyramid.max_resolution,
+                "maxZoomLevel": self.pyramid.zoom_range[0],
+                "description": self.options.description
+            })
+
+            self.dbc.execute(
+                'INSERT OR REPLACE INTO layers (id, properties) VALUES (?, ?);',
+                (self.layer_id, properties)
+                )
+
             for table in ['layers', 'tiles']:
                 self.dbc.execute (
                     'CREATE INDEX IF NOT EXISTS "%(table)s_rank_bbox" ON "%(table)s" '

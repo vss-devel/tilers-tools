@@ -160,6 +160,13 @@ class Pyramid(object):
 
     zoom0_tiles = [1, 1] # tiles at zoom 0, default value
 
+    palette = None
+    transparency = None
+    zoom_range = None
+    zoom0_res = None
+    max_extent = None
+    max_resolution = None
+
     #----------------------------
 
     def __init__(self, src=None, dest=None, options=None):
@@ -176,11 +183,6 @@ class Pyramid(object):
         self.name = self.options.name
         self.tile_ext = self.options.tile_ext
         self.description = ''
-
-        self.palette = None
-        self.transparency = None
-        self.zoom_range = None
-        self.max_extent = None
 
         self.init_tile_grid()
 
@@ -212,6 +214,7 @@ class Pyramid(object):
         # pixel resolution at the zoom 0
         res0 = max_x*2/abs(self.zoom0_tiles[0]*self.tile_dim[0])
         self.zoom0_res = [res0, -res0] # pixel 'y' goes downwards
+        #~ self.max_resolution = [res0, res0] # for tilemap
 
         # upper left corner of a world raster
         self.pix_origin = (-max_x, abs(self.zoom0_res[1]*self.tile_dim[1]*self.zoom0_tiles[1]/2))
