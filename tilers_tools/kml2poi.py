@@ -514,6 +514,7 @@ class Poi2Mmap (Poi2Mapper):
                 'CREATE INDEX IF NOT EXISTS "%(table)s_rank_bbox" ON "%(table)s"'
                     '(rank, xmin, xmax, ymin, ymax);'
                 % {'table': table}
+            )
 
         super(Poi2Mmap, self).close_db()
 #
