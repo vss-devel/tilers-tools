@@ -93,7 +93,8 @@ def ld_nothing(*parms):
 
 def pf(*parms, **kparms):
     end = kparms['end'] if 'end' in kparms else '\n'
-    sys.stdout.write(' '.join(itertools.imap(str, parms))+end)
+    parms = [i.encode(locale.getpreferredencoding()) if isinstance(i, unicode) else str(i) for i in parms]
+    sys.stdout.write(' '.join(parms) + end)
     sys.stdout.flush()
 
 def pf_nothing(*parms, **kparms):

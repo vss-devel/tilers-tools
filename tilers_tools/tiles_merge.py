@@ -159,6 +159,7 @@ class MergeSet:
     def __call__(self,tile):
         '''called by map() to merge a source tile into the destination tile set'''
         try:
+            ld(self.src_dir,tile)
             src_tile=os.path.join(self.src_dir,tile)
             dst_tile=os.path.join(self.dst_dir,tile)
             dpath=os.path.dirname(dst_tile)
@@ -232,12 +233,14 @@ if __name__=='__main__':
 
     ld(options)
 
+    args = [i.decode(locale.getpreferredencoding(),'ignore') for i in args]
     if options.src_list:
-        src_dirs=[i.rstrip('\n') for i in open(options.src_list,'r')]
-        try:
-            dst_dir=args[-1]
-        except:
-            dst_dir=os.path.splitext(options.src_list)[0]
+        with open(options.src_list,'r') as f:
+            src_dirs=[i.rstrip('\n\r').decode(locale.getpreferredencoding(),'ignore') for i in f]
+            try:
+                dst_dir=args[-1]
+            except:
+                dst_dir=os.path.splitext(options.src_list)[0]
     else:
         try:
             src_dirs=args[0:-1]
