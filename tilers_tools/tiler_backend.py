@@ -831,7 +831,7 @@ class Pyramid(object):
             'tiles': {
                 'size':         map(abs, self.tile_dim),
                 'inversion':    [i<0 for i in self.tile_dim],
-                'ext':          self.tile_ext,
+                'ext':          self.tile_ext[1:],
                 'mime':         tile_mime,
                 'origin':       un_tile_origin,
                 'max_extent': self.max_extent

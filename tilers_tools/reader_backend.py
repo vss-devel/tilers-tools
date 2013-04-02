@@ -167,13 +167,15 @@ class SrcMap(object):
 ###############################################################################
 
     srs_defs = None
+    data_file = None
 
     def __init__(self,src_file,options=None):
         self.options=options
         gdal.UseExceptions()
 
         # load datum definitions, ellipses, projections
-        self.srs_defs = load_geo_defs(self.data_file)
+        if self.data_file:
+            self.srs_defs = load_geo_defs(self.data_file)
 
         self.file=src_file.decode(locale.getpreferredencoding(),'ignore')
         self.header=self.get_header()       # Read map header
