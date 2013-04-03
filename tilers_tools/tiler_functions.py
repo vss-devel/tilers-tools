@@ -323,7 +323,7 @@ def shape2mpointlst(datasource, dst_srs, feature_name=None):
         for i in range(n_features-1, -1, -1):
             feature = layer.GetFeature(i)
             i_name = feature.GetFieldIndex('Name')
-            if i_name != -1 and feature.GetFieldAsString(i_name) == feature_name:
+            if i_name != -1 and feature.GetFieldAsString(i_name).decode('utf-8') == feature_name:
                 ld('feature', feature_name)
                 break
             feature.Destroy()
