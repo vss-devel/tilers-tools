@@ -47,21 +47,6 @@ class GMercator(Pyramid):
 
     tilemap_crs = 'EPSG:3857'
 
-    def write_metadata(self, tile=None, children=[]):
-        super(GMercator, self).write_metadata(tile, children)
-
-        if not tile: # only for a top level of a pyramid
-            self.copy_viewer()
-
-    def copy_viewer(self):
-        for f in ['viewer-google.html', 'viewer-openlayers.html']:
-            src = os.path.join(data_dir(), f)
-            dst = os.path.join(self.dest, f)
-            try:
-                os.link(src, dst) # hard links as FF loves to dereference htmls
-            except OSError: # non POSIX or cross-device link?
-                shutil.copy(src, dst)
-
 #############################
 
 class GMercatorZYX(GMercator, ZYXtiling):

@@ -167,12 +167,12 @@ class TileSet(object):
                 cl.__doc__
                 )
 
-    def in_range(self, coords, range_lr_coords=None):
-        if not coords:
+    def in_range(self, ul_coords, lr_coords=None):
+        if not ul_coords:
             return False
         if not self.pyramid:
             return True
-        return self.pyramid.in_range(coords, range_lr_coords)
+        return self.pyramid.in_range(ul_coords, lr_coords)
 
     def __del__(self):
         log('self.count', self.count)
@@ -292,7 +292,6 @@ class TileMapDir(TileDir):
     def finalize_tileset(self):
         self.pyramid.tile_ext = self.tile_ext
         self.pyramid.dest = self.root
-        self.pyramid.write_tilemap()
         self.pyramid.write_metadata()
 
 # TileMapDir

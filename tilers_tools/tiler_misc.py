@@ -24,7 +24,7 @@
 ###############################################################################
 
 
-from tiler_functions import *
+#~ from tiler_functions import *
 from tiler_backend import *
 
 #############################

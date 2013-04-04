@@ -60,12 +60,12 @@ class MergeSet:
         self.src_dir=src_dir
         self.dst_dir=dst_dir
 
-        # copy metadata
-        for n in ['viewer-google.html','viewer-openlayers.html','tilemap.json']:
-            src_f=os.path.join(src_dir,n)
-            dst_f=os.path.join(dst_dir,n)
-            if os.path.exists(src_f) and not os.path.exists(dst_f):
-                shutil.copy(src_f,dst_f)
+        copy_viewer(self.dst_dir)
+        # copy tilemap
+        src_f=os.path.join(src_dir, 'tilemap.json')
+        dst_f=os.path.join(dst_dir, 'tilemap.json')
+        if os.path.exists(src_f) and not os.path.exists(dst_f):
+            shutil.copy(src_f, dst_f)
 
         # read metadata
         self.src=read_tilemap(src_dir)
@@ -260,6 +260,7 @@ if __name__=='__main__':
         except os.error: pass
 
     for src in src_dirs:
-        if not (src.startswith("#") or src.strip() == ''): # ignore sources with names starting with "#"
-            MergeSet(src, dst_dir).merge_dirs()
+        if src.startswith("#") or src.strip() == '': # ignore sources with names starting with "#"
+            continue
+        MergeSet(src, dst_dir).merge_dirs()
 

@@ -378,12 +378,7 @@ def shape2cutline(cutline_ds, raster_ds, feature_name=None):
 def elem0(doc, id):
     return doc.getElementsByTagName(id)[0]
 
-#class TileSetData(object):
-
-#    def __init__(self, src_dir):
-
 def read_tilemap(src_dir):
-
     #src_dir = src_dir.decode('utf-8', 'ignore')
     src = os.path.join(src_dir, 'tilemap.json')
 
@@ -396,12 +391,23 @@ def read_tilemap(src_dir):
         tilemap['tilesets'] = dict([ (int(key), val) for key, val in tilesets.items()])
     except ValueError: # No JSON object could be decoded
             raise Exception('Invalid tilemap file: %s' % src)
-
     return tilemap
 
 def write_tilemap(dst_dir, tilemap):
-    with open(os.path.join(dst_dir, 'tilemap.json'), 'w') as f:
+    f = os.path.join(dst_dir, 'tilemap.json')
+    if os.path.exists(f):
+        os.remove(f)
+    with open(f, 'w') as f:
          json.dump(tilemap, f, indent=2)
+
+def copy_viewer(dest):
+    for f in ['viewer-google.html', 'viewer-openlayers.html']:
+        src = os.path.join(data_dir(), f)
+        dst = os.path.join(dest, f)
+        try:
+            os.link(src, dst) # hard links as FF dereferences softlinks
+        except OSError: # non POSIX or cross-device link?
+            shutil.copy(src, dst)
 
 def read_transparency(src_dir):
     try:

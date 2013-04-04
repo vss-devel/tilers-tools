@@ -808,6 +808,7 @@ class Pyramid(object):
     #----------------------------
         if tile == None:
             self.write_tilemap()
+            copy_viewer(self.dest)
 
     #----------------------------
 
@@ -994,6 +995,9 @@ class Pyramid(object):
 
         if self.zoom_range and zoom not in self.zoom_range:
             return False
+
+        if zoom <= self.options.region_zoom:
+            return True
 
         z_ul, z_lr = self.corner_tiles(zoom)
         z, zoom_ul_x, zoom_ul_y = z_ul

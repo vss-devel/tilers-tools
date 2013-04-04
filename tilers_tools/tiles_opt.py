@@ -86,8 +86,8 @@ if __name__=='__main__':
         help='Specifies  the  number  of colors to quantize to (default: 256)')
     parser.add_option("--jpeg", action="store_true",
         help='convert tiles to JPEG')
-    parser.add_option("--quality", dest="quality", type="int", default=75,
-        help='JPEG quality (default: 75)')
+    parser.add_option("--quality", dest="quality", type="int", default=85,
+        help='JPEG quality (default: 85)')
     parser.add_option("-r", "--remove-dest", action="store_true",
         help='delete destination directory if any')
     parser.add_option("-q", "--quiet", action="store_true")

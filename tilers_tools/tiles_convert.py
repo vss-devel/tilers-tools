@@ -65,7 +65,7 @@ def main(argv):
         help='input tiles profile (default: zyx)')
     parser.add_option('--to', dest='out_fmt', default='mmap',
         help='output tiles profile (default: mmap)')
-    parser.add_option('-f', '--profiles', action='store_true', dest='list_profiles',
+    parser.add_option('-l', '--profiles', action='store_true', dest='list_profiles',
         help='list available profiles')
     parser.add_option('-a', '--append', action='store_true', dest='append',
         help='append tiles to an existing destination')
@@ -75,22 +75,25 @@ def main(argv):
         help='destination directory (default: current)')
     parser.add_option('--name', default=None,
         help='layer name (default: derived from the source)')
-    parser.add_option('--description', default='',
+    parser.add_option('--description', metavar='TXT', default='',
         help='layer decription (default: None)')
     parser.add_option('--overlay', action='store_true',
         help='non-base layer (default: False)')
     parser.add_option('--url', default=None,
         help='URL template (default: None)')
-    parser.add_option('-l', '--link', action='store_true', dest='link',
+    parser.add_option('--link', action='store_true', dest='link',
         help='make links to source tiles instead of copying if possible')
-    parser.add_option('--region', default=None, metavar='DATASOURCE',
-        help='region to process (OGR shape)')
-    parser.add_option("--tiles-srs", "--srs", default='EPSG:3857', metavar="TILES_SRS",
-        help="tiles' spatial reference system (default is EPSG:3857, aka EPSG:900913")
+    parser.add_option("--srs", default='EPSG:3857', dest="tiles_srs",
+        help="code of a spatial reference system of a tile set (default is EPSG:3857, aka EPSG:900913)")
     parser.add_option("--proj4def", default=None, metavar="PROJ4_SRS",
-        help="projection code")
+        help="proj4 definition for the SRS")
     parser.add_option('-z', '--zoom', default=None,metavar='ZOOM_LIST',
         help='list of zoom ranges to process')
+    parser.add_option('-g', '--region', default=None, metavar='DATASOURCE',
+        help='region to process (OGR shape or Sasplanet .hlg)')
+    parser.add_option('--region-zoom', metavar='N', type="int", default=None,
+        help='apply region for zooms only higher than this one (default: None)')
+
     parser.add_option('-d', '--debug', action='store_true', dest='debug')
     parser.add_option('-q', '--quiet', action='store_true', dest='quiet')
 
