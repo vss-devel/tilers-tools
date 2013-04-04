@@ -55,15 +55,16 @@ class ZoomSet:
                 ]
 
     def __call__(self,dest_tile):
-        (z,x,y)=dest_tile
         ext=self.tilemap['tiles']['ext']
         im = Image.new("RGBA",(256,256),(0,0,0,0))
 
-        tiles_in=[(x*2,y*2),(x*2+1,y*2),
-                    (x*2,y*2+1),(x*2+1,y*2+1)]
-        for (src_xy,out_loc) in zip(tiles_in,self.tile_offsets):
-            if src_xy in self.src_lst:
-                src_path='z%i/%i/%i.%s' % (z+1,src_xy[1],src_xy[0],ext)
+        (z,y,x)=dest_tile
+        tiles_in=[(y*2,x*2),(y*2,x*2+1),
+                    (y*2+1,x*2),(y*2+1,x*2+1)]
+        for (src_yx,out_loc) in zip(tiles_in,self.tile_offsets):
+            if src_yx in self.src_lst:
+                sy,sx=src_yx
+                src_path='z%i/%i/%i.%s' % (z+1,sy,sx,ext)
                 im.paste(Image.open(src_path).resize((128,128),Image.ANTIALIAS),out_loc)
 
         dst_path='z%i/%i/%i.%s' % (z,y,x,ext)
@@ -75,7 +76,7 @@ class ZoomSet:
         try:
 
             tilesets=self.tilemap['tilesets']
-            ld(tilesets)
+            ld('tilesets', tilesets)
 
             top_zoom=min(tilesets.keys())
             new_zooms=range(top_zoom-1,target_zoom-1,-1)
@@ -85,12 +86,13 @@ class ZoomSet:
                 pf('%i' % zoom,end='')
 
                 # add a new zoom level to tilemap
+                z_dir = 'z%i' % zoom
                 tilesets[zoom]={
-                    "href": unicode(zoom),
-                    "units_per_pixel": tilesets[zoom+1]["units_per_pixel"]*2}
+                    'href': z_dir,
+                    'units_per_pixel': tilesets[zoom + 1]['units_per_pixel'] * 2}
 
-                shutil.rmtree('z%i' % zoom, ignore_errors=True)
-                os.chdir(os.path.join(self.tiles_root,'z%i' % (zoom+1)))
+                shutil.rmtree(z_dir, ignore_errors=True)
+                os.chdir(os.path.join(self.tiles_root, 'z%i' % (zoom+1)))
 
                 self.src_lst=set(
                     [tuple(map(int,path2list(f)[:-1]))
@@ -101,9 +103,9 @@ class ZoomSet:
                 if len(self.src_lst) == 0:
                     raise Exception("No tiles in %s" % os.getcwd())
 
-                dest_lst=set([(zoom,src_x/2,src_y/2) for (src_x,src_y) in self.src_lst])
+                dest_lst=set([(zoom,src_y/2,src_x/2) for (src_y,src_x) in self.src_lst])
 
-                for i in set([y for z,x,y in dest_lst]):
+                for i in set([y for z,y,x in dest_lst]):
                     os.makedirs('z%i/%i' % (zoom,i))
 
                 parallel_map(self,dest_lst)
