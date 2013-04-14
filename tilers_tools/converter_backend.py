@@ -126,10 +126,10 @@ class TileSet(object):
 
         if not self.options.write:
             assert os.path.exists(root), 'No file or directory found: %s' % root
-            if self.options.region:
+            if self.options.zoom:
                 self.pyramid.set_zoom_range(self.options.zoom)
+            if self.options.region:
                 self.pyramid.load_region(self.options.region)
-
         else:
             basename = os.path.splitext(os.path.basename(self.root or src.root))[0]
             df_name = os.path.splitext(basename)[0]
@@ -183,8 +183,11 @@ class TileSet(object):
     def convert(self):
         pf('%s -> %s ' % (self.src.root, self.root), end='')
         map(self.process_tile, self.src)
-        self.finalize_pyramid()
-        self.finalize_tileset()
+        if self.count > 0:
+            self.finalize_pyramid()
+            self.finalize_tileset()
+        else:
+            pf('No tiles converted', end='')
         pf('')
 
     def process_tile(self, tile):
