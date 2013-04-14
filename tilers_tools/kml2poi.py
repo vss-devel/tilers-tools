@@ -245,11 +245,11 @@ class Poi2Db (object):
                     icon_aliases.append(icon_aliase_templ % (icon_name, c_key+'.jpg'))
         with open(self.base+'.categories.gen','w') as f:
             for s in cat_list:
-                print >>f, s
+                print >>f, s.encode(locale.getpreferredencoding())
         with open(self.base+'.sh','w') as f:
             for ls in [icon_urls,icon_aliases]:
                 for s in ls:
-                    print >>f, s
+                    print >>f, s.encode(locale.getpreferredencoding())
 
     def proc_src(self,src):
         log(src)
@@ -308,9 +308,9 @@ class Poi2Mapper (Poi2Db):
             db.close()
 
     def proc_category_icon(self, c):
-        #log('c.icons',c.icons)
-        icon_file=os.path.join(self.base_dir,c.label+'.jpg')
+        icon_file=os.path.join(self.base_dir,os.path.split(c.label.lower())[1] + '.jpg')
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! Make case insensitive !!!!!!!!!!!!!!!!!!!!!!!!!!
+        #~ log('c.icons',c.icons, icon_file, os.path.split(c.label.lower()))
         if not os.path.exists(icon_file):
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! Make case insensitive !!!!!!!!!!!!!!!!!!!!!!!!!!
             logging.warning('No icon image for %s' % c.label)
@@ -416,8 +416,9 @@ class Poi2Mmap (Poi2Mapper):
             return
         self.inserted_icons.add(i)
 
-        icon_file = os.path.join(self.base_dir, i)
+        icon_file = os.path.join(self.base_dir, i.lower())
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! Make case insensitive !!!!!!!!!!!!!!!!!!!!!!!!!!
+        log('icon',i, icon_file, os.path.split(i))
         if not os.path.exists(icon_file):
         # !!!!!!!!!!!!!!!!!!!!!!!!!!!!! Make case insensitive !!!!!!!!!!!!!!!!!!!!!!!!!!
             logging.warning('No icon image %s' % i)
@@ -529,6 +530,8 @@ if __name__=='__main__':
     parser.add_option('-q', '--quiet', action='store_true', dest='quiet')
     parser.add_option('-r', '--remove-dest', action='store_true',
         help='delete destination before processing')
+    parser.add_option('-m', '--merge', action='store_true',
+        help='merge sources into a single db')
     parser.add_option('-o', '--output',dest='dest_db',
                       type='string',help='output POIs db file')
 
@@ -540,4 +543,9 @@ if __name__=='__main__':
         raise Exception('No source specified')
 
     #Poi2Mapper(args,options.dest_db).proc_all()
-    Poi2Mmap(args, options.dest_db).proc_all()
+
+    if options.merge:
+        Poi2Mmap(args, options.dest_db).proc_all()
+    else:
+        for src in args:
+            Poi2Mmap([src], options.dest_db).proc_all()
