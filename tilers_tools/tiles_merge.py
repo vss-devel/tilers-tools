@@ -88,18 +88,18 @@ class MergeSet:
         #ld(repr(self.src_transp))
 
         # define crop map for underlay function
-        tsx,tsy=self.tile_size
+        szx,szy=self.tile_size
         if self.src['tiles']['inversion'][1]: # google
             self.underlay_map=[
                 #  lf    up    rt    lw
-                (   0,    0,tsx/2,tsy/2), (tsx/2,    0,  tsx,tsy/2),
-                (   0,tsy/2,tsx/2,  tsy), (tsx/2,tsy/2,  tsx,  tsy),
+                (   0,     0, szx/2, szy/2), (szx/2,     0, szx, szy/2),
+                (   0, szy/2, szx/2,   szy), (szx/2, szy/2, szx,   szy),
                 ]
         else:                   # TMS
             self.underlay_map=[
                 #  lf    up    rt    lw
-                (   0,tsy/2,tsx/2,  tsy), (tsx/2,tsy/2,  tsx,  tsy),
-                (   0,    0,tsx/2,tsy/2), (tsx/2,    0,  tsx,tsy/2),
+                (   0, szy/2, szx/2,   szy), (szx/2, szy/2, szx,   szy),
+                (   0,     0, szx/2, szy/2), (szx/2,     0, szx, szy/2),
                 ]
 
     def merge_metadata(self):
@@ -122,7 +122,6 @@ class MergeSet:
     def underlay(self,tile,src_path,src_raster,level):
         if level <= 0:
             return
-        level -= 1
         (s,ext)=os.path.splitext(tile)
         (s,x)=os.path.split(s)
         (z,y)=os.path.split(s)
@@ -154,15 +153,15 @@ class MergeSet:
                 pf('%i' % level,end='')
             else:
                 pf('#',end='')
-            self.underlay(dst_tile,dst_path,out_raster,level)
+            self.underlay(dst_tile,dst_path,out_raster,level-1)
 
     def __call__(self,tile):
         '''called by map() to merge a source tile into the destination tile set'''
         try:
             ld(self.src_dir,tile)
-            src_tile=os.path.join(self.src_dir,tile)
-            dst_tile=os.path.join(self.dst_dir,tile)
-            dpath=os.path.dirname(dst_tile)
+            src_file=os.path.join(self.src_dir,tile)
+            dst_file=os.path.join(self.dst_dir,tile)
+            dpath=os.path.dirname(dst_file)
             if not os.path.exists(dpath):
                 try: # thread race safety
                     os.makedirs(dpath)
@@ -171,24 +170,24 @@ class MergeSet:
             transp=self.src_transp[tile]
             if transp == None: # transparency value not cached yet
                 #pf('!',end='')
-                src_raster=Image.open(src_tile).convert("RGBA")
+                src_raster=Image.open(src_file).convert("RGBA")
                 transp=transparency(src_raster)
             if  transp == 0 : # fully transparent
                 #pf('-',end='')
-                #os.remove(src_tile)
+                #os.remove(src_file)
                 pass
-            elif transp == 1 or not os.path.exists(dst_tile):
+            elif transp == 1 or not os.path.exists(dst_file):
                 # fully opaque or no destination tile exists yet
                 #pf('>',end='')
-                shutil.copy(src_tile,dst_tile)
+                shutil.copy(src_file,dst_file)
             else: # semitransparent, combine with destination (exists! see above)
                 pf('+',end='')
                 if not src_raster:
-                    src_raster=Image.open(src_tile).convert("RGBA")
-                dst_raster=Image.composite(src_raster,Image.open(dst_tile).convert("RGBA"),src_raster)
-                dst_raster.save(dst_tile)
+                    src_raster=Image.open(src_file).convert("RGBA")
+                dst_raster=Image.composite(src_raster,Image.open(dst_file).convert("RGBA"),src_raster)
+                dst_raster.save(dst_file)
             if options.underlay and transp != 0:
-                self.underlay(tile,src_tile,src_raster,options.underlay)
+                self.underlay(tile, src_file, src_raster, options.underlay)
         except KeyboardInterrupt: # http://jessenoller.com/2009/01/08/multiprocessingpool-and-keyboardinterrupt/
             print 'got KeyboardInterrupt'
             raise KeyboardInterruptError()

@@ -613,7 +613,7 @@ class Pyramid(object):
         temp_vrt = os.path.join(self.dest, self.base+'.tmp.vrt') # auxilary VRT file
         self.temp_files.append(temp_vrt)
         with open(temp_vrt, 'w') as f:
-            f.write(vrt_text)
+            f.write(vrt_text.encode('utf-8'))
 
         # warp base raster
         base_ds = gdal.Open(vrt_text, GA_ReadOnly)

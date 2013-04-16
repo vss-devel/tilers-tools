@@ -145,6 +145,9 @@ def main(argv):
     ld(os.name)
     ld(options)
 
+    if options.verbose == 2:
+        set_nothreads()
+
     if options.list_profiles:
         Pyramid.profile_lst(tty=True)
         sys.exit(0)
