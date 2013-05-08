@@ -461,7 +461,8 @@ class Poi2Mmap (Poi2Mapper):
 
     def proc_poi(self, p):
         log('poi',p.label,p.lon,p.lat)
-        x, y = self.toGMercator.transform_point([p.lon, p.lat])
+        #~ x, y = self.toGMercator.transform_point([p.lon, p.lat])
+        x, y = (p.lon, p.lat)
         props = json.dumps({
             'label': p.label,
             'description': p.desc,
@@ -471,7 +472,7 @@ class Poi2Mmap (Poi2Mapper):
             })
         geom = '{"type":"Point","coordinates":[%f,%f]}' % (x,y)
         self.dbc.execute(
-            'INSERT INTO pois (xmin,xmax,ymin,ymax,geometry,properties) VALUES (?,?,?,?,?,?);',
+            'INSERT INTO pois (xmin, ymin, xmax, ymax, geometry, properties) VALUES (?,?,?,?,?,?);',
             (x,y,x,y,geom,props))
 
     def create_db(self):
