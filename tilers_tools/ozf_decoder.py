@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# 2011-01-27 11:32:42 
+# 2011-01-27 11:32:42
 
 ###############################################################################
 # Copyright (c) 2011, Vadim Shlyakhov
@@ -46,29 +46,32 @@ from tiler_functions import *
 
 class OzfImg(object):
 
+# see http://www.globalmapperforum.com/forums/suggestion-box/3182-map-support-oziexplorer-ozfx3.html
+# or it's copy at http://svn.osgeo.org/gdal/sandbox/klokan/ozf/ozf-binary-format-description.txt
+
 #ozf_header_1:
 #  short magic;         // set it to 0x7780 for ozfx3 and 0x7778 for ozf2
 #  long locked;         // if set to 1, than ozi refuses to export the image (doesn't seem to work for ozfx3 files though); just set to 0
 #  short tile_width;    // set always to 64
 #  short version;       // set always to 1
-#  long old_header_size;// set always to 0x436; this has something to do with files having magic 0x7779 
+#  long old_header_size;// set always to 0x436; this has something to do with files having magic 0x7779
 #                       // (haven't seen any of those, they are probably rare, but ozi has code to open them)
     hdr1_fmt='<HIHHI'
     hdr1_size=struct.calcsize(hdr1_fmt)
     hdr1_fields=('magic','locked','tile_width','version','old_header_size')
 
 #ozf_header_2:
-#	int header_size;	// always 40
-#	int image_width;	// width of image in pixels
-#	int image_height;	// height of image in pixels
-#	short depth;		// set to 1
-#	short bpp;			// set to 8
-#	int reserved1;		// set to 0
-#	int memory_size;	// height * width; probably not used and contains junk if it exceeds 0xFFFFFFFF (which is perfectly ok)
-#	int reserved2;		// set to 0
-#	int reserved3;		// set to 0
-#	int unk2;			// set to 0x100
-#	int unk2;			// set to 0x100
+#   int header_size;    // always 40
+#   int image_width;    // width of image in pixels
+#   int image_height;   // height of image in pixels
+#   short depth;        // set to 1
+#   short bpp;          // set to 8
+#   int reserved1;      // set to 0
+#   int memory_size;    // height * width; probably not used and contains junk if it exceeds 0xFFFFFFFF (which is perfectly ok)
+#   int reserved2;      // set to 0
+#   int reserved3;      // set to 0
+#   int unk2;           // set to 0x100
+#   int unk2;           // set to 0x100
 
     hdr2_fmt='<iIIhhiiiiii'
     hdr2_size=struct.calcsize(hdr2_fmt)
@@ -100,9 +103,9 @@ class OzfImg(object):
             self.ozfx3 = { 0x7780: True, 0x7778: False}[magic]
         except KeyError:
             raise Exception('Invalid file: %s' % img_fname)
-            
+
         hdr2_ofs=self.tell() # remember current pos
-        
+
         if self.ozfx3: # initialize descrambling
             magic_size=oziread('<B')[0]
             magic_lst=oziread('<%dB' % magic_size)
@@ -126,7 +129,7 @@ class OzfImg(object):
             hdr1=oziread(self.hdr1_fmt,self.hdr1_fields)
             ld('hdr1',hex(0),hdr1)
 
-            # find a seed which decodes hdr2 
+            # find a seed which decodes hdr2
             pattern=struct.pack('<I',self.hdr2_size) # 1st dword is hdr2 size
             src=self.mmap[hdr2_ofs:hdr2_ofs+4]
             for i in range(256):
@@ -138,17 +141,17 @@ class OzfImg(object):
             foo=seed - magic_lst[0x93]
             if foo < 0: foo+=256
             if foo not in magic_lst:
-                pf('s',end='')                
+                pf('s',end='')
             ld('seed found',map(hex,(self.seed,magic_lst[0x93],foo)),foo in magic_lst,i)
             self.new_seed(seed)
-            
+
         # continue with header 1
         tw=hdr1['tile_width']
         self.tile_sz=(tw,tw)
         assert tw == 64
         assert hdr1['version'] == 1
         assert hdr1['old_header_size'] == 0x436
-        
+
         # header 2
         self.seek(hdr2_ofs)
         hdr2=oziread(self.hdr2_fmt,self.hdr2_fields)
@@ -157,16 +160,16 @@ class OzfImg(object):
         assert hdr2['bpp'] == 8
         assert hdr2['depth'] == 1
 
-        # pointers to zoom level tilesets 
+        # pointers to zoom level tilesets
         self.seek(self.mmap.size()-long_size)
         zoom_lst_ofs=oziread(long_fmt)[0]
         zoom_cnt=(self.mmap.size()-zoom_lst_ofs)//long_size-1
         ld('zoom_lst_ofs',hex(zoom_lst_ofs),zoom_cnt)
         self.seek(zoom_lst_ofs)
         zoom0_ofs=oziread(long_fmt)[0]
-        ld('zoom0_ofs',hex(zoom0_ofs))       
+        ld('zoom0_ofs',hex(zoom0_ofs))
 
-        # zoom 0 level hdr, unscramble individually 
+        # zoom 0 level hdr, unscramble individually
         self.seek(zoom0_ofs)
         w,h,tiles_x,tiles_y=[oziread('<'+f)[0] for f in 'IIHH']
         ld('zoom0',w,h,tiles_x,tiles_y,tiles_x*tiles_y)
@@ -193,7 +196,7 @@ class OzfImg(object):
         self.mmap.close()
         self.f.close()
         return self.fname,self.errors
-        
+
     def tile_data(self,x,y,flip=True):
         idx=x+y*self.t_range[0]
         ofs=self.tile_ofs[idx]
@@ -207,7 +210,7 @@ class OzfImg(object):
                 logging.error(' %s: %s' % (self.fname,err_msg))
                 tx,ty=self.tile_sz
                 tile='\x00'*(tx*ty)
-            else: 
+            else:
                 ld('src tile',x,y)
                 raise exc
         #self.max_color=max(self.max_color,max(tile))
@@ -221,16 +224,16 @@ class OzfImg(object):
         src=self.mmap[self.mmap_pos:self.mmap_pos+sz]
         res=struct.unpack(fmt,self.descramble(src))
         self.mmap_pos+=sz
-        return dict(zip(fields,res)) if fields else res 
-        
+        return dict(zip(fields,res)) if fields else res
+
     def tell(self):
         return self.mmap_pos
 
     def seek(self,pos):
         self.mmap_pos=pos
-        
+
     ozfx3_key=bytearray('\x2D\x4A\x43\xF1\x27\x9B\x69\x4F\x36\x52\x87\xEC\x5F'
-                	    '\x42\x53\x22\x9E\x8B\x2D\x83\x3D\xD2\x84\xBA\xD8\x5B')
+                        '\x42\x53\x22\x9E\x8B\x2D\x83\x3D\xD2\x84\xBA\xD8\x5B')
     ozfx3_key_ln=len(ozfx3_key)
 
     def descramble(self,src,descr_len=None,seed=None):
@@ -266,7 +269,7 @@ class OzfImg(object):
 #                img.paste(tile,(x*self.tile_sz[0],y*self.tile_sz[1]))
 #        img.putpalette(self.palette)
 #        return img
- 
+
 class TiffImg(object):
     tag_map={
         'ImageWidth':                   (256, 'LONG'),      # SHORT or LONG
@@ -279,7 +282,7 @@ class TiffImg(object):
         'RowsPerStrip':                 (278, 'LONG'),      # SHORT or LONG
         'StripByteCounts':              (279, 'LONG'),      # SHORT or LONG
         'XResolution':                  (282, 'RATIONAL'),
-        'YResolution':                  (283, 'RATIONAL'),  
+        'YResolution':                  (283, 'RATIONAL'),
         'PlanarConfiguration':          (284, 'SHORT'),
         'ResolutionUnit':               (296, 'SHORT'),     # 1 or 2 or 3
         'ColorMap':                     (320, 'SHORT'),
@@ -341,8 +344,8 @@ class TiffImg(object):
         self.f.write(self.null_ptr)
 
     count=0
-    tick_rate=5000    
-    
+    tick_rate=5000
+
     def counter(self):
         self.count+=1
         if self.count % self.tick_rate == 0:
@@ -350,14 +353,14 @@ class TiffImg(object):
             return True
         else:
             return False
-            
+
 class TiledTiff(TiffImg):
 
     def __init__(self,fname,size,t_size,palette,compression):
         self.size=size
         self.t_size=t_size
         self.t_range=[(pix-1)//tsz+1 for pix,tsz in zip(size,t_size)]
-        
+
         self.fname=fname
         self.f=open(fname,'w+b')
         self.f.write(self.hdr)
@@ -409,7 +412,7 @@ class TiledTiff(TiffImg):
         for y in range(self.t_range[1]):
             for x in range(self.t_range[0]):
                 self.add_tile(get_tile(x,y))
-        
+
 def make_new_map(src,dest,map_dir):
     base,ext=os.path.splitext(src)
     img_dir,img_file=os.path.split(src)
@@ -441,7 +444,7 @@ def make_new_map(src,dest,map_dir):
         err_msg='%s: map file not found' % src
         logging.warning(err_msg)
         return None,err_msg
-        
+
 def ozf2tiff(src,dest,compression=6,ignore_decompression_errors=False):
     ozf=OzfImg(src,ignore_decompression_errors)
 
@@ -471,9 +474,9 @@ def convert(src):
         with open(ozi_file+'.errors','w+') as f:
             f.write('\n'.join(ozi_err))
         return ozi_file,ozi_err
-    else: 
+    else:
         return None
-    
+
 if __name__=='__main__':
 
     parser = OptionParser(
@@ -482,7 +485,7 @@ if __name__=='__main__':
         description='ozf2, ozfx3 files converter')
     parser.add_option("-t", "--dest-dir", dest="dest_dir", default=None,
         help='destination directory (default: source)')
-    parser.add_option("-n", "--no-map-conversion", 
+    parser.add_option("-n", "--no-map-conversion",
         action="store_true",
         help='do not convert map files')
     parser.add_option("-m", "--map-dir", default=None,
@@ -490,18 +493,18 @@ if __name__=='__main__':
     parser.add_option("-c", "--compression",
         default=6,type='int',
         help='compression level (default 6)')
-    parser.add_option("-e", "--ignore-decompression-errors", 
+    parser.add_option("-e", "--ignore-decompression-errors",
         action="store_true",
         help='do not convert map files')
-    parser.add_option("-q", "--quiet", action="store_const", 
+    parser.add_option("-q", "--quiet", action="store_const",
         const=0, default=1, dest="verbose")
-    parser.add_option("-w", "--warning", action="store_const", 
+    parser.add_option("-w", "--warning", action="store_const",
         const=2, dest="verbose")
-    parser.add_option("-d", "--debug", action="store_const", 
+    parser.add_option("-d", "--debug", action="store_const",
         const=3, dest="verbose")
 
     (options, args) = parser.parse_args()
-    
+
     logging.basicConfig(
         level={
             0: logging.ERROR,
@@ -520,7 +523,7 @@ if __name__=='__main__':
         sources=args
     except:
         raise Exception("No source specified")
-            
+
     err_lst=filter(None,parallel_map(convert,sources))
     pf('')
     if not err_lst:
