@@ -171,6 +171,7 @@ class SrcMap(object):
 
     def __init__(self,src_file,options=None):
         self.options=options
+        gdal.ErrorReset()
         gdal.UseExceptions()
 
         # load datum definitions, ellipses, projections
@@ -203,7 +204,8 @@ class SrcLayer(object):
         self.srs,self.dtm=self.get_srs()    # estimate SRS
 
     def __del__(self):
-        del self.raster_ds
+        ld('SrcLayer __del__')
+        self.raster_ds = None
 
     def get_srs(self): # redefined in reader_kml.py
         'returns srs for the map, and DTM shifts if any'
@@ -283,12 +285,13 @@ class SrcLayer(object):
             if self.name:
                 dst_ds.SetMetadataItem('DESCRIPTION',self.name.encode('utf-8'))
 
-            del dst_ds # close dataset
+            dst_ds = None # close dataset
 #            re_sub_file(dst_file, [
 #                    ('^.*<GeoTransform>.*\n',''),
 #                    ('^.*<SRS>.*\n','')
 #                    ])
         finally:
+            self.raster_ds = None
             os.chdir(start_dir)
 
         if options.get_cutline: # print cutline then return

@@ -177,6 +177,7 @@ class Pyramid(object):
         self.temp_files = []
         self.src = src
         self.dest = dest
+        ld('src dest',src, dest)
         self.options = LooseDict(options)
         if self.options.delete_src:
             self.temp_files.append(self.src)
@@ -309,6 +310,8 @@ class Pyramid(object):
         self.src_path = self.src
         if os.path.exists(self.src):
             self.src_path = os.path.abspath(self.src)
+            pf('')
+            ld('self.src_path',self.src_path, self.src)
 
         # check for source raster type
         src_ds = gdal.Open(self.src_path, GA_ReadOnly)
@@ -375,8 +378,9 @@ class Pyramid(object):
                     gcplst_txt = gcplst_templ % (gcp_proj, gcp_lst)
 
                 metadata = src_ds.GetMetadata()
+                ld('metadata', metadata)
                 if metadata:
-                    mtd_lst = [xml_txt('MDI', metadata[mdkey].encode('utf-8'), 4, key=mdkey) for mdkey in metadata]
+                    mtd_lst = [xml_txt('MDI', metadata[mdkey], 4, key=mdkey) for mdkey in metadata]
                     meta_txt = meta_templ % '\n'.join(mtd_lst)
                 else:
                     meta_txt = ''
@@ -394,6 +398,7 @@ class Pyramid(object):
                     'blxsize':  blxsize,
                     'blysize':  blysize,
                     } for band, color in ((1, 'Red'), (2, 'Green'), (3, 'Blue'))))
+
                 vrt_txt = vrt_templ % {
                     'xsize':    xsize,
                     'ysize':    ysize,
@@ -408,7 +413,7 @@ class Pyramid(object):
                 self.temp_files.append(src_vrt)
                 self.src_path = src_vrt
                 with open(src_vrt, 'w') as f:
-                    f.write(vrt_txt)
+                    f.write(vrt_txt.encode('utf-8'))
 
                 self.src_ds = gdal.Open(src_vrt, GA_ReadOnly)
                 return # rgb VRT created
@@ -678,7 +683,7 @@ class Pyramid(object):
             #ld('zoom_tiles', zoom_tiles, tile_ul, tile_lr)
 
             ntiles_x, ntiles_y = self.tiles_xy(zoom)
-            zoom_tiles_map = dict([((z, x%ntiles_x, y), (z, x, y)) for z, x, y in zoom_tiles])
+            zoom_tiles_map = dict([((z, x % ntiles_x, y), (z, x, y)) for z, x, y in zoom_tiles])
             self.tile_map.update(zoom_tiles_map)
 
         self.all_tiles = frozenset(self.tile_map) # store all tiles into a set
@@ -719,7 +724,7 @@ class Pyramid(object):
             tsz = [self.tile_dim[0], -self.tile_dim[1]] # align tiling ditrection according to the pixel direction ('y' goes downwards)
             ch_sz = [tsz[i]//dz for i in (0, 1)]        # raster offset increment
             ofs = [0 if tsz[i] > 0 else -tsz[i]+ch_sz[i] for i in (0, 1)]   # if negative -- needs to go in descending order
-            #ld('tsz, ch_sz, ofs', tsz, ch_sz, ofs)
+            #~ ld('tsz, ch_sz, ofs', tsz, ch_sz, ofs)
 
             ch_mozaic = dict(flatten(  # child tile: offsets to inside a parent tile
                 [[((ch_zoom, x*dz+dx, y*dz+dy),
@@ -730,7 +735,7 @@ class Pyramid(object):
 
             children = self.all_tiles & frozenset(ch_mozaic) # get only real children
             ch_results = filter(None, map(self.proc_tile, children))
-            #ld('tile', tile, 'children', children, 'ch_results', ch_results)
+            #~ ld('tile', tile, 'children', children, 'ch_results', ch_results)
 
             # combine into a parent tile
             if len(ch_results) == 4 and all([opacities[0][1] == 1 for img, ch, opacities in ch_results]):

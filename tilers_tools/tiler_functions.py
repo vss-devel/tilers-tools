@@ -64,22 +64,6 @@ except:
 def data_dir():
     return sys.path[0]
 
-def set_nothreads():
-    global multiprocessing
-    multiprocessing = None
-
-def parallel_map(func, iterable):
-    if multiprocessing is None or len(iterable) < 2:
-        return map(func, iterable)
-    else:
-        # map in parallel
-        mp_pool = multiprocessing.Pool() # multiprocessing pool
-        res = mp_pool.map(func, iterable)
-        # wait for threads to finish
-        mp_pool.close()
-        mp_pool.join()
-    return res
-
 def log(*parms):
     logging.debug(' '.join(itertools.imap(repr, parms)))
 
@@ -99,6 +83,25 @@ def pf(*parms, **kparms):
 
 def pf_nothing(*parms, **kparms):
     return
+
+def set_nothreads():
+    global multiprocessing
+    multiprocessing = None
+
+def parallel_map(func, iterable):
+    #~ print('parallel_map', multiprocessing)
+    #~ return map(func, iterable)
+
+    if multiprocessing is None: # or len(iterable) < 2:
+        return map(func, iterable)
+    else:
+        # map in parallel
+        mp_pool = multiprocessing.Pool() # multiprocessing pool
+        res = mp_pool.map(func, iterable)
+        # wait for threads to finish
+        mp_pool.close()
+        mp_pool.join()
+    return res
 
 def flatten(two_level_list):
     return list(itertools.chain(*two_level_list))

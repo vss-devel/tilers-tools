@@ -45,6 +45,8 @@ options = None
 def process_src(src, no_error=False, opt=None):
     global options
 
+    src = src.decode('utf-8')
+
     with open(src,'rU') as f:
         lines=[f.readline() for i in range(30)]
     for cls in reader_backend.reader_class_map:

@@ -270,16 +270,20 @@ class OziLayer(SrcLayer):
         # guess .map file encoding
         for enc in self.try_encodings:
             try:
-                if enc == 'cp1251' and any([ # ascii chars ?
-                        ((c >= '\x41') and (c <= '\x5A')) or
-                        ((c >= '\x61') and (c <= '\x7A'))
-                            for c in ozi_name]):
-                    continue # cp1251 name shouldn't have any ascii
-                ozi_name=ozi_name.decode(enc)
+                #~ if enc == 'cp1251':
+                    #~ wrong_chars = [
+                        #~ c for c in ozi_name
+                            #~ if '\x41' <= c <= '\x5A' or
+                               #~ '\x61' <= c <= '\x7A'
+                        #~ ]
+                    #~ if any(wrong_chars):
+                        #~ ld('wrong_chars', enc, wrong_chars, ozi_name)
+                        #~ continue # cp1251 name shouldn't have any ascii
+                ozi_name = ozi_name.decode(enc)
                 break
-            except:
+            except UnicodeDecodeError:
                 pass
-        ld('ozi_name',ozi_name)
+        ld('ozi_name', enc, ozi_name)
         return ozi_name
 
 # OziLayer

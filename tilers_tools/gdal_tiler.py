@@ -33,6 +33,8 @@ import tiler_misc
 
 import map2gdal
 
+#~ import rpdb2; rpdb2.start_embedded_debugger('nRAmgJHm')
+
 #----------------------------
 
 def preprocess_src(src):
@@ -59,7 +61,8 @@ def process_src(src_def):
     ext = profile.defaul_ext if opt.strip_dest_ext is None else ''
     dest = dest_path(src, opt.dest_dir, ext)
 
-    profile(src, dest, opt).walk_pyramid()
+    prm = profile(src, dest, opt)
+    prm.walk_pyramid()
 
 #----------------------------
 
