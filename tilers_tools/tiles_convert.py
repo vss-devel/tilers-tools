@@ -105,7 +105,7 @@ def main(argv):
     log(options.__dict__)
 
     if options.list_profiles:
-        list_profiles()
+        TileSet.list_profiles()
         sys.exit(0)
 
     src_lst=args
