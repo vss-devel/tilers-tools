@@ -993,52 +993,33 @@ class Pyramid(object):
         self.zoom_range = list(reversed(sorted(set(zlist))))
         ld('zoom_range', self.zoom_range, defaults)
 
-    def in_range(self, ul_coords, lr_coords=None):
-        if not ul_coords:
+    def in_range(self, ul_tile, lr_tile=None):
+        if not ul_tile:
             return False
-        zoom, ul_x, ul_y = ul_coords
+        if not lr_tile:
+             lr_tile = ul_tile
+
+        # y axis goes downwards
+        zoom, tile_xmin, tile_ymin = ul_tile
+        zoom, tile_xmax, tile_ymax = lr_tile
 
         if self.zoom_range and zoom not in self.zoom_range:
             return False
 
-        if zoom <= self.options.region_zoom:
-            return True
+        ul_zoom, lr_zoom = self.corner_tiles(zoom)
+        # y axis goes downwards
+        z, zoom_xmin, zoom_ymin = ul_zoom
+        z, zoom_xmax, zoom_ymax = lr_zoom
 
-        z_ul, z_lr = self.corner_tiles(zoom)
-        z, zoom_ul_x, zoom_ul_y = z_ul
-        z, zoom_lr_x, zoom_lr_y = z_lr
-        if not lr_coords:
-            lr_coords = ul_coords
-            return ul_x >= zoom_ul_x and ul_y >= zoom_ul_y and ul_x <= zoom_lr_x and ul_y <= zoom_lr_y
-        else:
-            z, lr_x, lr_y = lr_coords
-            # y axis goes downwards
-            log('in_range', ul_coords, lr_coords, z_ul, z_lr, ul_x > zoom_lr_x, lr_x < zoom_ul_x, ul_y > zoom_lr_x, lr_y < zoom_ul_y)
-            return not (
-                ul_x > zoom_lr_x or lr_x < zoom_ul_x or
-                ul_y > zoom_lr_x or lr_y < zoom_ul_y
-                )
+        res = not (
+            tile_xmin > zoom_xmax or tile_xmax < zoom_xmin or
+            tile_ymin > zoom_ymax or tile_ymax < zoom_ymin
+            )
 
-    #~ def in_range(self, ul_coords, lr_coords=None):
-        #~ if not ul_coords:
-            #~ return False
-        #~ zoom, ul_x, ul_y = ul_coords
-#~
-        #~ if self.zoom_range and zoom not in self.zoom_range:
-            #~ return False
-        #~ z_ul, z_lr = self.corner_tiles(zoom)
-        #~ z, zoom_ul_x, zoom_ul_y = z_ul
-        #~ z, zoom_lr_x, zoom_lr_y = z_lr
-        #~ if not lr_coords:
-            #~ return ul_x >= zoom_ul_x and ul_y >= zoom_ul_y and ul_x <= zoom_lr_x and ul_y <= zoom_lr_y
-        #~ else:
-            #~ z, lr_x, lr_y = lr_coords
-            #~ # y axis goes downwards
-            #~ log('in_range', ul_coords, lr_coords, z_ul, z_lr, ul_x > zoom_lr_x, lr_x < zoom_ul_x, ul_y > zoom_lr_x, lr_y < zoom_ul_y)
-            #~ return not (
-                    #~ ul_x > zoom_lr_x or lr_x < zoom_ul_x or
-                    #~ ul_y > zoom_lr_x or lr_y < zoom_ul_y
-                #~ )
+        #~ ld('in_range zoom', ul_zoom, lr_zoom)
+        #~ ld('in_range tile', ul_tile, lr_tile, res)
+
+        return res
 
     def set_region(self, point_lst, source_srs=None):
         if source_srs and source_srs != self.proj_srs:
