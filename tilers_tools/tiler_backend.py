@@ -28,6 +28,7 @@ import os
 import os.path
 import shutil
 import math
+import cgi
 from PIL import Image
 
 try:
@@ -391,7 +392,7 @@ class Pyramid(object):
                 band_lst = ''.join((band_templ % {
                     'band':     band,
                     'color':    color,
-                    'src':      self.src_path,
+                    'src':      cgi.escape(self.src_path, quote=True),
                     'srcband':  1,
                     'xsize':    xsize,
                     'ysize':    ysize,
@@ -604,7 +605,7 @@ class Pyramid(object):
             'blxsize':          abs(self.tile_dim[0]),
             'blysize':          abs(self.tile_dim[1]),
             'wo_ResampleAlg':   self.base_resampling,
-            'wo_src_path':      self.src_path,
+            'wo_src_path':      cgi.escape(self.src_path, quote=True),
             'warp_options':     '\n'.join(warp_options),
             'wo_src_srs':       gcp_proj if gcp_proj else src_proj,
             'wo_dst_srs':       self.proj_srs,
@@ -1056,7 +1057,7 @@ class Pyramid(object):
 
 def xml_txt(name, value=None, indent=0, **attr_dict):
     attr_txt = ''.join((' %s="%s"' % (key, attr_dict[key]) for key in attr_dict))
-    val_txt = ('>%s</%s' % (value, name)) if value else '/'
+    val_txt = ('>%s</%s' % (cgi.escape(value, quote=True), name)) if value else '/'
     return '%s<%s%s%s>' % (' '*indent, name, attr_txt, val_txt)
 
 warp_vrt = '''<VRTDataset rasterXSize="%(xsize)d" rasterYSize="%(ysize)d" subClass="VRTWarpedDataset">
