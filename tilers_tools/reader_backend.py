@@ -178,7 +178,7 @@ class SrcMap(object):
         if self.data_file:
             self.srs_defs = load_geo_defs(self.data_file)
 
-        self.file=src_file.decode(locale.getpreferredencoding(),'ignore')
+        self.file=src_file
         self.header=self.get_header()       # Read map header
 
 #    def get_layers(self):

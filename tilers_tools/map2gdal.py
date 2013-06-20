@@ -45,7 +45,7 @@ options = None
 def process_src(src, no_error=False, opt=None):
     global options
 
-    src = src.decode('utf-8')
+    src = src.decode(locale.getpreferredencoding(),'ignore')
 
     with open(src,'rU') as f:
         lines=[f.readline() for i in range(30)]
