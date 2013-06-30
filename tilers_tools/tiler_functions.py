@@ -410,7 +410,10 @@ def copy_viewer(dest):
         try:
             os.link(src, dst) # hard links as FF dereferences softlinks
         except OSError: # non POSIX or cross-device link?
-            shutil.copy(src, dst)
+            try:
+                shutil.copy(src, dst)
+            except shutil.Error:
+                pass
 
 def read_transparency(src_dir):
     try:
