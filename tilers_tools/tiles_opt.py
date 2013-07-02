@@ -95,7 +95,7 @@ class Converter (object):
 
             src_ext = os.path.splitext(f)[1].lower()
             if src_ext in self.src_formats:
-                self.convert_file(src, dst, dpath)
+                self.convert_tile(src, dst, dpath)
             else:
                 shutil.copy(src, dpath)
 
@@ -104,7 +104,7 @@ class Converter (object):
             pf('got KeyboardInterrupt')
             raise KeyboardInterruptError()
 
-    def convert_file(self, src, dst, dpath):
+    def convert_tile(self, src, dst, dpath):
         pass
 
     tick_rate = 10
@@ -141,7 +141,7 @@ class PngConverter (Converter):
     prog_name = 'pngnq'
     dst_ext = '.png'
 
-    def convert_file(self, src, dst, dpath):
+    def convert_tile(self, src, dst, dpath):
         'optimize png using pngnq utility'
         command(['pngnq', '-n', self.options.colors, '-e', self.dst_ext, '-d', dpath, src])
 
@@ -156,7 +156,7 @@ class WebpConverter (Converter):
     dst_ext = '.webp'
     src_formats = ('.png','.jpg','.jpeg','.gif')
 
-    def convert_file(self, src, dst, dpath):
+    def convert_tile(self, src, dst, dpath):
         command(['cwebp', src, '-o', dst, '-q', str(self.options.quality)])
 
 converters.append(WebpConverter)
@@ -171,7 +171,7 @@ converters.append(WebpConverter)
     #~ dst_ext = '.webp'
     #~ src_formats = ('.png','.jpg','.jpeg','.gif')
 #~
-    #~ def convert_file(self, src, dst, dpath):
+    #~ def convert_tile(self, src, dst, dpath):
         #~ img = Image.open(src)
         #~ img.save(dst, optimize=True, quality=self.options.quality)
 #~
@@ -186,7 +186,7 @@ class JpegConverter (Converter):
     profile_name = 'jpeg'
     dst_ext = '.jpg'
 
-    def convert_file(self, src, dst, dpath):
+    def convert_tile(self, src, dst, dpath):
         img = Image.open(src)
         img.save(dst, optimize=True, quality=self.options.quality)
 
