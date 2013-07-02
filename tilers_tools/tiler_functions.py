@@ -436,11 +436,14 @@ ext_map = (
     ('\xFF\xD8\xFF\xE0', '.jpg'),
     ('GIF89a', '.gif'),
     ('GIF87a', '.gif'),
+    ('RIFF', '.webp'),
     )
 
 def ext_from_buffer(buf):
     for magic, ext in ext_map:
         if buf.startswith(magic):
+            if magic == 'RIFF' and buf[8:12] != 'WEBP':
+                contnue
             return ext
     error('Cannot determing image type in a buffer: %s', buf[:20])
     raise KeyError('Cannot determing image type in a buffer')
@@ -455,6 +458,7 @@ mime_map = {
     '.gif': 'image/gif',
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
     }
 
 def mime_from_ext(ext):
