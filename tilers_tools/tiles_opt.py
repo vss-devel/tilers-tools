@@ -29,6 +29,7 @@ import shutil
 import logging
 import optparse
 from PIL import Image
+#~ from PIL import WebPImagePlugin
 
 from tiler_functions import *
 
@@ -159,6 +160,23 @@ class WebpConverter (Converter):
         command(['cwebp', src, '-o', dst, '-q', str(self.options.quality)])
 
 converters.append(WebpConverter)
+
+
+#~ #############################
+#~
+#~ class WebpPilConverter (Converter):
+    #~ 'convert to webp'
+#~ #############################
+    #~ profile_name = 'webppil'
+    #~ dst_ext = '.webp'
+    #~ src_formats = ('.png','.jpg','.jpeg','.gif')
+#~
+    #~ def convert_file(self, src, dst, dpath):
+        #~ img = Image.open(src)
+        #~ img.save(dst, optimize=True, quality=self.options.quality)
+#~
+#~ converters.append(WebpPilConverter)
+
 
 #############################
 
