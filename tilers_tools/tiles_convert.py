@@ -24,10 +24,6 @@
 ###############################################################################
 
 import sys
-#~ import os
-#~ import os.path
-#~ import glob
-#~ import shutil
 import logging
 import optparse
 
@@ -42,6 +38,7 @@ try:
 except ImportError:
     pass
 
+#~ import rpdb2; rpdb2.start_embedded_debugger('nRAmgJHm')
 
 #----------------------------
 
@@ -53,8 +50,8 @@ def convert(src_lst, options):
     out_class = TileSet.get_class(options.out_fmt, isDest=True)
 
     for src in src_lst:
-        src_tiles = in_class(src, options)
-        out_class(options=options, src=src_tiles).convert()
+        src_tile_set = in_class(src, options)
+        out_class(options=options, src=src_tile_set).convert()
 
 #----------------------------
 
@@ -71,8 +68,8 @@ def main(argv):
         help='output tiles profile (default: mmap)')
     parser.add_option('-l', '--list-profiles', action='store_true',
         help='list available profiles')
-    parser.add_option('-f', '--convert-tile', metavar='FORMAT', default='copy',
-        help='convert tile to format (default: copy)')
+    parser.add_option('-f', '--convert-tile', metavar='FORMAT',
+        help='convert tile to format (default: no conversion)')
     parser.add_option('--list-formats', action='store_true',
         help='list tile format converters')
     parser.add_option("-n", "--colors", dest="colors", default='256',
@@ -105,6 +102,8 @@ def main(argv):
         help='region to process (OGR shape or Sasplanet .hlg)')
     parser.add_option('--region-zoom', metavar='N', type="int", default=None,
         help='apply region for zooms only higher than this one (default: None)')
+    parser.add_option("--nothreads", action="store_true",
+        help="do not use multiprocessing")
 
     parser.add_option('-d', '--debug', action='store_true', dest='debug')
     parser.add_option('--quiet', action='store_true', dest='quiet')

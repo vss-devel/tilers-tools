@@ -63,7 +63,6 @@ class MapperSQLite(TileSet):
             coord = self.max_zoom+1-z, x, y
             if not self.in_range(coord):
                 continue
-            self.counter()
             yield PixBufTile(coord, str(pixbuf), (z, x, y))
 
     def store_tile(self, tile):
@@ -73,7 +72,6 @@ class MapperSQLite(TileSet):
         log('%s -> SQLite %d, %d, %d' % (tile.path, z, x, y))
         self.dbc.execute('INSERT OR REPLACE INTO maps (zoom, tilex, tiley, pixbuf) VALUES (?, ?, ?, ?);',
             (z, x, y, buffer(tile.data())))
-        self.counter()
 
 tileset_profiles.append(MapperSQLite)
 
@@ -111,7 +109,6 @@ class MapperGDBM(TileSet): # due to GDBM weirdness on ARM this only works if run
             coord = self.max_zoom+1-z, x, y
             if not self.in_range(coord):
                 continue
-            self.counter()
             yield PixBufTile(coord, self.db[key], (z, x, y))
             key = self.db.nextkey(key)
 
@@ -122,7 +119,6 @@ class MapperGDBM(TileSet): # due to GDBM weirdness on ARM this only works if run
         log('%s -> GDBM %d, %d, %d' % (tile.path, z, x, y))
         key = self.key.pack(z, x, y)
         self.db[key] = tile.data()
-        self.counter()
 
 tileset_profiles.append(MapperGDBM)
 # MapperGDBM

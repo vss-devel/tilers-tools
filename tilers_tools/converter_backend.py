@@ -30,6 +30,8 @@ import shutil
 import json
 import tempfile
 import StringIO
+from multiprocessing import Pool
+import itertools
 
 from PIL import Image
 #~ from PIL import WebPImagePlugin
@@ -51,8 +53,9 @@ class Tile(object):
     def get_mime(self):
         return mime_from_ext(self.get_ext())
 
-    def __del__(self):
-        if self.temp and self.path:
+    def close(self):
+        if self.temp and self.path and os.path.exists(self.path):
+            log('tile', self.coord())
             os.remove(self.path)
 
 #############################
@@ -203,7 +206,7 @@ class PngConverter (ShellConverter):
 
     def call_converter(self, src, dst, suffix):
 
-        command(['pngnq', '-n', self.options.colors, '-e', suffix, '-d', self.dst_dir, src])
+        command(['pngnq', '-f', '-n', self.options.colors, '-e', suffix, '-d', self.dst_dir, src])
 
 tile_converters.append(PngConverter)
 
@@ -266,11 +269,22 @@ tile_converters.append(JpegConverter)
 
 tileset_profiles = []
 
+tile_converter = None
+
+def global_converter(tile):
+    #~ log('tile', tile.coord())
+    tile = tile_converter(tile)
+    return tile
+
 #############################
 
 class TileSet(object):
 
 #############################
+
+    #~ tile_converter = None
+    pool = None
+
     def __init__(self, root=None, options=None, src=None):
         options = LooseDict(options)
         options.isDest = src is not None
@@ -278,8 +292,6 @@ class TileSet(object):
         self.root = root
         self.options = options
         self.src = src
-
-        self.tile_converter = TileConverter.get_class(self.options.convert_tile)(options)
 
         self.srs = self.options.proj4def or self.options.tiles_srs
         self.tilemap_crs = self.options.tiles_srs or self.tilemap_crs
@@ -315,6 +327,12 @@ class TileSet(object):
                 else:
                     assert self.options.append, 'Destination already exists: %s' % root
 
+            if self.options.convert_tile:
+                global tile_converter
+                tile_converter = TileConverter.get_class(self.options.convert_tile)(options)
+                if not self.options.nothreads:
+                    self.pool = Pool()
+
     @staticmethod
     def get_class(profile, isDest=False):
         for cls in tileset_profiles:
@@ -344,11 +362,25 @@ class TileSet(object):
         log('self.count', self.count)
 
     def __iter__(self): # to be defined by a child
-        raise Exception('Unimplemented!')
+        raise Exception('Not implemented!')
 
     def convert(self):
         pf('%s -> %s ' % (self.src.root, self.root), end='')
-        map(self.process_tile, self.src)
+
+        if self.pool:
+            src = self.pool.imap_unordered(global_converter, self.src, chunksize=10)
+        elif self.options.convert_tile:
+            src = itertools.imap(global_converter, self.src)
+        else:
+            src = self.src
+
+        for tile in src:
+            self.process_tile(tile)
+
+        if self.pool:
+            self.pool.close()
+            self.pool.join()
+
         if self.count > 0:
             self.finalize_pyramid()
             self.finalize_tileset()
@@ -356,10 +388,10 @@ class TileSet(object):
             pf('No tiles converted', end='')
         pf('')
 
-    def process_tile(self, src_tile):
-        #log('process_tile', tile)
-        tile = self.tile_converter(src_tile)
+    def process_tile(self, tile):
+        log('process_tile', tile)
         self.store_tile(tile)
+        self.counter()
 
         # collect min max values for tiles processed
         zxy = list(tile.coord())
@@ -368,6 +400,7 @@ class TileSet(object):
         min_max = self.zoom_levels.get(z, []) # min, max
         zzz, xxx, yyy = zip(*(min_max+[zxy]))
         self.zoom_levels[z] = [[z, min(xxx), min(yyy)], [z, max(xxx), max(yyy)]]
+        tile.close()
 
     def finalize_pyramid(self):
         log('self.zoom_levels', self.zoom_levels)
@@ -395,9 +428,9 @@ class TileSet(object):
         pass
 
     count = 0
-    tick_rate = 100
+    tick_rate = 10
     def counter(self):
-        self.count+=1
+        self.count += 1
         if self.count % self.tick_rate == 0:
             pf('.', end='')
             return True
@@ -426,7 +459,6 @@ class TileDir(TileSet):
             coord = self.path2coord(f)
             if not self.in_range(coord):
                 continue
-            self.counter()
             yield self.tile_class(coord, f)
 
     def path2coord(self, tile_path):
@@ -450,7 +482,6 @@ class TileDir(TileSet):
             os.makedirs(os.path.split(dest_path)[0])
         except os.error: pass
         tile.copy2file(dest_path, self.options.link)
-        self.counter()
 # TileDir
 
 #############################

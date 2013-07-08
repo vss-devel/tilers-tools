@@ -73,7 +73,6 @@ class SASBerkeley(TileDir):
             log('db_file', db_file)
             for coord, tile, path in self.iter_tiles(db_file):
                 #~ log('db tile', coord, tile[:20], path)
-                self.counter()
                 yield PixBufTile(coord, tile, path)
 
     def iter_tiles(self, db_path):
