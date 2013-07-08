@@ -37,7 +37,11 @@ from converter_backend import TileSet
 import converter_xyz
 import converter_maemomapper
 import converter_sasplanet
-import converter_mmap
+try:
+    import converter_mmap
+except ImportError:
+    pass
+
 
 #----------------------------
 
