@@ -28,7 +28,11 @@ import os.path
 import glob
 import shutil
 import json
-from struct import Struct
+import tempfile
+import StringIO
+
+from PIL import Image
+#~ from PIL import WebPImagePlugin
 
 from tiler_functions import *
 from gdal_tiler import Pyramid
@@ -39,7 +43,7 @@ class Tile(object):
 
 #############################
     def __init__(self, coord):
-        self._coord = coord
+        self._coord = tuple(coord)
 
     def coord(self):
         return self._coord
@@ -47,14 +51,19 @@ class Tile(object):
     def get_mime(self):
         return mime_from_ext(self.get_ext())
 
+    def __del__(self):
+        if self.temp and self.path:
+            os.remove(self.path)
+
 #############################
 
 class FileTile(Tile):
 
 #############################
-    def __init__(self, coord, path):
+    def __init__(self, coord, path, temp=False):
         super(FileTile, self).__init__(coord)
         self.path = path
+        self.temp = temp
 
     def data(self):
         return open(self.path, 'rb').read()
@@ -70,6 +79,9 @@ class FileTile(Tile):
         else:
             shutil.copy(self.path, dst)
 
+    def get_file(self):
+        return self.path
+
 #############################
 
 class FileTileNoExt(FileTile):
@@ -83,10 +95,11 @@ class FileTileNoExt(FileTile):
 class PixBufTile(Tile):
 
 #############################
-    def __init__(self, coord, pixbuf, key):
+    def __init__(self, coord, pixbuf, key=None):
         super(PixBufTile, self).__init__(coord)
         self.pixbuf = pixbuf
-        self.path = repr(key) # only for debugging
+        self.path = None
+        self.temp = True
 
     def data(self):
         return self.pixbuf
@@ -100,9 +113,158 @@ class PixBufTile(Tile):
         return ext
 
     def copy2file(self, dest_path, link=False):
-        open(dest_path, 'wb').write(self.pixbuf)
+        with open(dest_path, 'wb') as f:
+            f.write(self.pixbuf)
 
-tile_profiles = []
+    def get_file(self):
+        f, self.path = tempfile.mkstemp(prefix='s%d-%d-%d' % self.get_coord(), suffix=self.get_ext(self))
+        f.write(self.pixbuf)
+        f.close()
+
+#----------------------------
+
+tile_converters = []
+
+#############################
+
+class TileConverter(object):
+
+#############################
+    profile_name = 'copy'
+    dst_ext = None
+    src_formats = () # by default do not convert tiles
+
+    def __init__(self, options):
+        self.options = options
+
+
+    def __call__(self, tile):
+        'convert tile'
+        if tile.get_ext() in self.src_formats:
+            return self.convert_tile(tile)
+        else:
+            return tile # w/o conversion
+
+    @staticmethod
+    def get_class(profile, isDest=False):
+        for cls in tile_converters:
+            if profile == cls.profile_name:
+                return cls
+        else:
+            raise Exception('Invalid format: %s' % profile)
+
+    @staticmethod
+    def list_tile_converters():
+        for cls in tile_converters:
+            print cls.profile_name
+
+tile_converters.append(TileConverter)
+
+#############################
+
+class ShellConverter (TileConverter):
+
+#############################
+    prog_name = None
+
+    def __init__(self, options):
+        super(ShellConverter, self).__init__(options)
+        self.dst_dir = tempfile.gettempdir()
+
+        if self.prog_name:
+            try: # check if converter programme is available
+                prog_path = command(['which', self.prog_name]).strip()
+            except:
+                raise Exception('Can not find %s executable' % self.prog_name)
+
+    def convert_tile(self, tile):
+
+        src = tile.get_file()
+        base_name = os.path.splitext(os.path.split(src)[1])[0]
+        dst_dir = tempfile.gettempdir()
+        coord = tile.coord()
+        suffix = ('-%d-%d-%d' % coord) + self.dst_ext
+        dst = os.path.join(dst_dir, base_name + suffix)
+
+        self.call_converter(src, dst, suffix)
+
+        dtile = FileTile(coord, dst, temp=True)
+        return dtile
+
+#############################
+
+class PngConverter (ShellConverter):
+    'optimize png using pngnq utility'
+#############################
+    profile_name = 'pngnq'
+    prog_name = 'pngnq'
+    dst_ext = '-nq8.png'
+    src_formats = ('.png',)
+
+    def call_converter(self, src, dst, suffix):
+
+        command(['pngnq', '-n', self.options.colors, '-e', suffix, '-d', self.dst_dir, src])
+
+tile_converters.append(PngConverter)
+
+#############################
+
+class WebpConverter (ShellConverter):
+    'convert to webp'
+#############################
+    profile_name = 'webp'
+    dst_ext = '.webp'
+    src_formats = ('.png','.jpg','.jpeg','.gif')
+
+    def call_converter(self, src, dst, suffix):
+
+        command(['cwebp', src, '-o', dst, '-q', str(self.options.quality)])
+
+tile_converters.append(WebpConverter)
+
+
+#~ #############################
+#~
+#~ class WebpPilConverter (TileConverter):
+    #~ 'convert to webp'
+#~ #############################
+    #~ profile_name = 'webppil'
+    #~ dst_ext = '.webp'
+    #~ src_formats = ('.png','.jpg','.jpeg','.gif')
+#~
+    #~ def convert_tile(self, src, dst, dpath):
+        #~ img = Image.open(src)
+        #~ img.save(dst, optimize=True, quality=self.options.quality)
+#~
+#~ tile_converters.append(WebpPilConverter)
+
+
+#############################
+
+class JpegConverter (TileConverter):
+    'convert to jpeg'
+#############################
+    profile_name = 'jpeg'
+    dst_ext = '.jpg'
+    src_formats = ('.png', '.gif')
+
+    def convert_tile(self, tile):
+        src = StringIO.StringIO(tile.data())
+        img = Image.open(src)
+        dst = StringIO.StringIO()
+        img.save(dst, 'jpeg', optimize=True, quality=self.options.quality)
+
+        dtile = PixBufTile(tile.coord(), dst.getvalue())
+        src.close()
+        dst.close()
+
+        return dtile
+
+tile_converters.append(JpegConverter)
+
+#----------------------------
+
+tileset_profiles = []
 
 #############################
 
@@ -111,11 +273,13 @@ class TileSet(object):
 #############################
     def __init__(self, root=None, options=None, src=None):
         options = LooseDict(options)
-        options.write = src
+        options.isDest = src is not None
 
         self.root = root
         self.options = options
         self.src = src
+
+        self.tile_converter = TileConverter.get_class(self.options.convert_tile)(options)
 
         self.srs = self.options.proj4def or self.options.tiles_srs
         self.tilemap_crs = self.options.tiles_srs or self.tilemap_crs
@@ -124,8 +288,9 @@ class TileSet(object):
         self.zoom_levels = {}
         self.pyramid = Pyramid.profile_class('generic')(options=options)
 
-        if not self.options.write:
+        if not self.options.isDest:
             assert os.path.exists(root), 'No file or directory found: %s' % root
+            self.ext = os.path.splitext(root)[1]
             if self.options.zoom:
                 self.pyramid.set_zoom_range(self.options.zoom)
             if self.options.region:
@@ -138,7 +303,8 @@ class TileSet(object):
             self.name = self.options.name or df_name
 
             if not self.root:
-                self.root = os.path.join(options.dst_dir, self.name + self.ext)
+                suffix = self.ext if self.ext != src.ext else self.ext + '0'
+                self.root = os.path.join(options.dst_dir, self.name + suffix)
 
             if os.path.exists(self.root):
                 if self.options.remove_dest:
@@ -150,16 +316,16 @@ class TileSet(object):
                     assert self.options.append, 'Destination already exists: %s' % root
 
     @staticmethod
-    def get_class(profile, write=False):
-        for cls in tile_profiles:
-            if profile == cls.format and ((not write and cls.input) or (write and cls.output)):
+    def get_class(profile, isDest=False):
+        for cls in tileset_profiles:
+            if profile == cls.format and ((not isDest and cls.input) or (isDest and cls.output)):
                 return cls
         else:
             raise Exception('Invalid format: %s' % profile)
 
     @staticmethod
     def list_profiles():
-        for cl in tile_profiles:
+        for cl in tileset_profiles:
             print '%10s\t%s%s\t%s' % (
                 cl.format,
                 'r' if cl.input else ' ',
@@ -190,8 +356,9 @@ class TileSet(object):
             pf('No tiles converted', end='')
         pf('')
 
-    def process_tile(self, tile):
+    def process_tile(self, src_tile):
         #log('process_tile', tile)
+        tile = self.tile_converter(src_tile)
         self.store_tile(tile)
 
         # collect min max values for tiles processed
@@ -249,7 +416,7 @@ class TileDir(TileSet):
     def __init__(self, *args, **kw_args):
         super(TileDir, self).__init__(*args, **kw_args)
 
-        if self.options.write:
+        if self.options.isDest:
             try:
                 os.makedirs(self.root)
             except os.error: pass

@@ -45,8 +45,8 @@ def convert(src_lst, options):
 
 #----------------------------
 
-    in_class = TileSet.get_class(options.in_fmt, write=False)
-    out_class = TileSet.get_class(options.out_fmt, write=True)
+    in_class = TileSet.get_class(options.in_fmt, isDest=False)
+    out_class = TileSet.get_class(options.out_fmt, isDest=True)
 
     for src in src_lst:
         src_tiles = in_class(src, options)
@@ -65,8 +65,16 @@ def main(argv):
         help='input tiles profile (default: zyx)')
     parser.add_option('--to', dest='out_fmt', default='mmap',
         help='output tiles profile (default: mmap)')
-    parser.add_option('-l', '--profiles', action='store_true', dest='list_profiles',
+    parser.add_option('-l', '--list-profiles', action='store_true',
         help='list available profiles')
+    parser.add_option('-f', '--convert-tile', metavar='FORMAT', default='copy',
+        help='convert tile to format (default: copy)')
+    parser.add_option('--list-formats', action='store_true',
+        help='list tile format converters')
+    parser.add_option("-n", "--colors", dest="colors", default='256',
+        help='Specifies  the  number  of colors for pngnq profile (default: 256)')
+    parser.add_option("-q", "--quality", dest="quality", type="int", default=75,
+        help='JPEG/WEBP quality (default: 75)')
     parser.add_option('-a', '--append', action='store_true', dest='append',
         help='append tiles to an existing destination')
     parser.add_option('-r', '--remove-dest', action='store_true',dest='remove_dest',
@@ -95,7 +103,7 @@ def main(argv):
         help='apply region for zooms only higher than this one (default: None)')
 
     parser.add_option('-d', '--debug', action='store_true', dest='debug')
-    parser.add_option('-q', '--quiet', action='store_true', dest='quiet')
+    parser.add_option('--quiet', action='store_true', dest='quiet')
 
     #~ global options
     (options, args) = parser.parse_args(argv[1:])

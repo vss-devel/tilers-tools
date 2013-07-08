@@ -40,7 +40,7 @@ class TMStiles(TileMapDir): # see TileMap Diagram at http://wiki.osgeo.org/wiki/
     def coord2path(self, z, x, y):
         return '%d/%d/%d' % (z, x, 2**z-y-1)
 
-tile_profiles.append(TMStiles)
+tileset_profiles.append(TMStiles)
 
 #############################
 
@@ -56,7 +56,7 @@ class XYZtiles(TileMapDir): # http://code.google.com/apis/maps/documentation/jav
     def coord2path(self, z, x, y):
         return '%d/%d/%d' % (z, x, y)
 
-tile_profiles.append(XYZtiles)
+tileset_profiles.append(XYZtiles)
 
 #############################
 
@@ -73,7 +73,7 @@ class ZYXtiles(TileMapDir):
     def coord2path(self, z, x, y):
         return 'z%d/%d/%d' % (z, y, x)
 
-tile_profiles.append(ZYXtiles)
+tileset_profiles.append(ZYXtiles)
 
 #############################
 
@@ -94,4 +94,4 @@ class MapNav(TileDir): # http://mapnav.spb.ru/site/e107_plugins/forum/forum_view
     def coord2path(self, z, x, y):
         return 'Z%d/%d/%d' % (z, y, x)
 
-tile_profiles.append(MapNav)
+tileset_profiles.append(MapNav)
