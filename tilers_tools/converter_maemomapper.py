@@ -40,7 +40,7 @@ class MapperSQLite(TileSet):
 
         self.db = sqlite3.connect(self.root)
         self.dbc = self.db.cursor()
-        if self.options.write:
+        if self.options.isDest:
             try:
                 self.dbc.execute (
                     'CREATE TABLE maps ('
