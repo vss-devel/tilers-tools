@@ -317,21 +317,28 @@ def shape2mpointlst(datasource, dst_srs, feature_name=None):
         ld('shape2mpointlst: Invalid datasource %s' % datasource)
         return []
 
-    layer = ds.GetLayer()
-    n_features = layer.GetFeatureCount()
+    n_layers = ds.GetLayerCount()
+    for j in range(n_layers):
+        layer = ds.GetLayer(j)
+        n_features = layer.GetFeatureCount()
+        #~ ld('shape2mpointlst layer', j, n_layers, n_features, layer)
 
-    if feature_name is None or n_features == -1:
-        feature = layer.GetFeature(0)
-    else: # Try to find a feature with the same name as feature_name otherwise return
-        for i in range(n_features-1, -1, -1):
-            feature = layer.GetFeature(i)
+        for i in range(n_features):
+            feature = layer.GetNextFeature()
+            if feature_name is None:
+                break
+
             i_name = feature.GetFieldIndex('Name')
+            #~ ld('shape2mpointlst', i_name, feature.GetFieldAsString(i_name))
             if i_name != -1 and feature.GetFieldAsString(i_name).decode('utf-8') == feature_name:
                 ld('feature', feature_name)
                 break
-            feature.Destroy()
         else:
-            return []
+            feature = None
+        if feature is not None:
+            break
+    else:
+        return []
 
     geom = feature.GetGeometryRef()
     geom_name = geom.GetGeometryName()
