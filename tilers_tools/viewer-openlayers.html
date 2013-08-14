@@ -1,6 +1,5 @@
-<?xml version="1.0" encoding="iso-8859-1"?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="EN">
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML Basic 1.1//EN" "http://www.w3.org/TR/xhtml-basic/xhtml-basic11.dtd">
+<!--  -*- coding: utf-8 -*- -->
     <head>
 <!--
 ###############################################################################
@@ -295,6 +294,52 @@
 //        var mapProjection = "EPSG:3857";
         log('OpenLayers.VERSION_NUMBER',OpenLayers.VERSION_NUMBER);
 
+        parseInt = function () {
+            // parseInt 'fix' for OpenLayers to handle div.style. values properly
+            var old_parseInt = parseInt
+            return function(s) {
+                if (s == '')
+                    return 0
+                else
+                    return old_parseInt(s)
+            }
+        }()
+
+        TilesetXYZ = OpenLayers.Class(OpenLayers.Layer.XYZ, {
+
+            setMap: function(map) {
+                OpenLayers.Layer.XYZ.prototype.setMap.call(this, map)
+                this.serverResolutions = this.resolutions
+            },
+
+            getServerResolution: function(resolution) {
+                resolution = resolution || this.map.getResolution();
+                if (! this.serverResolutions ||
+                        OpenLayers.Util.indexOf(this.serverResolutions, resolution) !== -1)
+                    return resolution
+
+                var serverResolution = null;
+                for (var i = this.serverResolutions.length - 1; i >= 0; i--) {
+                    serverResolution = this.serverResolutions[i];
+                    if (serverResolution >= resolution) {
+                        break;
+                    }
+                }
+
+                higherResolution = this.serverResolutions[i+1]
+                if (serverResolution == null ||
+                        resolution - higherResolution < serverResolution - resolution) {
+
+                    serverResolution = higherResolution
+                }
+                //~ if (serverResolution === null)
+                    //~ throw 'no appropriate resolution in serverResolutions';
+
+                return serverResolution
+            },
+
+        })
+
         function initialize_openlayers() {
             var map = new OpenLayers.Map('map', {
 //                  projection: new OpenLayers.Projection("EPSG:900913"), //mapProjection,
@@ -341,40 +386,9 @@
                     tilemap.tiles.size[1]
                 ),
                 //resolutions: layer_resolutions,
-
-                setMap: function(map) {
-                    OpenLayers.Layer.XYZ.prototype.setMap.call(this, map)
-                    this.serverResolutions = this.resolutions
-                },
-
-                getServerResolution: function(resolution) {
-                    resolution = resolution || this.map.getResolution();
-                    if (! this.serverResolutions ||
-                            OpenLayers.Util.indexOf(this.serverResolutions, resolution) !== -1)
-                        return resolution
-
-                    var serverResolution = null;
-                    for (var i = this.serverResolutions.length - 1; i >= 0; i--) {
-                        serverResolution = this.serverResolutions[i];
-                        if (serverResolution >= resolution) {
-                            break;
-                        }
-                    }
-
-                    higherResolution = this.serverResolutions[i+1]
-                    if (serverResolution == null ||
-                            resolution - higherResolution < serverResolution - resolution) {
-
-                        serverResolution = higherResolution
-                    }
-                    //~ if (serverResolution === null)
-                        //~ throw 'no appropriate resolution in serverResolutions';
-
-                    return serverResolution
-                },
             }
 
-            var tileset_overlay = new OpenLayers.Layer.XYZ(
+            var tileset_overlay = new TilesetXYZ(
                 tilemap.properties.title,
                 "z${z}/${y}/${x}." + tilemap.tiles.ext,
                 tileset_options
