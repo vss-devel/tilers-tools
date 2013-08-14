@@ -251,9 +251,9 @@ class SrcLayer(object):
             name_patt=self.map.file
         else:
             name_patt=self.img_file
-        base=dst_path(name_patt,options.dst_dir)
+        base = dst_path(name_patt, options.dst_dir)
         if options.long_name:
-            base+=' - ' +  "".join([c for c in self.name
+            base += ' - ' +  "".join([c for c in self.name
                                 if c .isalpha() or c.isdigit() or c in '-_.() '])
         dst_dir=os.path.split(base)[0]
         out_format='VRT'

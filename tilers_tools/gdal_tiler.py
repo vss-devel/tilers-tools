@@ -130,6 +130,10 @@ def parse_args(arg_lst):
         const=2, dest="verbose")
     parser.add_option("-l", "--long-name", action="store_true",
         help='give an output file a long name')
+    parser.add_option("-n", "--after-name", action="store_true",
+        help='give an output file name after a map name (from metadata)')
+    parser.add_option("-m", "--after-map", action="store_true",
+        help='give an output file name  after name of a map file, otherwise after a name of an image file')
 
     return parser.parse_args(arg_lst)
 
