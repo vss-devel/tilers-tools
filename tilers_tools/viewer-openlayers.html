@@ -70,6 +70,68 @@
         </style>
 
         <script  type="text/javascript">
+            OpenLayers.Util.extend( OpenLayers.INCHES_PER_UNIT, {
+                "NM": OpenLayers.INCHES_PER_UNIT["nmi"],
+                "cbl": OpenLayers.INCHES_PER_UNIT["nmi"]/10,
+            });
+
+    //        Proj4js.defs["EPSG:3857"]="+title=GoogleMercator +proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs";
+
+    //        var mapProjection = "EPSG:3857";
+            log('OpenLayers.VERSION_NUMBER',OpenLayers.VERSION_NUMBER);
+
+            TilesetXYZ = OpenLayers.Class(OpenLayers.Layer.XYZ, {
+
+                setMap: function(map) {
+                    OpenLayers.Layer.XYZ.prototype.setMap.call(this, map)
+                    this.serverResolutions = this.resolutions
+                },
+
+                getServerResolution: function(resolution) {
+                    resolution = resolution || this.map.getResolution();
+                    if (! this.serverResolutions ||
+                            OpenLayers.Util.indexOf(this.serverResolutions, resolution) !== -1)
+                        return resolution
+
+                    var serverResolution = null;
+                    for (var i = this.serverResolutions.length - 1; i >= 0; i--) {
+                        serverResolution = this.serverResolutions[i];
+                        if (serverResolution >= resolution) {
+                            break;
+                        }
+                    }
+
+                    higherResolution = this.serverResolutions[i+1]
+                    if (serverResolution == null ||
+                            resolution - higherResolution < serverResolution - resolution) {
+
+                        serverResolution = higherResolution
+                    }
+                    //~ if (serverResolution === null)
+                        //~ throw 'no appropriate resolution in serverResolutions';
+
+                    return serverResolution
+                },
+
+                transformDiv: function(scale) {
+
+                    // scale the layer div
+
+                    this.div.style.width = Math.round(100 * scale) + '%';
+                    this.div.style.height = Math.round(100 * scale) + '%';
+
+                    // and translate the layer div as necessary
+
+                    var size = this.map.getSize();
+                    var lcX = parseInt(this.map.layerContainerDiv.style.left, 10);
+                    var lcY = parseInt(this.map.layerContainerDiv.style.top, 10);
+                    var x = (lcX - (size.w / 2.0)) * (scale - 1);
+                    var y = (lcY - (size.h / 2.0)) * (scale - 1);
+
+                    this.div.style.left = Math.round(x) + '%';
+                    this.div.style.top = Math.round(y) + '%';
+                },
+            })
 
             OpenLayers.Control.ClickBar = OpenLayers.Class(OpenLayers.Control, {
 
@@ -192,9 +254,6 @@
                 CLASS_NAME: "OpenLayers.Control.ClickBar"
             });
         // OpenLayers.Control.ClickBar
-        </script>
-
-        <script type="text/javascript">
 
         function error(msg) {
             alert(msg);
@@ -283,62 +342,6 @@
 
             return tilemap;
         }
-
-        OpenLayers.Util.extend( OpenLayers.INCHES_PER_UNIT, {
-            "NM": OpenLayers.INCHES_PER_UNIT["nmi"],
-            "cbl": OpenLayers.INCHES_PER_UNIT["nmi"]/10,
-        });
-
-//        Proj4js.defs["EPSG:3857"]="+title=GoogleMercator +proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +no_defs";
-
-//        var mapProjection = "EPSG:3857";
-        log('OpenLayers.VERSION_NUMBER',OpenLayers.VERSION_NUMBER);
-
-        parseInt = function () {
-            // parseInt 'fix' for OpenLayers to handle div.style. values properly
-            var old_parseInt = parseInt
-            return function(s) {
-                if (s == '')
-                    return 0
-                else
-                    return old_parseInt(s)
-            }
-        }()
-
-        TilesetXYZ = OpenLayers.Class(OpenLayers.Layer.XYZ, {
-
-            setMap: function(map) {
-                OpenLayers.Layer.XYZ.prototype.setMap.call(this, map)
-                this.serverResolutions = this.resolutions
-            },
-
-            getServerResolution: function(resolution) {
-                resolution = resolution || this.map.getResolution();
-                if (! this.serverResolutions ||
-                        OpenLayers.Util.indexOf(this.serverResolutions, resolution) !== -1)
-                    return resolution
-
-                var serverResolution = null;
-                for (var i = this.serverResolutions.length - 1; i >= 0; i--) {
-                    serverResolution = this.serverResolutions[i];
-                    if (serverResolution >= resolution) {
-                        break;
-                    }
-                }
-
-                higherResolution = this.serverResolutions[i+1]
-                if (serverResolution == null ||
-                        resolution - higherResolution < serverResolution - resolution) {
-
-                    serverResolution = higherResolution
-                }
-                //~ if (serverResolution === null)
-                    //~ throw 'no appropriate resolution in serverResolutions';
-
-                return serverResolution
-            },
-
-        })
 
         function initialize_openlayers() {
             var map = new OpenLayers.Map('map', {
