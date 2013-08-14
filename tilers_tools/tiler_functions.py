@@ -325,50 +325,58 @@ def shape2mpointlst(datasource, dst_srs, feature_name=None):
 
         for i in range(n_features):
             feature = layer.GetNextFeature()
-            if feature_name is None:
-                break
 
+            #~ fc = feature.GetFieldCount()
+            #~ for l in range(fc):
+                #~ fdef = feature.GetFieldDefnRef(l)
+                #~ ld(l, fdef.GetNameRef(), feature.GetFieldAsString(l))
+
+            i_icon = feature.GetFieldIndex('icon')
+            if i_icon == -1:
+                continue
+            icon = feature.GetFieldAsString(i_icon)
+            if icon != '':
+                continue
             i_name = feature.GetFieldIndex('Name')
-            #~ ld('shape2mpointlst', i_name, feature.GetFieldAsString(i_name))
-            if i_name != -1 and feature.GetFieldAsString(i_name).decode('utf-8') == feature_name:
-                ld('feature', feature_name)
-                break
-        else:
-            feature = None
-        if feature is not None:
-            break
-    else:
-        return []
+            if i_name == -1:
+                continue
+            name = feature.GetFieldAsString(i_name).decode('utf-8')
+            #~ ld('shape2mpointlst', name, feature_name)
 
-    geom = feature.GetGeometryRef()
-    geom_name = geom.GetGeometryName()
-    geom_lst = {
-        'MULTIPOLYGON':(geom.GetGeometryRef(i) for i in range(geom.GetGeometryCount())),
-        'POLYGON': (geom, ),
-        }[geom_name]
+            if feature_name is None or name == feature_name:
+                ld('shape2mpointlst', name)
+                #~ feature.DumpReadable()
 
-    layer_srs = layer.GetSpatialRef()
-    if layer_srs:
-        layer_proj = layer_srs.ExportToProj4()
-    else:
-        layer_proj = dst_srs
-    srs_tr = GdalTransformer(SRC_SRS=layer_proj, DST_SRS=dst_srs)
-    if layer_proj == dst_srs:
-        srs_tr.transform = lambda x:x
+                geom = feature.GetGeometryRef()
+                geom_name = geom.GetGeometryName()
+                geom_lst = {
+                    'MULTIPOLYGON':(geom.GetGeometryRef(i) for i in range(geom.GetGeometryCount())),
+                    'POLYGON': (geom, ),
+                    }[geom_name]
 
-    multipoint_lst = []
-    for geometry in geom_lst:
-        assert geometry.GetGeometryName() == 'POLYGON'
-        for ln in (geometry.GetGeometryRef(j) for j in range(geometry.GetGeometryCount())):
-            assert ln.GetGeometryName() == 'LINEARRING'
-            src_points = [ln.GetPoint(n) for n in range(ln.GetPointCount())]
-            dst_points = srs_tr.transform(src_points)
-            #~ ld(src_points)
-            multipoint_lst.append(dst_points)
-    ld('mpointlst', layer_proj, dst_srs, multipoint_lst)
+                layer_srs = layer.GetSpatialRef()
+                if layer_srs:
+                    layer_proj = layer_srs.ExportToProj4()
+                else:
+                    layer_proj = dst_srs
+                srs_tr = GdalTransformer(SRC_SRS=layer_proj, DST_SRS=dst_srs)
+                if layer_proj == dst_srs:
+                    srs_tr.transform = lambda x:x
 
-    feature.Destroy()
-    return multipoint_lst
+                multipoint_lst = []
+                for geometry in geom_lst:
+                    assert geometry.GetGeometryName() == 'POLYGON'
+                    for ln in (geometry.GetGeometryRef(j) for j in range(geometry.GetGeometryCount())):
+                        assert ln.GetGeometryName() == 'LINEARRING'
+                        src_points = [ln.GetPoint(n) for n in range(ln.GetPointCount())]
+                        dst_points = srs_tr.transform(src_points)
+                        #~ ld(src_points)
+                        multipoint_lst.append(dst_points)
+                ld('mpointlst', layer_proj, dst_srs, multipoint_lst)
+
+                feature.Destroy()
+                return multipoint_lst
+    return []
 
 def shape2cutline(cutline_ds, raster_ds, feature_name=None):
     mpoly = []
