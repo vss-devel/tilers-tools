@@ -29,8 +29,11 @@ datum_guess, "Croatia",            "+ellps=bessel +towgs84=550.499,164.116,475.1
 #header,Projection,PROJ4 definition, BSB KNP/ projection parameters; KNQ/ extra projection parameters for BSB v. 3.xx
 proj, MERCATOR,              "+proj=merc",PP:lat_ts,
 proj, TRANSVERSE MERCATOR,   "+proj=tmerc",PP:lon_0,P1:lat_0,P2:k,P3:y_0,P4:x_0,"KNQ:P1:lon_0,P2:k,P3:lat_0", # KNQ P3 - guess
+proj, UNIVERSAL TRANSVERSE MERCATOR, "+proj=tmerc +k=0.9996",PP:lon_0,
 proj, GNOMONIC,              "+proj=gnom",PP:lon_0,P1:lat_0,
 proj, POLYCONIC,             "+proj=poly",PP:lon_0,"KNQ:P1:lon_0,P2:lat_0", # KNQ P2 - guess
 proj, SWEDISH GRID,          "+proj=tmerc +lon_0=15.808277777778 +x_0=1500000 +y_0=0",
-proj, LAMBERT CONFORMAL CONIC,"+proj=lcc",PP:lon_0,"KNQ:P1:lon_0,P2:lat_1,P3:lat_2",
-proj, UNIVERSAL TRANSVERSE MERCATOR, "+proj=tmerc +k=0.9996",PP:lon_0,
+proj, LAMBERT CONFORMAL CONIC, "+proj=lcc",PP:lon_0,"KNQ:P1:lon_0,P2:lat_1,P3:lat_2",
+proj, LAMBERT AZIMUTHAL SPHERICAL, "+proj=laea",PP:lon_0,P1:lat_0,
+#proj, ALBERS SPHERICAL, "+proj=aea",PP:lon_0,P1:lat_0,P5:lat_1,P6:lat_2,
+#proj, WAGNER IV, "+proj=wag4",PP:lon_0,

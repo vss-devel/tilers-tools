@@ -460,7 +460,7 @@ class Pyramid(object):
             left_lon = self.proj2geog.transform_point(tile_left_xy)[0]
         lon_0 = left_lon + 180
         ld('left_lon', left_lon, 'lon_0', lon_0)
-        new_srs = '%s +lon_0=%d' % (self.proj_srs, lon_0)
+        new_srs = '%s +lon_0=%f' % (self.proj_srs, lon_0)
         if not (lr[0] <= 180 and ul[0] >= -180):
             new_srs += ' +over +wktext' # allow for a map to span beyond -180 -- +180 range
         return new_srs
