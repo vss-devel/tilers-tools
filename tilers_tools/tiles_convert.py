@@ -29,7 +29,7 @@ import optparse
 
 from tiler_functions import *
 
-from converter_backend import TileSet
+from converter_backend import TileSet, TileConverter
 import converter_xyz
 import converter_maemomapper
 import converter_sasplanet
@@ -66,11 +66,11 @@ def main(argv):
         help='input tiles profile (default: zyx)')
     parser.add_option('--to', dest='out_fmt', default='mmap',
         help='output tiles profile (default: mmap)')
-    parser.add_option('-l', '--list-profiles', action='store_true',
+    parser.add_option('--list-profiles', '--lp', action='store_true',
         help='list available profiles')
-    parser.add_option('-f', '--convert-tile', metavar='FORMAT',
-        help='convert tile to format (default: no conversion)')
-    parser.add_option('--list-formats', action='store_true',
+    parser.add_option('-f', '--tile-format', metavar='FORMAT',
+        help='convert output tiles to format (default: no conversion)')
+    parser.add_option('--list-formats', '--lf', action='store_true',
         help='list tile format converters')
     parser.add_option("-n", "--colors", dest="colors", default='256',
         help='Specifies  the  number  of colors for pngnq profile (default: 256)')
@@ -117,6 +117,10 @@ def main(argv):
 
     if options.list_profiles:
         TileSet.list_profiles()
+        sys.exit(0)
+
+    if options.list_formats:
+        TileConverter.list_tile_converters()
         sys.exit(0)
 
     src_lst=args
