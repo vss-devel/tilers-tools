@@ -139,6 +139,7 @@ class TileConverter(object):
 
     def __init__(self, options):
         self.options = options
+        ld('TileConverter', self.profile_name)
 
 
     def __call__(self, tile):

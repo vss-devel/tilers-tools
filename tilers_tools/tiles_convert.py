@@ -68,7 +68,7 @@ def main(argv):
         help='output tiles profile (default: mmap)')
     parser.add_option('--list-profiles', '--lp', action='store_true',
         help='list available profiles')
-    parser.add_option('-f', '--tile-format', metavar='FORMAT',
+    parser.add_option('-f', '--tile-format', dest='convert_tile', metavar='FORMAT',
         help='convert output tiles to format (default: no conversion)')
     parser.add_option('--list-formats', '--lf', action='store_true',
         help='list tile format converters')
