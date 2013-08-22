@@ -168,10 +168,10 @@ class MergeSet:
                 except os.error: pass
             src_raster=None
             transp=self.src_transp[tile]
-            if transp == None: # transparency value not cached yet
+            if transp is None: # transparency value not cached yet
                 #pf('!',end='')
-                src_raster=Image.open(src_file).convert("RGBA")
-                transp=transparency(src_raster)
+                src_raster = Image.open(src_file).convert("RGBA")
+                transp = transparency(src_raster)
             if  transp == 0 : # fully transparent
                 #pf('-',end='')
                 #os.remove(src_file)
@@ -180,7 +180,7 @@ class MergeSet:
                 # fully opaque or no destination tile exists yet
                 #pf('>',end='')
                 shutil.copy(src_file,dst_file)
-            else: # semitransparent, combine with destination (exists! see above)
+            else: # partially transparent, combine with destination (exists! see previous check)
                 pf('+',end='')
                 if not src_raster:
                     src_raster=Image.open(src_file).convert("RGBA")

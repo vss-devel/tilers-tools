@@ -38,7 +38,7 @@ import re
 import shutil
 import locale
 import csv
-
+import htmlentitydefs
 import json
 
 try:
@@ -106,10 +106,32 @@ def parallel_map(func, iterable):
 def flatten(two_level_list):
     return list(itertools.chain(*two_level_list))
 
-try:
-    import win32pipe
-except:
-    win32pipe = None
+htmlentitydefs.name2codepoint['apos'] = ord(u"'")
+
+def strip_html(text):
+    'Removes HTML markup from a text string. http://effbot.org/zone/re-sub.htm#strip-html'
+
+    def replace(match): # pattern replacement function
+        text = match.group(0)
+        if text == '<br>':
+            return '\n'
+        if text[0] == '<':
+            return '' # ignore tags
+        if text[0] == '&':
+            if text[1] == '#':
+                try:
+                    if text[2] == 'x':
+                        return unichr(int(text[3:-1], 16))
+                    else:
+                        return unichr(int(text[2:-1]))
+                except ValueError:
+                    pass
+            else:
+                return unichr(htmlentitydefs.name2codepoint[text[1:-1]])
+        return text # leave as is
+        # fixup end
+
+    return re.sub('(?s)<[^>]*>|&#?\w+;', replace, text)
 
 def if_set(x, default=None):
     return x if x is not None else default
@@ -125,6 +147,11 @@ def path2list(path):
         split.append(p)
     split.reverse()
     return split
+
+try:
+    import win32pipe
+except:
+    win32pipe = None
 
 def command(params, child_in=None):
     cmd_str = ' '.join(('"%s"' % i if ' ' in i else i for i in params))

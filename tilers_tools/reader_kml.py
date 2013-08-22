@@ -119,18 +119,18 @@ class KmlLayer(SrcLayer):
         return self.map.proj, None
 
     def get_raster(self):
-        img_ref=kml_parm(self.data,'href')
+        img_uri=strip_html(kml_parm(self.data,'href'))
         map_dir=os.path.split(self.map.file)[0]
         if not map_dir:
             map_dir=u'.'
 
-        imp_path_slashed=img_ref.replace('\\','/') # replace windows slashes
+        imp_path_slashed=img_uri.replace('\\','/') # replace windows slashes
         imp_path_lst=imp_path_slashed.split('/')
         img_patt=imp_path_lst[-1].lower()
         match=[i for i in os.listdir(map_dir) if i.lower() == img_patt]
         try:
             return os.path.join(map_dir, match[0])
-        except IndexError: raise Exception("*** Image file not found: %s" % img_path)
+        except IndexError: raise Exception("*** Image file not found: %s" % img_uri)
 
     def get_name(self):
         return kml_parm(self.data,'name')
