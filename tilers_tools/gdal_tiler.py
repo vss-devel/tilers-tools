@@ -160,7 +160,7 @@ def main(argv):
         sys.exit(0)
 
     if options.release:
-        options.overview_resampling, options.base_resampling = ('antialias', 'bilinear')
+        options.overview_resampling, options.base_resampling = ('antialias', 'cubic')
 
     if not args:
         parser.error('No input file(s) specified')
