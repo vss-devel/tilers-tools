@@ -56,7 +56,21 @@
                 height: 100%;
                 border: 1px solid black;
             }
-            .clickbar {
+            .olControlZoomLine {
+                bottom: 23px;
+                display: block;
+                font-size: small;
+                left: 10px;
+                position: absolute;
+            }
+            .olControlScaleLine {
+                bottom: 15px;
+                display: block;
+                font-size: xx-small;
+                left: 40px !important;
+                position: absolute;
+            }
+            .olControlClickBar {
                 top: 8px;
                 right: 6px;
                 border: 1px solid black;
@@ -82,9 +96,43 @@
 
             TilesetXYZ = OpenLayers.Class(OpenLayers.Layer.XYZ, {
 
+                initialize: function(tilemap) {
+                    var serverResolutions
+                    if (tilemap.tilesets) {
+                        serverResolutions = []
+                        for (var i in tilemap.tilesets) {
+                            var ts = tilemap.tilesets[i]
+                            serverResolutions[i] = ts.units_per_pixel
+                        }
+                    }
+
+                    var options = {
+                        //~ sphericalMercator: true,
+                        projection: tilemap.crs.properties.name,
+                        wrapDateLine: true,
+                        isBaseLayer: false,
+                        transitionEffect: null,
+                        displayOutsideMaxExtent: false,
+                        maxExtent: new OpenLayers.Bounds(tilemap.tiles.max_extent),
+                        tileOrigin: new OpenLayers.LonLat(tilemap.tiles.origin),
+                        tileSize: new OpenLayers.Size(
+                            tilemap.tiles.size[0],
+                            tilemap.tiles.size[1]
+                        ),
+                        serverResolutions: serverResolutions,
+                    }
+
+                    OpenLayers.Layer.XYZ.prototype.initialize.call(
+                        this,
+                        tilemap.properties.title,
+                        "z${z}/${y}/${x}." + tilemap.tiles.ext,
+                        options
+                    )
+                },
+
                 setMap: function(map) {
                     OpenLayers.Layer.XYZ.prototype.setMap.call(this, map)
-                    this.serverResolutions = this.resolutions
+                    //~ this.serverResolutions = this.resolutions
                 },
 
                 getServerResolution: function(resolution) {
@@ -100,8 +148,13 @@
                             break;
                         }
                     }
-
                     higherResolution = this.serverResolutions[i+1]
+                    if (! higherResolution) { // map resolution is beyond highest server resolution
+                        if (resolution / serverResolution < 0.9)
+                            return resolution
+                        else
+                            return serverResolution
+                    }
                     if (serverResolution == null ||
                             resolution - higherResolution < serverResolution - resolution) {
 
@@ -131,6 +184,56 @@
                     this.div.style.left = Math.round(x) + '%';
                     this.div.style.top = Math.round(y) + '%';
                 },
+
+                getURL: function (bounds) {
+                    var url = OpenLayers.Layer.XYZ.prototype.getURL.apply(this, arguments)
+                    log('getURL', url)
+                    return url
+                },
+
+                CLASS_NAME: "OpenLayers.Layer.TilesetXYZ"
+            })
+
+            OpenLayers.Control.ZoomLine = OpenLayers.Class(OpenLayers.Control, {
+                autoActivate: true,
+
+                activate: function () {
+                    if (! OpenLayers.Control.prototype.activate.apply(this, arguments))
+                        return false
+
+                    //~ this.log("activate")
+                    this.eventsMonitoring(true)
+
+                    this.update()
+                    return true
+                },
+
+                deactivate: function () {
+                    if (!this.active)
+                        return false
+
+                    //~ this.log("DEactivate")
+                    this.div.innerHTML = ''
+                    this.eventsMonitoring(false)
+
+                    return OpenLayers.Control.prototype.deactivate.apply(this, arguments)
+                },
+
+                eventsMonitoring: function (on_off) {
+                    this.map.events[on_off ? 'on' : 'un'].call(
+                        this.map.events,
+                        {
+                            'moveend': this.update,
+                            scope: this,
+                        }
+                    )
+                },
+
+                update: function() {
+                    this.div.innerHTML = 'z' + this.map.getZoom()
+                },
+
+                CLASS_NAME: "OpenLayers.Control.ZoomLine"
             })
 
             OpenLayers.Control.ClickBar = OpenLayers.Class(OpenLayers.Control, {
@@ -375,34 +478,13 @@
             var tilemap = read_tilemap();
             document.title = tilemap.properties.title;
 
-            var tileset_options = {
-                //~ sphericalMercator: true,
-                projection: tilemap.crs.properties.name,
-                wrapDateLine: true,
-                isBaseLayer: false,
-                transitionEffect: null,
-                displayOutsideMaxExtent: false,
-                maxExtent: new OpenLayers.Bounds(tilemap.tiles.max_extent),
-                tileOrigin: new OpenLayers.LonLat(tilemap.tiles.origin),
-                tileSize: new OpenLayers.Size(
-                    tilemap.tiles.size[0],
-                    tilemap.tiles.size[1]
-                ),
-                //resolutions: layer_resolutions,
-            }
-
-            var tileset_overlay = new TilesetXYZ(
-                tilemap.properties.title,
-                "z${z}/${y}/${x}." + tilemap.tiles.ext,
-                tileset_options
-            );
+            var tileset_overlay = new TilesetXYZ(tilemap)
 
             map.addLayers([osm, tileset_overlay]);
             map.zoomToExtent(new OpenLayers.Bounds(tilemap.bbox), true);
 
             map.addControl(
                 new OpenLayers.Control.ClickBar({
-                    displayClass: "clickbar",
                     ratio: 0.8,
                     reportRatio: function(ratio){
                         //log(ratio);
@@ -411,6 +493,8 @@
                     },
                 })
             );
+
+            map.addControl(new OpenLayers.Control.ZoomLine())
 
             // Bing layers
 
