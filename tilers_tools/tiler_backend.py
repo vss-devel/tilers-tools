@@ -697,8 +697,12 @@ class Pyramid(object):
         self.write_metadata(None, [ch for img, ch, opacities in top_results])
 
         # cache back tiles transparency
-        transparency = dict([(self.tile_path(tile), opc)
-            for tile, opc in flatten([opacities for img, ch, opacities in top_results])])
+        transparency = dict((
+            (self.tile_path(tile), opc)
+            for tile, opc in flatten((
+                opacities for img, ch, opacities in top_results
+                ))
+            ))
 
         write_transparency(self.dest, transparency)
 

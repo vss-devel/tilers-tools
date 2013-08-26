@@ -47,8 +47,8 @@ def transparency(img):
     (a_min,a_max)=a.getextrema() # get min/max values for alpha channel
     return 1 if a_min == 255 else 0 if a_max == 0 else -1
 
-class MergeSet:
 
+class MergeSet:
     def __init__(self,src_dir,dst_dir):
 
         if options.strip_src_ext:
@@ -74,32 +74,33 @@ class MergeSet:
 
         # get a list of source tiles
         try:
-            cwd=os.getcwd()
+            cwd = os.getcwd()
             os.chdir(src_dir)
-            self.src_lst=glob.glob('z[0-9]*/*/*.%s' % self.src['tiles']['ext'])
-            self.max_zoom=max([int(d[1:]) for d in glob.glob('z[0-9]*')])
+            self.sources = dict.fromkeys(
+                glob.iglob('z[0-9]*/*/*.%s' % self.src['tiles']['ext']),
+                None
+                )
         finally:
             os.chdir(cwd)
-        #ld(self.src_lst)
+        #ld(self.sources)
 
         # load cached tile transparency data if any
-        self.src_transp=dict.fromkeys(self.src_lst,None)
-        self.src_transp.update(read_transparency(src_dir))
+        self.sources.update(read_transparency(src_dir))
         #ld(repr(self.src_transp))
 
         # define crop map for underlay function
-        szx,szy=self.tile_size
+        szx, szy = self.tile_size
         if self.src['tiles']['inversion'][1]: # google
-            self.underlay_map=[
-                #  lf    up    rt    lw
-                (   0,     0, szx/2, szy/2), (szx/2,     0, szx, szy/2),
-                (   0, szy/2, szx/2,   szy), (szx/2, szy/2, szx,   szy),
+            self.underlay_offsets=[
+                # left   top
+                (   0,   0), (szx,   0),
+                (   0, szy), (szx, szy),
                 ]
         else:                   # TMS
-            self.underlay_map=[
-                #  lf    up    rt    lw
-                (   0, szy/2, szx/2,   szy), (szx/2, szy/2, szx,   szy),
-                (   0,     0, szx/2, szy/2), (szx/2,     0, szx, szy/2),
+            self.underlay_offsets=[
+                # left   top
+                (   0, szy), (szx, szy),
+                (   0,   0), (szx,   0),
                 ]
 
     def merge_metadata(self):
@@ -119,55 +120,71 @@ class MergeSet:
 
         write_tilemap(self.dst_dir,dst)
 
-    def underlay(self,tile,src_path,src_raster,level):
-        if level <= 0:
+    def underlay(self, tile, upper_path, upper_raster, upper_origin=(0, 0), level=1):
+        if level > options.underlay:
             return
+
         (s,ext)=os.path.splitext(tile)
         (s,x)=os.path.split(s)
         (z,y)=os.path.split(s)
         (z,y,x)=map(int,(z[1:],y,x))
-        if z < self.max_zoom:
-            return
-
         dz,dx,dy=z+1,x*2,y*2
         dst_tiles=[(dx,dy),  (dx+1,dy),
                    (dx,dy+1),(dx+1,dy+1)]
-        for (dst_xy,src_area) in zip(dst_tiles,self.underlay_map):
-            dst_tile='z%i/%i/%i%s' % (dz,dst_xy[1],dst_xy[0],ext)
-            #~ if options.debug:
-                #~ pf(tile,z,y,x,dst_tile)
-            dst_path=os.path.join(self.dst_dir,dst_tile)
-            if not os.path.exists(dst_path):
-                continue
-            dst_raster=Image.open(dst_path).convert("RGBA")
-            if transparency(dst_raster) == 1: # lower tile is fully opaque
-                continue
-            if not src_raster: # check if opening was deferred
-                src_raster=Image.open(src_path).convert("RGBA")
-            out_raster=src_raster.crop(src_area).resize(self.tile_size,Image.BILINEAR)
-            out_raster=Image.composite(dst_raster,out_raster,dst_raster)
-            del dst_raster
-            out_raster.save(dst_path)
 
-            if options.debug:
-                pf('%i' % level,end='')
-            else:
+        for dst_xy, crop_offset in zip(dst_tiles, self.underlay_offsets):
+            dst_tile = 'z%i/%i/%i%s' % (dz, dst_xy[1], dst_xy[0], ext)
+            dst_path = os.path.join(self.dst_dir, dst_tile)
+            if dst_tile in self.sources:
+                continue # higher level zoom source exists
+
+            l2 = 2**level
+            crop_origin = [p1 + p2/l2 for p1, p2 in zip(upper_origin, crop_offset)]
+
+            if os.path.exists(dst_path):
+                dst_raster = Image.open(dst_path).convert("RGBA")
+                if transparency(dst_raster) == 1: # lower tile is fully opaque
+                    continue
+                if not upper_raster: # check if opening was deferred
+                    upper_raster = Image.open(upper_path).convert("RGBA")
+
+                szx, szy = self.tile_size
+                crop_area = (
+                    crop_origin[0],
+                    crop_origin[1],
+                    crop_origin[0] + szx/l2,
+                    crop_origin[1] + szy/l2
+                    )
+                ld('crop_area', level, crop_area)
+
+                out_raster = upper_raster.crop(crop_area).resize(self.tile_size, Image.BICUBIC)
+                out_raster = Image.composite(dst_raster, out_raster, dst_raster)
+                del dst_raster
+                out_raster.save(dst_path)
+
                 pf('#',end='')
-            self.underlay(dst_tile,dst_path,out_raster,level-1)
+
+            self.underlay(dst_tile, upper_path, upper_raster, crop_origin, level+1)
 
     def __call__(self,tile):
         '''called by map() to merge a source tile into the destination tile set'''
+        return self.merge_tile(tile)
+
+    def merge_tile(self,tile):
         try:
-            ld(self.src_dir,self.dst_dir,tile)
+            #~ ld(self.src_dir,self.dst_dir,tile)
             src_file=os.path.join(self.src_dir,tile)
+            if not os.path.exists(src_file):
+                return None, None
             dst_file=os.path.join(self.dst_dir,tile)
             dpath=os.path.dirname(dst_file)
             if not os.path.exists(dpath):
                 try: # thread race safety
                     os.makedirs(dpath)
-                except os.error: pass
-            src_raster=None
-            transp=self.src_transp[tile]
+                except os.error:
+                    pass
+            src_raster = None
+            transp = self.sources[tile]
             if transp is None: # transparency value not cached yet
                 #pf('!',end='')
                 src_raster = Image.open(src_file).convert("RGBA")
@@ -187,21 +204,25 @@ class MergeSet:
                 dst_raster=Image.composite(src_raster,Image.open(dst_file).convert("RGBA"),src_raster)
                 dst_raster.save(dst_file)
             if options.underlay and transp != 0:
-                self.underlay(tile, src_file, src_raster, options.underlay)
+                self.underlay(tile, src_file, src_raster)
+
         except KeyboardInterrupt: # http://jessenoller.com/2009/01/08/multiprocessingpool-and-keyboardinterrupt/
             print 'got KeyboardInterrupt'
             raise KeyboardInterruptError()
-        return (tile,transp) # send back transparency values for caching
+        return (tile, transp) # send back transparency values for caching
 
     def merge_dirs(self):
 
-        src_transparency=parallel_map(self,self.src_lst)
+        transparency = parallel_map(self, self.sources.iterkeys())
+        self.sources = None
+        self.sources = dict(transparency)
+        if None in self.sources:
+            del self.sources[None]
 
         self.merge_metadata()
 
         # save transparency data
-        self.src_transp.update(dict(src_transparency))
-        write_transparency(self.src_dir,self.src_transp)
+        write_transparency(self.src_dir, self.sources)
         pf('')
 
 # MergeSet end
