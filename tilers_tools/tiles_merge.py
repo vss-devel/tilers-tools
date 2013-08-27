@@ -39,38 +39,38 @@ class KeyboardInterruptError(Exception):
     pass
 
 def f_approx_eq(a, b, eps):
-    return (abs(a-b) / (abs(a)+abs(b))/2) < eps
+    return (abs(a - b) / (abs(a) + abs(b))/2) < eps
 
 def transparency(img):
     'estimate transparency of an image'
-    (r,g,b,a)=img.split()
-    (a_min,a_max)=a.getextrema() # get min/max values for alpha channel
+    (r, g, b, a) = img.split()
+    (a_min, a_max) = a.getextrema() # get min/max values for alpha channel
     return 1 if a_min == 255 else 0 if a_max == 0 else -1
 
 
 class MergeSet:
-    def __init__(self,src_dir,dst_dir):
+    def __init__(self, src_dir, dst_dir):
 
         if options.strip_src_ext:
             src_dir = os.path.splitext(src)[0]
         if options.add_src_ext is not None:
             src_dir += options.add_src_ext
-        pf(src_dir+' ',end='')
+        pf(src_dir+' ', end='')
 
-        self.src_dir=src_dir
-        self.dst_dir=dst_dir
+        self.src_dir = src_dir
+        self.dst_dir = dst_dir
 
         copy_viewer(self.dst_dir)
         # copy tilemap
-        src_f=os.path.join(src_dir, 'tilemap.json')
-        dst_f=os.path.join(dst_dir, 'tilemap.json')
+        src_f = os.path.join(src_dir, 'tilemap.json')
+        dst_f = os.path.join(dst_dir, 'tilemap.json')
         if os.path.exists(src_f) and not os.path.exists(dst_f):
             shutil.copy(src_f, dst_f)
 
         # read metadata
-        self.src=read_tilemap(src_dir)
-        self.dst=read_tilemap(dst_dir)
-        self.tile_size=self.src['tiles']['size']
+        self.src = read_tilemap(src_dir)
+        self.dst = read_tilemap(dst_dir)
+        self.tile_size = self.src['tiles']['size']
 
         # get a list of source tiles
         try:
@@ -91,13 +91,13 @@ class MergeSet:
         # define crop map for underlay function
         szx, szy = self.tile_size
         if self.src['tiles']['inversion'][1]: # google
-            self.underlay_offsets=[
+            self.underlay_offsets = [
                 # left   top
                 (   0,   0), (szx,   0),
                 (   0, szy), (szx, szy),
                 ]
         else:                   # TMS
-            self.underlay_offsets=[
+            self.underlay_offsets = [
                 # left   top
                 (   0, szy), (szx, szy),
                 (   0,   0), (szx,   0),
@@ -106,31 +106,31 @@ class MergeSet:
     def merge_metadata(self):
         'adjust destination metadata'
 
-        src=self.src
-        dst=self.dst
+        src = self.src
+        dst = self.dst
 
-        dst["properties"]["title"]=os.path.split(dst_dir)[1]
-        dst["properties"]["description"]='merged tileset'
+        dst["properties"]["title"] = os.path.split(dst_dir)[1]
+        dst["properties"]["description"] = 'merged tileset'
 
-        ld([round(i/1000) for i in src["bbox"]],[round(i/1000) for i in dst["bbox"]])
-        for i,min_max in zip(range(4),(min,min,max,max)):
-            dst["bbox"][i]=min_max(src["bbox"][i],dst["bbox"][i])
+        ld([round(i/1000) for i in src["bbox"]], [round(i/1000) for i in dst["bbox"]])
+        for i, min_max in zip(range(4), (min, min, max, max)):
+            dst["bbox"][i] = min_max(src["bbox"][i], dst["bbox"][i])
 
         dst["tilesets"].update(src["tilesets"])
 
-        write_tilemap(self.dst_dir,dst)
+        write_tilemap(self.dst_dir, dst)
 
     def underlay(self, tile, upper_path, upper_raster, upper_origin=(0, 0), level=1):
         if level > options.underlay:
             return
 
-        (s,ext)=os.path.splitext(tile)
-        (s,x)=os.path.split(s)
-        (z,y)=os.path.split(s)
-        (z,y,x)=map(int,(z[1:],y,x))
-        dz,dx,dy=z+1,x*2,y*2
-        dst_tiles=[(dx,dy),  (dx+1,dy),
-                   (dx,dy+1),(dx+1,dy+1)]
+        (s, ext) = os.path.splitext(tile)
+        (s, x) = os.path.split(s)
+        (z, y) = os.path.split(s)
+        (z, y, x) = map(int, (z[1:], y, x))
+        dz, dx, dy = z+1, x*2, y*2
+        dst_tiles = [(dx, dy), (dx+1, dy),
+                   (dx, dy+1), (dx+1, dy+1)]
 
         for dst_xy, crop_offset in zip(dst_tiles, self.underlay_offsets):
             dst_tile = 'z%i/%i/%i%s' % (dz, dst_xy[1], dst_xy[0], ext)
@@ -162,47 +162,50 @@ class MergeSet:
                 del dst_raster
                 out_raster.save(dst_path)
 
-                pf('#',end='')
+                pf('#', end='')
 
             self.underlay(dst_tile, upper_path, upper_raster, crop_origin, level+1)
 
-    def __call__(self,tile):
+    def __call__(self, tile):
         '''called by map() to merge a source tile into the destination tile set'''
         return self.merge_tile(tile)
 
-    def merge_tile(self,tile):
+    def merge_tile(self, tile):
         try:
-            #~ ld(self.src_dir,self.dst_dir,tile)
-            src_file=os.path.join(self.src_dir,tile)
+            #~ ld(self.src_dir, self.dst_dir, tile)
+            src_file = os.path.join(self.src_dir, tile)
             if not os.path.exists(src_file):
                 return None, None
-            dst_file=os.path.join(self.dst_dir,tile)
-            dpath=os.path.dirname(dst_file)
+
+            src_raster = None
+            transp = self.sources[tile]
+            if transp is None: # transparency value not cached yet
+                #~ pf('!', end='')
+                src_raster = Image.open(src_file).convert("RGBA")
+                transp = transparency(src_raster)
+            if  transp == 0 : # fully transparent
+                #~ pf('-', end='')
+                os.remove(src_file)
+                return None, None
+
+            dst_file = os.path.join(self.dst_dir, tile)
+            dpath = os.path.dirname(dst_file)
             if not os.path.exists(dpath):
                 try: # thread race safety
                     os.makedirs(dpath)
                 except os.error:
                     pass
-            src_raster = None
-            transp = self.sources[tile]
-            if transp is None: # transparency value not cached yet
-                #pf('!',end='')
-                src_raster = Image.open(src_file).convert("RGBA")
-                transp = transparency(src_raster)
-            if  transp == 0 : # fully transparent
-                #pf('-',end='')
-                #os.remove(src_file)
-                pass
-            elif transp == 1 or not os.path.exists(dst_file):
+            if transp == 1 or not os.path.exists(dst_file):
                 # fully opaque or no destination tile exists yet
-                #pf('>',end='')
-                shutil.copy(src_file,dst_file)
+                #~ pf('>', end='')
+                shutil.copy(src_file, dst_file)
             else: # partially transparent, combine with destination (exists! see previous check)
-                pf('+',end='')
+                pf('+', end='')
                 if not src_raster:
-                    src_raster=Image.open(src_file).convert("RGBA")
-                dst_raster=Image.composite(src_raster,Image.open(dst_file).convert("RGBA"),src_raster)
+                    src_raster = Image.open(src_file).convert("RGBA")
+                dst_raster = Image.composite(src_raster, Image.open(dst_file).convert("RGBA"), src_raster)
                 dst_raster.save(dst_file)
+
             if options.underlay and transp != 0:
                 self.underlay(tile, src_file, src_raster)
 
@@ -227,7 +230,7 @@ class MergeSet:
 
 # MergeSet end
 
-if __name__=='__main__':
+if __name__ == '__main__':
     parser = optparse.OptionParser(
         usage="usage: %prog [--cut] [--dest-dir=DST_DIR] <tile_dirs>... <target_dir>",
         version=version,
@@ -240,7 +243,7 @@ if __name__=='__main__':
         help='strip extension suffix from a source parameter')
     parser.add_option("-x", "--add-src-ext", default=None,
         help='add extension suffix to a source parameter')
-    parser.add_option('-u',"--underlay", type='int', default=0,
+    parser.add_option('-u', "--underlay", type='int', default=0,
         help="underlay partially filled tiles with a zoomed-in raster from a higher level")
     parser.add_option("-q", "--quiet", action="store_true")
     parser.add_option("-d", "--debug", action="store_true")
@@ -253,18 +256,18 @@ if __name__=='__main__':
 
     ld(options)
 
-    args = [i.decode(locale.getpreferredencoding(),'ignore') for i in args]
+    args = [i.decode(locale.getpreferredencoding(), 'ignore') for i in args]
     if options.src_list:
-        with open(options.src_list,'r') as f:
-            src_dirs=[i.rstrip('\n\r').decode(locale.getpreferredencoding(),'ignore') for i in f]
+        with open(options.src_list, 'r') as f:
+            src_dirs = [i.rstrip('\n\r').decode(locale.getpreferredencoding(), 'ignore') for i in f]
             try:
-                dst_dir=args[-1]
+                dst_dir = args[-1]
             except:
-                dst_dir=os.path.splitext(options.src_list)[0].decode(locale.getpreferredencoding(),'ignore')
+                dst_dir = os.path.splitext(options.src_list)[0].decode(locale.getpreferredencoding(), 'ignore')
     else:
         try:
-            src_dirs=args[0:-1]
-            dst_dir=args[-1]
+            src_dirs = args[0:-1]
+            dst_dir = args[-1]
         except:
             raise Exception("No source(s) or/and destination specified")
 
@@ -272,7 +275,7 @@ if __name__=='__main__':
         set_nothreads()
 
     if options.remove_dest:
-        shutil.rmtree(dst_dir,ignore_errors=True)
+        shutil.rmtree(dst_dir, ignore_errors=True)
 
     if not os.path.exists(dst_dir):
         try:
