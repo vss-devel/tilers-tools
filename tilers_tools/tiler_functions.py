@@ -85,11 +85,12 @@ def pf_nothing(*parms, **kparms):
     return
 
 def set_nothreads():
+    ld('set_nothreads')
     global multiprocessing
     multiprocessing = None
 
 def parallel_map(func, iterable):
-    #~ print('parallel_map', multiprocessing)
+    ld('parallel_map', multiprocessing)
     #~ return map(func, iterable)
 
     if multiprocessing is None: # or len(iterable) < 2:
@@ -310,7 +311,7 @@ def sasplanet_hlg2ogr(fname):
             val = float(l.split('=')[1].replace(',','.'))
             coords[1 if 'Lat' in l else 0].append(val)
         points = zip(*coords)
-        ld('points', points)
+        ld('sasplanet_hlg2ogr', 'points', points)
 
     ring = ogr.Geometry(ogr.wkbLinearRing)
     for p in points:
@@ -321,7 +322,8 @@ def sasplanet_hlg2ogr(fname):
     ds = ogr.GetDriverByName('Memory').CreateDataSource( 'wrk' )
     assert ds is not None, 'Unable to create datasource'
 
-    src_srs = txt2srs('EPSG:4326')#'+proj=latlong +a=6378137 +b=6378137 +datum=WGS84  +nadgrids=@null +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +no_defs')
+    #~ src_srs = txt2srs('EPSG:4326')
+    src_srs = txt2srs('+proj=latlong +a=6378137 +b=6378137 +datum=WGS84  +nadgrids=@null +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +no_defs')
 
     layer = ds.CreateLayer('sasplanet_hlg', srs=src_srs)
 
@@ -344,34 +346,42 @@ def shape2mpointlst(datasource, dst_srs, feature_name=None):
         ld('shape2mpointlst: Invalid datasource %s' % datasource)
         return []
 
+    drv_name = ds.GetDriver().GetName()
+    is_kml = drv_name == 'KML'
+    ld('shape2mpointlst drv', drv_name, is_kml)
+
     n_layers = ds.GetLayerCount()
     for j in range(n_layers):
         layer = ds.GetLayer(j)
         n_features = layer.GetFeatureCount()
-        #~ ld('shape2mpointlst layer', j, n_layers, n_features, layer)
+        ld('shape2mpointlst layer', j, n_layers, n_features, feature_name, layer)
 
         for i in range(n_features):
             feature = layer.GetNextFeature()
 
-            #~ fc = feature.GetFieldCount()
-            #~ for l in range(fc):
-                #~ fdef = feature.GetFieldDefnRef(l)
-                #~ ld(l, fdef.GetNameRef(), feature.GetFieldAsString(l))
+            fc = feature.GetFieldCount()
+            for l in range(fc):
+                fdef = feature.GetFieldDefnRef(l)
+                ld(l, fdef.GetNameRef(), feature.GetFieldAsString(l))
 
-            i_icon = feature.GetFieldIndex('icon')
-            if i_icon == -1:
-                continue
-            icon = feature.GetFieldAsString(i_icon)
-            if icon != '':
-                continue
-            i_name = feature.GetFieldIndex('Name')
-            if i_name == -1:
-                continue
-            name = feature.GetFieldAsString(i_name).decode('utf-8')
-            #~ ld('shape2mpointlst', name, feature_name)
+            if is_kml:
+                i_icon = feature.GetFieldIndex('icon')
+                #~ ld('shape2mpointlst i_icon', i_icon)
+                if i_icon != -1:
+                    icon = feature.GetFieldAsString(i_icon)
+                    #~ ld('shape2mpointlst icon', icon)
+                    if icon != '':
+                        continue
+            if feature_name is None:
+                name = None
+            else:
+                i_name = feature.GetFieldIndex('Name')
+                if i_name == -1:
+                    continue
+                name = feature.GetFieldAsString(i_name).decode('utf-8')
 
-            if feature_name is None or name == feature_name:
-                ld('shape2mpointlst', name)
+            ld('shape2mpointlst name', name == feature_name, name, feature_name)
+            if name == feature_name:
                 #~ feature.DumpReadable()
 
                 geom = feature.GetGeometryRef()

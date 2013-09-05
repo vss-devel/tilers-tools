@@ -64,8 +64,8 @@ class SASBerkeley(TileDir):
         #  20 2c string // tile version
         #     2c string // tile content-type
         #     BLOB // tile data
-        self.header = Struct('<3sBIId')
-        self.key = Struct('>Q') # 64 bit, swap bytes
+        self.header = struct.Struct('<3sBIId')
+        self.key = struct.Struct('>Q') # 64 bit, swap bytes
 
     def __iter__(self):
         log('__iter__', os.path.join(self.root, self.dir_pattern), glob.iglob(os.path.join(self.root, self.dir_pattern)))

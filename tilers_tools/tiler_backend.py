@@ -1039,6 +1039,7 @@ class Pyramid(object):
         if not datasource:
             return
         point_lst = flatten(shape2mpointlst(datasource, self.proj_srs))
+        #~ ld(datasource, point_lst)
         self.set_region(point_lst)
 
     # progress display

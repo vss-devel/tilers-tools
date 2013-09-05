@@ -96,7 +96,7 @@ class MapperGDBM(TileSet): # due to GDBM weirdness on ARM this only works if run
         import gdbm
         self.db = gdbm.open(self.root, 'cf' if write else 'r')
 
-        self.key = Struct('>III')
+        self.key = struct.Struct('>III')
 
     def finalize_tileset(self):
         self.db.sync()

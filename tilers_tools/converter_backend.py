@@ -30,6 +30,7 @@ import shutil
 import json
 import tempfile
 import StringIO
+import struct
 from multiprocessing import Pool
 import itertools
 
@@ -46,6 +47,8 @@ class Tile(object):
 #############################
     def __init__(self, coord):
         self._coord = tuple(coord)
+        self.path = None
+        self.temp = False
 
     def coord(self):
         return self._coord
@@ -53,10 +56,11 @@ class Tile(object):
     def get_mime(self):
         return mime_from_ext(self.get_ext())
 
-    def close(self):
+    def close_file(self):
         if self.temp and self.path and os.path.exists(self.path):
-            log('tile', self.coord())
+            ld('tile', self.coord())
             os.remove(self.path)
+            self.path = None
 
 #############################
 
@@ -101,8 +105,6 @@ class PixBufTile(Tile):
     def __init__(self, coord, pixbuf, key=None):
         super(PixBufTile, self).__init__(coord)
         self.pixbuf = pixbuf
-        self.path = None
-        self.temp = True
 
     def data(self):
         return self.pixbuf
@@ -120,9 +122,12 @@ class PixBufTile(Tile):
             f.write(self.pixbuf)
 
     def get_file(self):
-        f, self.path = tempfile.mkstemp(prefix='s%d-%d-%d' % self.get_coord(), suffix=self.get_ext(self))
-        f.write(self.pixbuf)
-        f.close()
+        self.temp = True
+        f_handle, self.path = tempfile.mkstemp(prefix='s%d-%d-%d_' % self.coord(), suffix=self.get_ext())
+
+        os.write(f_handle, self.pixbuf)
+        os.close(f_handle)
+        return self.path
 
 #----------------------------
 
@@ -181,19 +186,21 @@ class ShellConverter (TileConverter):
             except:
                 raise Exception('Can not find %s executable' % self.prog_name)
 
-    def convert_tile(self, tile):
+    def convert_tile(self, src_tile):
 
-        src = tile.get_file()
-        base_name = os.path.splitext(os.path.split(src)[1])[0]
+        src_path = src_tile.get_file()
+        #~ ld('convert_tile', src_path)
+        base_name = os.path.splitext(os.path.split(src_path)[1])[0]
         dst_dir = tempfile.gettempdir()
-        coord = tile.coord()
+        coord = src_tile.coord()
         suffix = ('-%d-%d-%d' % coord) + self.dst_ext
-        dst = os.path.join(dst_dir, base_name + suffix)
+        dst_path = os.path.join(dst_dir, base_name + suffix)
 
-        self.call_converter(src, dst, suffix)
+        self.call_converter(src_path, dst_path, suffix)
 
-        dtile = FileTile(coord, dst, temp=True)
-        return dtile
+        src_tile.close_file()
+        dst_tile = FileTile(coord, dst_path, temp=True)
+        return dst_tile
 
 #############################
 
@@ -331,7 +338,7 @@ class TileSet(object):
             if self.options.convert_tile:
                 global tile_converter
                 tile_converter = TileConverter.get_class(self.options.convert_tile)(options)
-                if not self.options.nothreads:
+                if not (self.options.nothreads or self.options.debug):
                     self.pool = Pool()
 
     @staticmethod
@@ -401,7 +408,7 @@ class TileSet(object):
         min_max = self.zoom_levels.get(z, []) # min, max
         zzz, xxx, yyy = zip(*(min_max+[zxy]))
         self.zoom_levels[z] = [[z, min(xxx), min(yyy)], [z, max(xxx), max(yyy)]]
-        tile.close()
+        tile.close_file()
 
     def finalize_pyramid(self):
         log('self.zoom_levels', self.zoom_levels)
