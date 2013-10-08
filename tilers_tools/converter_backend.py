@@ -229,9 +229,24 @@ class WebpConverter (ShellConverter):
 
     def call_converter(self, src, dst, suffix):
 
-        command(['cwebp', src, '-o', dst, '-q', str(self.options.quality)])
+        command(['cwebp', '-alpha_cleanup', '-q', str(self.options.quality), '-o', dst, src])
 
 tile_converters.append(WebpConverter)
+
+#############################
+
+class WebpNoAlphaConverter (ShellConverter):
+    'convert to webp; discard alpha channel'
+#############################
+    profile_name = 'webp-noalpha'
+    dst_ext = '.webp'
+    src_formats = ('.png','.jpg','.jpeg','.gif')
+
+    def call_converter(self, src, dst, suffix):
+
+        command(['cwebp', '-preset', 'drawing', '-noalpha', '-q', str(self.options.quality), '-o', dst, src])
+
+tile_converters.append(WebpNoAlphaConverter)
 
 
 #~ #############################
