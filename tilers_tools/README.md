@@ -1,8 +1,8 @@
 A few scripts for creating and handling a tile sets from digital raster maps. The scripts are based on GDAL tools.
 
-To get the scripts go to https://code.google.com/p/gdal-tiler/source/browse/#hg%2Fgdal-tiler
+Download from http://code.google.com/p/tilers-tools/downloads/list
 ----
- * `gdal_tiler.py` -- creates a tile set tree directory from a GDAL dataset (including BSB/KAP, GEO/NOS, OZI map, KML image overlays;
+ * `gdal_tiler.py` -- creates a tile set tree directory from a GDAL dataset (including BSB/KAP, GEO/NOS, OZI map, KML image overlays);
 
  * `tiles_merge.py` -- sequentially merges a few tile sets in a single one to cover the area required;
  * `tiles_convert.py` -- converts tile sets between a different tile structures: TMS, Google map-compatible (maemo mappero), SASPlanet cache, maemo-mapper sqlite3 and gmdb databases;
@@ -22,4 +22,3 @@ To get the scripts go to https://code.google.com/p/gdal-tiler/source/browse/#hg%
  * mk-merge-order.sh
  * vrt-bsb-cut.sh
 </wiki:comment>
-
