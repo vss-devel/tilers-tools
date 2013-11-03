@@ -10,3 +10,4 @@ syntax: glob
 *.xls
 *.zip
 *.tgz
+converter_mmap.py
