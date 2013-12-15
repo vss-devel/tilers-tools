@@ -170,7 +170,8 @@ def command(params, child_in=None):
         process = Popen(params, stdin=PIPE, stdout=PIPE, stderr=PIPE, universal_newlines=True)
         (child_out, child_err) = process.communicate(child_in)
         if process.returncode != 0:
-            raise Exception("*** External program failed: %s\n%s" % (cmd_str, child_err))
+            error("*** External program error: %s\n%s" % (cmd_str, child_err))
+            raise EnvironmentError(process.returncode, child_err)
     ld('<', child_out, child_err)
     return child_out
 

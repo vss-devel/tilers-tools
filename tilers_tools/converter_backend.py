@@ -110,11 +110,7 @@ class PixBufTile(Tile):
         return self.pixbuf
 
     def get_ext(self):
-        try:
-            ext = ext_from_buffer(self.pixbuf)
-        except KeyError:
-            error('PixBufTile: wrong data', self.coord())
-            raise
+        ext = ext_from_buffer(self.pixbuf)
         return ext
 
     def copy2file(self, dest_path, link=False):
@@ -149,10 +145,13 @@ class TileConverter(object):
 
     def __call__(self, tile):
         'convert tile'
-        if tile.get_ext() in self.src_formats:
-            return self.convert_tile(tile)
-        else:
-            return tile # w/o conversion
+        try:
+            if tile.get_ext() in self.src_formats:
+                    return self.convert_tile(tile)
+            else:
+                return tile # w/o conversion
+        except EnvironmentError, KeyError:
+            return None
 
     @staticmethod
     def get_class(profile, isDest=False):
@@ -398,7 +397,8 @@ class TileSet(object):
             src = self.src
 
         for tile in src:
-            self.process_tile(tile)
+            if tile is not None:
+                self.process_tile(tile)
 
         if self.pool:
             self.pool.close()
