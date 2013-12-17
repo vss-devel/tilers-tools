@@ -498,7 +498,7 @@ def ext_from_buffer(buf):
             if magic == 'RIFF' and buf[8:12] != 'WEBP':
                 contnue
             return ext
-    error('Cannot determing image type in a buffer: %s', buf[:20])
+    error('Cannot determing image type in a buffer:', buf[:20])
     raise KeyError('Cannot determing image type in a buffer')
 
 def ext_from_file(path):

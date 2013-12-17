@@ -147,10 +147,10 @@ class TileConverter(object):
         'convert tile'
         try:
             if tile.get_ext() in self.src_formats:
-                    return self.convert_tile(tile)
+                return self.convert_tile(tile)
             else:
                 return tile # w/o conversion
-        except EnvironmentError, KeyError:
+        except (EnvironmentError, KeyError):
             return None
 
     @staticmethod
