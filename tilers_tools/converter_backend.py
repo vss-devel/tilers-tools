@@ -73,7 +73,8 @@ class FileTile(Tile):
         self.temp = temp
 
     def data(self):
-        return open(self.path, 'rb').read()
+        with open(self.path, 'rb') as f:
+            return f.read()
 
     def get_ext(self):
         return os.path.splitext(self.path)[1]
@@ -102,15 +103,19 @@ class FileTileNoExt(FileTile):
 class PixBufTile(Tile):
 
 #############################
-    def __init__(self, coord, pixbuf, key=None):
+    def __init__(self, coord, pixbuf, key=None, dataType=None):
         super(PixBufTile, self).__init__(coord)
         self.pixbuf = pixbuf
+        self.data_type = dataType
 
     def data(self):
         return self.pixbuf
 
     def get_ext(self):
-        ext = ext_from_buffer(self.pixbuf)
+        if self.data_type:
+            ext = ext_from_mime(self.data_type)
+        else:
+            ext = ext_from_buffer(self.pixbuf)
         return ext
 
     def copy2file(self, dest_path, link=False):

@@ -484,40 +484,44 @@ def write_transparency(dst_dir, transparency):
     except:
         logging.warning("transparency cache save failure")
 
-ext_map = (
-    ('\x89PNG\x0D\x0A\x1A\x0A', '.png'),
-    ('\xFF\xD8\xFF\xE0', '.jpg'),
-    ('GIF89a', '.gif'),
-    ('GIF87a', '.gif'),
-    ('RIFF', '.webp'),
+type_map = (
+    ('image/png', '.png', '\x89PNG\x0D\x0A\x1A\x0A'),
+    ('image/jpeg', '.jpg', '\xFF\xD8\xFF\xE0'),
+    ('image/jpeg', '.jpeg', '\xFF\xD8\xFF\xE0'),
+    ('image/gif', '.gif', 'GIF89a'),
+    ('image/gif', '.gif', 'GIF87a'),
+    ('image/webp', '.webp', 'RIFF'),
     )
 
-def ext_from_buffer(buf):
-    for magic, ext in ext_map:
+def type_ext_from_buffer(buf):
+    for mime_type, ext, magic in type_map:
         if buf.startswith(magic):
             if magic == 'RIFF' and buf[8:12] != 'WEBP':
                 contnue
-            return ext
+            return mime_type, ext
     error('Cannot determing image type in a buffer:', buf[:20])
     raise KeyError('Cannot determing image type in a buffer')
+
+def ext_from_buffer(buf):
+    return type_ext_from_buffer(buf)[1]
+
+def mime_from_ext(ext_to_find):
+    for mime_type, ext, magic in type_map:
+        if ext_to_find == ext:
+            return mime_type
+    else:
+        error('Cannot determing image MIME type')
+        raise KeyError('Cannot determing image MIME type')
+
+def ext_from_mime(mime_to_find):
+    for mime_type, ext, magic in type_map:
+        if mime_to_find == mime_type:
+            return ext
+    else:
+        error('Cannot determing image MIME type')
+        raise KeyError('Cannot determing image MIME type')
 
 def ext_from_file(path):
     with file(path, "r") as f:
         buf = f.read(512)
         return ext_from_buffer(buf)
-
-mime_map = {
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.webp': 'image/webp',
-    }
-
-def mime_from_ext(ext):
-    try:
-        mime_type = mime_map[ext.lower()]
-        return mime_type
-    except KeyError:
-        error('Cannot determing image MIME type')
-        raise
