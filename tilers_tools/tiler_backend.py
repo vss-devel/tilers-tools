@@ -205,7 +205,7 @@ class Pyramid(object):
         # init tile grid parameters
     #----------------------------
 
-        self.proj_srs = self.srs # self.proj_srs may be changed later to avoid crossing longitude 180
+        self.proj_srs = txt2proj4(self.srs) # self.proj_srs may be changed later to avoid crossing longitude 180
         self.geog_srs = proj_cs2geog_cs(self.proj_srs)
         ld('proj, longlat', self.proj_srs, self.geog_srs)
 
@@ -306,7 +306,6 @@ class Pyramid(object):
     def get_src_ds(self):
         'get src dataset, convert to RGB(A) if required'
     #----------------------------
-        override_srs = self.options.srs
 
         self.src_path = self.src
         if os.path.exists(self.src):
@@ -331,8 +330,9 @@ class Pyramid(object):
         if not src_proj and gcps :
             src_proj = txt2proj4(src_ds.GetGCPProjection())
 
-        if self.options.srs is not None:
-            src_proj = self.options.srs
+        override_srs = self.options.srs
+        if override_srs is not None:
+            src_proj = txt2proj4(override_srs)
 
         ld('src_proj', src_proj, 'src geotr', src_geotr)
         assert src_proj, 'The source does not have a spatial reference system assigned'
@@ -771,6 +771,7 @@ class Pyramid(object):
                 tile_img.paste(ch_img, ch_mozaic[ch], ch_mask)
                 ch_opacities.extend(opacity_lst)
 
+        #~ ld('proc_tile', tile, tile_img, opacity)
         if tile_img is not None and opacity != 0:
             self.write_tile(tile, tile_img)
 
