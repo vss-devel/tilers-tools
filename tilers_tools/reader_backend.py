@@ -303,14 +303,14 @@ class SrcLayer(object):
 
         return dst_file
 
-    gmt_templ = (
-        '# @VGMT1.0 @GPOLYGON'
-        '# @Jp"%s"'
-        '# FEATURE_DATA'
-        '>'
-        '# @P'
+    gmt_templ = '\n'.join((
+        '# @VGMT1.0 @GPOLYGON',
+        '# @Jp"%s"',
+        '# FEATURE_DATA',
+        '>',
+        '# @P',
         '%s'
-        )
+        ))
 
     def cut_poly(self,dst_ds):
         plys=self.get_plys()

@@ -372,10 +372,7 @@ class Pyramid(object):
                 if gcps:
                     gcp_lst = '\n'.join((gcp_templ % (g.Id, g.GCPPixel, g.GCPLine, g.GCPX, g.GCPY, g.GCPZ)
                                         for g in gcps))
-                    if self.options.srs is None:
-                        gcp_proj = txt2proj4(src_ds.GetGCPProjection())
-                    else:
-                        gcp_proj = src_proj
+                    gcp_proj = txt2proj4(src_ds.GetGCPProjection()) if override_srs is None else src_proj
                     gcplst_txt = gcplst_templ % (gcp_proj, gcp_lst)
 
                 metadata = src_ds.GetMetadata()
