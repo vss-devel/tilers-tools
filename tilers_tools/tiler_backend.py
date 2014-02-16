@@ -754,14 +754,14 @@ class Pyramid(object):
 
                 if tile_img is None:
                     if 'P' in ch_img.mode:
-                        tile_mode='P'
+                        tile_mode = 'P'
+                    elif 'L' in ch_img.mode:
+                        tile_mode = 'L' + mode_opacity
                     else:
-                        tile_mode=('L' if 'L' in ch_img.mode else 'RGB')+mode_opacity
+                        tile_mode = 'RGB' + mode_opacity
 
-                    if self.transparency is not None:
-                        tile_img=Image.new(tile_mode, img.size, self.transparency)
-                    else:
-                        tile_img=Image.new(tile_mode, img.size)
+                    tile_img=Image.new(tile_mode, img.size, self.transparency)
+
                     if self.palette is not None:
                         tile_img.putpalette(self.palette)
 
@@ -787,17 +787,22 @@ class Pyramid(object):
             os.makedirs(os.path.dirname(full_path))
         except: pass
 
-        if self.options.paletted and self.tile_ext == '.png':
+        tile_format = self.options.tile_format
+        if self.options.paletted and tile_format == 'png':
             try:
                 tile_img = tile_img.convert('P', palette=Image.ADAPTIVE, colors=255)
             except ValueError:
                 #ld('tile_img.mode', tile_img.mode)
                 pass
+        elif tile_img.mode == 'P' and tile_format in ('jpeg', 'webp'):
+            mode = 'RGB' # + 'A' if self.transparency else ''
+            try:
+                tile_img = tile_img.convert(mode)
+            except ValueError:
+                #ld('tile_img.mode', tile_img.mode)
+                pass
 
-        if self.transparency is not None:
-            tile_img.save(full_path, transparency=self.transparency)
-        else:
-            tile_img.save(full_path)
+        tile_img.save(full_path, transparency=self.transparency)
 
         self.counter()
 

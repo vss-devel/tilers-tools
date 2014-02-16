@@ -93,7 +93,7 @@ def parallel_map(func, iterable):
     ld('parallel_map', multiprocessing)
     #~ return map(func, iterable)
 
-    if multiprocessing is None: # or len(iterable) < 2:
+    if multiprocessing is None or len(iterable) < 2:
         return map(func, iterable)
     else:
         # map in parallel

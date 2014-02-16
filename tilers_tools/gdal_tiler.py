@@ -53,7 +53,8 @@ def process_src(src_def):
 #----------------------------
     global options
     opt = LooseDict(options)
-    opt.tile_ext = '.' + opt.tile_format.lower()
+    opt.tile_format = opt.tile_format.lower()
+    opt.tile_ext = '.' + opt.tile_format
     src, delete_src = src_def
     opt.delete_src = delete_src
 
