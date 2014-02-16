@@ -412,10 +412,10 @@
             } catch (err) {
                 var e = err;
                 log('######################### e.code',e.code);
-                if (e.code == 101) {
-                    error('to load XML from local files Google Chrome requires to run with "--allow-file-access-from-files" switch ')
-                } else if (e.code == 19) {
-                    error('to load XML from local files Opera requires "Allow File XMLHttpRequest" turned on at config')
+                if (/Chrom/.test(navigator.userAgent)) {
+                    error('Loading error. Try to start Chrome with "--allow-file-access-from-files" switch')
+                } else if (/Opera/.test(navigator.userAgent)) {
+                    error('Loading error. Try to turn on "Allow File XMLHttpRequest" at the Opera configuration')
                 }
                     throw e;
             }
