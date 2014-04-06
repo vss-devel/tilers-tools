@@ -136,7 +136,12 @@ def parse_args(arg_lst):
     parser.add_option("-m", "--after-map", action="store_true",
         help='give an output file name  after name of a map file, otherwise after a name of an image file')
 
-    return parser.parse_args(arg_lst)
+    (options, args) = parser.parse_args(arg_lst)
+
+    if not args:
+        parser.error('No input file(s) specified')
+
+    return (options, args)
 
 #----------------------------
 
@@ -163,8 +168,6 @@ def main(argv):
     if options.release:
         options.overview_resampling, options.base_resampling = ('antialias', 'cubic')
 
-    if not args:
-        parser.error('No input file(s) specified')
     try:
         sources = args
     except:
