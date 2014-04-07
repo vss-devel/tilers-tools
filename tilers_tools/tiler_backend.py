@@ -760,7 +760,7 @@ class Pyramid(object):
                     else:
                         tile_mode = 'RGB' + mode_opacity
 
-                    if self.transparency:
+                    if self.transparency is not None:
                         tile_img=Image.new(tile_mode, img.size, self.transparency)
                     else:
                         tile_img=Image.new(tile_mode, img.size)
@@ -805,7 +805,7 @@ class Pyramid(object):
                 #ld('tile_img.mode', tile_img.mode)
                 pass
 
-        if self.transparency:
+        if self.transparency is not None:
             tile_img.save(full_path, transparency=self.transparency)
         else:
             tile_img.save(full_path)
