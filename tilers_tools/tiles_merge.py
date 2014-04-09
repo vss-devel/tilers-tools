@@ -216,7 +216,7 @@ class MergeSet:
 
     def merge_dirs(self):
 
-        transparency = parallel_map(self, self.sources.iterkeys())
+        transparency = parallel_map(self, self.sources.keys())
         self.sources = None
         self.sources = dict(transparency)
         if None in self.sources:
