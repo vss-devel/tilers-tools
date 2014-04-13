@@ -203,7 +203,11 @@ class MergeSet:
                 pf('+', end='')
                 if not src_raster:
                     src_raster = Image.open(src_file).convert("RGBA")
-                dst_raster = Image.composite(src_raster, Image.open(dst_file).convert("RGBA"), src_raster)
+                try:
+                    dst_raster = Image.composite(src_raster, Image.open(dst_file).convert("RGBA"), src_raster)
+                except IOError, exception:
+                    error('merge_tile', exception.message, dst_file)
+
                 dst_raster.save(dst_file)
 
             if options.underlay and transp != 0:
