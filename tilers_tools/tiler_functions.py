@@ -456,17 +456,22 @@ def write_tilemap(dst_dir, tilemap):
     with open(f, 'w') as f:
          json.dump(tilemap, f, indent=2)
 
+def link_or_copy(src, dst):
+        try:
+            if os.path.exists(dst):
+                os.remove(dst)
+            os.link(src, dst)
+        except OSError, os_exception: # non POSIX or cross-device link?
+            try:
+                shutil.copy(src, dst)
+            except shutil.Error, shutil_exception:
+                raise shutil_exception
+
 def copy_viewer(dest):
     for f in ['viewer-google.html', 'viewer-openlayers.html']:
         src = os.path.join(data_dir(), f)
         dst = os.path.join(dest, f)
-        try:
-            os.link(src, dst) # hard links as FF dereferences softlinks
-        except OSError: # non POSIX or cross-device link?
-            try:
-                shutil.copy(src, dst)
-            except shutil.Error:
-                pass
+        link_or_copy(src, dst) # hard links as FF dereferences softlinks
 
 def read_transparency(src_dir):
     try:

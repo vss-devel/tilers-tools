@@ -198,7 +198,7 @@ class MergeSet:
             if transp == 1 or not os.path.exists(dst_file):
                 # fully opaque or no destination tile exists yet
                 #~ pf('>', end='')
-                shutil.copy(src_file, dst_file)
+                link_or_copy(src_file, dst_file)
             else: # partially transparent, combine with destination (exists! see previous check)
                 pf('+', end='')
                 if not src_raster:
