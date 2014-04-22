@@ -261,9 +261,8 @@ def txt2srs(proj):
     if proj.startswith(("GEOGCS", "GEOCCS", "PROJCS", "LOCAL_CS")):
         srs.ImportFromWkt(proj)
     if proj.startswith('EPSG'):
-        #~ epsg = proj.split(':')[1]
-        #~ srs.importFromEPSG(epsg)
-        proj = '+init=' + proj.lower()
+        epsg = int(proj.split(':')[1])
+        srs.ImportFromEPSG(epsg)
     if proj.startswith('+'):
         srs.ImportFromProj4(proj)
     return srs

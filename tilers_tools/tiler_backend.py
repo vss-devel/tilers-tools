@@ -425,6 +425,7 @@ class Pyramid(object):
             vrt_drv = gdal.GetDriverByName('VRT')
             self.src_ds = vrt_drv.CreateCopy(src_vrt, src_ds) # replace src dataset
 
+            ld('override_srs', override_srs, 'txt2wkt(override_srs)', txt2wkt(override_srs))
             self.src_ds.SetProjection(txt2wkt(override_srs)) # replace source SRS
             gcps = self.src_ds.GetGCPs()
             if gcps :
