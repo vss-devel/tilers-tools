@@ -26,7 +26,7 @@
 from __future__ import with_statement
 from __future__ import print_function
 
-version = '%prog version 2.x devel'
+version = '%prog version 3.x devel'
 
 import sys
 import os
@@ -347,7 +347,7 @@ def shape2mpointlst(datasource, dst_srs, feature_name=None):
         return []
 
     drv_name = ds.GetDriver().GetName()
-    is_kml = drv_name == 'KML'
+    is_kml = 'KML' in drv_name
     ld('shape2mpointlst drv', drv_name, is_kml)
 
     n_layers = ds.GetLayerCount()
