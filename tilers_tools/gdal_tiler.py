@@ -135,6 +135,8 @@ def parse_args(arg_lst):
         help='give an output file name after a map name (from metadata)')
     parser.add_option("-m", "--after-map", action="store_true",
         help='give an output file name  after name of a map file, otherwise after a name of an image file')
+    parser.add_option("--skip-invalid", action="store_true",
+        help='skip invalid/unrecognized source')
 
     (options, args) = parser.parse_args(arg_lst)
 

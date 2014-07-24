@@ -197,7 +197,9 @@ class SrcLayer(object):
 
         self.img_file=self.get_raster()
         logging.info(' %s : %s (%s)' % (self.map.file,self.name,self.img_file))
-        self.raster_ds = gdal.Open(self.img_file.encode(locale.getpreferredencoding()),GA_ReadOnly)
+        fname = self.img_file.encode(locale.getpreferredencoding())
+
+        self.raster_ds = gdal.Open(fname, GA_ReadOnly)
 
         self.dtm=None
         self.refs=self.get_refs()           # fetch reference points

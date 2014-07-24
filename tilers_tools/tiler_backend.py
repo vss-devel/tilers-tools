@@ -255,17 +255,24 @@ class Pyramid(object):
         self.base_resampling = base_resampling_map[self.options.base_resampling]
         self.resampling = resampling_map[self.options.overview_resampling]
 
-        pf('\n%s -> %s '%(self.src, self.dest), end='')
+        print('\n%s -> %s '%(self.src, self.dest), end='')
 
         if os.path.isdir(self.dest):
             if self.options.noclobber and os.path.exists(self.dest):
-                pf('*** Target already exists: skipping', end='')
+                logging.error('Target already exists: skipping')
                 return False
             else:
                 shutil.rmtree(self.dest, ignore_errors=True)
 
         # connect to src dataset
-        self.get_src_ds()
+        try:
+            self.get_src_ds()
+        except RuntimeError as exc:
+            if self.options.skip_invalid:
+                logging.error('%s' % exc.message[:-1])
+                return False
+            else:
+                raise
 
         # calculate zoom range
         self.calc_zoom(zoom_parm)
