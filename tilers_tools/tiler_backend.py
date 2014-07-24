@@ -576,7 +576,7 @@ class Pyramid(object):
         # process nodata info
         src_nodata = None
         if self.options.src_nodata:
-            src_nodata = map(int, options.src_nodata.split(','))
+            src_nodata = map(int, self.options.src_nodata.split(','))
             assert len(src_nodata) == src_bands, 'Nodata must match the number of bands'
             if src_bands > 1:
                 warp_options.append(w_option('UNIFIED_SRC_NODATA', 'YES'))
