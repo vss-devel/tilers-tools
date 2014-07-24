@@ -460,7 +460,7 @@ def link_or_copy(src, dst):
             if os.path.exists(dst):
                 os.remove(dst)
             os.link(src, dst)
-        except OSError, os_exception: # non POSIX or cross-device link?
+        except (OSError, AttributeError): # non POSIX or cross-device link?
             try:
                 shutil.copy(src, dst)
             except shutil.Error, shutil_exception:
