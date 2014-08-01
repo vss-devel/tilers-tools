@@ -171,7 +171,7 @@ def main(argv):
     if options.release:
         options.overview_resampling, options.base_resampling = ('antialias', 'cubic')
 
-    res = parallel_map(preprocess_src, sources)
+    res = parallel_map(preprocess_src, args)
     parallel_map(process_src, flatten(res))
     pf('')
 
