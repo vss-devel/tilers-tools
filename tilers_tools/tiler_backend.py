@@ -833,9 +833,8 @@ class Pyramid(object):
     def write_metadata(self, tile=None, children=[]):
 
     #----------------------------
-        if tile == None:
+        if tile is None:
             self.write_tilemap()
-            copy_viewer(self.dest)
 
     #----------------------------
 
