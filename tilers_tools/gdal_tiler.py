@@ -140,9 +140,6 @@ def parse_args(arg_lst):
 
     (options, args) = parser.parse_args(arg_lst)
 
-    if not args:
-        parser.error('No input file(s) specified')
-
     return (options, args)
 
 #----------------------------
@@ -160,20 +157,19 @@ def main(argv):
     ld(os.name)
     ld(options)
 
+    if options.list_profiles:
+        Pyramid.profile_lst(tty=True)
+        return
+
+    if not args:
+        logging.error('No input file(s) specified')
+        sys.exit(1)
+
     if options.verbose == 2:
         set_nothreads()
 
-    if options.list_profiles:
-        Pyramid.profile_lst(tty=True)
-        sys.exit(0)
-
     if options.release:
         options.overview_resampling, options.base_resampling = ('antialias', 'cubic')
-
-    try:
-        sources = args
-    except:
-        raise Exception("No sources specified")
 
     res = parallel_map(preprocess_src, sources)
     parallel_map(process_src, flatten(res))
