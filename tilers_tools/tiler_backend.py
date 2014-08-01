@@ -255,7 +255,9 @@ class Pyramid(object):
         self.base_resampling = base_resampling_map[self.options.base_resampling]
         self.resampling = resampling_map[self.options.overview_resampling]
 
-        print('\n%s -> %s '%(self.src, self.dest), end='')
+        #~ if self.options.verbose > 0:
+            #~ print('\n%s -> %s '%(self.src, self.dest), end='')
+        logging.info(' %s -> %s '%(self.src, self.dest))
 
         if os.path.isdir(self.dest):
             if self.options.noclobber and os.path.exists(self.dest):
@@ -317,7 +319,7 @@ class Pyramid(object):
         self.src_path = self.src
         if os.path.exists(self.src):
             self.src_path = os.path.abspath(self.src)
-            pf('')
+            #~ pf('')
             ld('self.src_path',self.src_path, self.src)
 
         # check for source raster type
@@ -628,7 +630,7 @@ class Pyramid(object):
 
         # warp base raster
         base_ds = gdal.Open(vrt_text, GA_ReadOnly)
-        pf('.', end='')
+        self.progress()
 
         # close datasets in a proper order
         del self.src_ds
@@ -708,8 +710,9 @@ class Pyramid(object):
                 opacities for img, ch, opacities in top_results
                 ))
             ))
-
         write_transparency(self.dest, transparency)
+
+        self.progress(finished=True)
 
     #----------------------------
 
@@ -818,7 +821,7 @@ class Pyramid(object):
         else:
             tile_img.save(full_path)
 
-        self.counter()
+        self.progress()
 
     #----------------------------
 
@@ -1061,13 +1064,15 @@ class Pyramid(object):
     # progress display
     tick_rate = 50
     count = 0
-    def counter(self):
-        self.count += 1
-        if self.count % self.tick_rate == 0:
+    def progress(self, finished=False):
+        if self.options.verbose == 0:
+            pass
+        elif finished:
+            pf('')
+        elif self.count % self.tick_rate == 0:
             pf('.', end='')
-            return True
-        else:
-            return False
+        self.count += 1
+
 # Pyramid
 
 #----------------------------

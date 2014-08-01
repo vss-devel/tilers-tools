@@ -173,7 +173,6 @@ def main(argv):
 
     res = parallel_map(preprocess_src, args)
     parallel_map(process_src, flatten(res))
-    pf('')
 
 # main()
 
