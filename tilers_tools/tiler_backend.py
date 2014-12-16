@@ -204,8 +204,6 @@ class Pyramid(object):
         self.dest = dest
         ld('src dest',src, dest)
         self.options = LooseDict(options)
-        if self.options.delete_src:
-            self.temp_files.append(self.src)
         self.name = self.options.name
         self.tile_ext = self.options.tile_ext
         self.description = ''
@@ -250,29 +248,18 @@ class Pyramid(object):
 
     #----------------------------
 
-    def init_output(self):
-        'initialize geo-parameters and generate base zoom level'
+    def open_source_dataset(self):
+        'open src dataset, convert to RGB(A) if required'
     #----------------------------
 
-        self.tiles_prefix = self.options.tiles_prefix
-        self.src_dir, src_f = os.path.split(self.src)
-        self.base = os.path.splitext(src_f)[0]
-
-        #~ if self.options.verbose > 0:
-            #~ print('\n%s -> %s '%(self.src, self.dest), end='')
-        logging.info(' %s -> %s '%(self.src, self.dest))
+        if self.options.delete_src:
+            self.temp_files.append(self.src)
 
         if os.path.isdir(self.dest):
             if self.options.noclobber and os.path.exists(self.dest):
                 raise RuntimeError('Target already exists: skipping')
             else:
                 shutil.rmtree(self.dest, ignore_errors=True)
-
-    #----------------------------
-
-    def open_source_dataset(self):
-        'open src dataset, convert to RGB(A) if required'
-    #----------------------------
 
         self.base_resampling = base_resampling_map[self.options.base_resampling]
         self.resampling = resampling_map[self.options.overview_resampling]
@@ -411,27 +398,19 @@ class Pyramid(object):
 
     #----------------------------
 
-    def shift_srs(self, zoom=None):
-        'change prime meridian to allow charts crossing 180 meridian'
+    def init_output(self):
+        'initialize geo-parameters and generate base zoom level'
     #----------------------------
-        tl, br = GdalTransformer(self.src_ds, DST_SRS=self.geog_srs).transform([
-            (0, 0),
-            (self.src_ds.RasterXSize, self.src_ds.RasterYSize)])
-        ld('shift_srs tl', tl, 'br', br)
-        if br[0] <= 180 and tl[0] >= -180 and tl[0] < br[0]:
-            return self.proj_srs
 
-        left_lon = tl[0]
-        if zoom is not None: # adjust to a tile boundary
-            left_xy = self.proj2geog.transform_point((left_lon, 0), inv=True)
-            tile_left_xy = self.tile_corners(self.coord2tile(zoom, left_xy))[0]
-            left_lon = self.proj2geog.transform_point(tile_left_xy)[0]
-        lon_0 = left_lon + 180
-        ld('left_lon', left_lon, 'lon_0', lon_0)
-        new_srs = '%s +lon_0=%f' % (self.proj_srs, lon_0)
-        if not (br[0] <= 180 and tl[0] >= -180):
-            new_srs += ' +over +wktext' # allow for a map to span beyond -180 -- +180 range
-        return new_srs
+        self.tiles_prefix = self.options.tiles_prefix
+        self.src_dir, src_f = os.path.split(self.src)
+        self.base = os.path.splitext(src_f)[0]
+
+        #~ if self.options.verbose > 0:
+            #~ print('\n%s -> %s '%(self.src, self.dest), end='')
+        logging.info(' %s -> %s '%(self.src, self.dest))
+
+        self.calc_zoom()
 
     #----------------------------
 
@@ -442,10 +421,7 @@ class Pyramid(object):
         # check raster parameters to find default zoom range
         ld('automatic zoom levels')
 
-        # modify target srs to allow charts crossing meridian 180
-        shifted_srs = self.shift_srs()
-
-        t_ds = gdal.AutoCreateWarpedVRT(self.src_ds, None, txt2wkt(shifted_srs))
+        t_ds = gdal.AutoCreateWarpedVRT(self.src_ds, None, txt2wkt(self.proj_srs))
         geotr = t_ds.GetGeoTransform()
         res = (geotr[1], -geotr[5])
         max_zoom = max(self.res2zoom_xy(res))
@@ -481,9 +457,6 @@ class Pyramid(object):
         ld('target raster')
         ld('Top Left', self.corners[0], target_corners[0], self.proj2geog.transform([self.corners[0], target_corners[0]]))
         ld('Bottom Right', self.corners[1], target_corners[1], self.proj2geog.transform([self.corners[1], target_corners[1]]))
-#        orig_tl = GdalTransformer(SRC_SRS=self.geog_srs, DST_SRS=self.srs).transform_point(
-#            self.proj2geog.transform_point(target_corners[0]))
-#        ld(orig_tl[0]-target_corners[0][0], orig_tl)
 
         # adjust raster extents to tile boundaries
         tile_tl, tile_br = self.corner_tiles(self.max_zoom)
@@ -495,8 +468,8 @@ class Pyramid(object):
         br_pix = self.tile_pixcorners(tile_br)[1]
 
         # base zoom level raster size
-        dst_xsize = br_pix[0]-tl_pix[0]
-        dst_ysize = br_pix[1]-tl_pix[1]
+        dst_xsize = br_pix[0] - tl_pix[0]
+        dst_ysize = br_pix[1] - tl_pix[1]
 
         ld('target Top Left', self.corners[0], tl_c, self.proj2geog.transform([self.corners[0], tl_c]))
         ld('target Bottom Right', self.corners[1], br_c, self.proj2geog.transform([self.corners[1], br_c]))
@@ -650,7 +623,6 @@ class Pyramid(object):
 
         # connect to src dataset
         try:
-            self.init_output()
             self.open_source_dataset()
         except RuntimeError as exc:
             if self.options.skip_invalid:
@@ -659,8 +631,7 @@ class Pyramid(object):
             else:
                 raise
 
-        # calculate zoom range
-        self.calc_zoom()
+        self.init_output()
 
         # create a raster source for a base zoom
         self.create_target_dataset()
@@ -1116,21 +1087,65 @@ class MercatorPyramid(Pyramid):
 
     #----------------------------
 
-    def create_target_dataset(self):
+    def init_output(self):
+        'initialize geo-parameters and generate base zoom level'
+    #----------------------------
+        self.modify_srs()
+        super(MercatorPyramid, self).init_output()
 
     #----------------------------
 
-        # shift target SRS to cope with crossing 180 meridian
-        shifted_srs = self.shift_srs(self.max_zoom)
-        shift_x = GdalTransformer(SRC_SRS=shifted_srs, DST_SRS=self.proj_srs).transform_point((0, 0))[0]
-        if shift_x != 0:
-            self.proj_srs = shifted_srs
-            self.proj2geog = GdalTransformer(SRC_SRS=self.proj_srs, DST_SRS=self.geog_srs)
-            self.max_raster_origin = (self.max_raster_origin[0]-shift_x, self.max_raster_origin[1])
-            self.tile_origin = (self.tile_origin[0]-shift_x, self.tile_origin[1])
-            ld('new_srs', shifted_srs, 'shift_x', shift_x, 'max_raster_origin', self.max_raster_origin)
+    def modify_srs(self):
+        'change prime meridian to allow charts crossing 180 meridian'
+    #----------------------------
 
-        super(MercatorPyramid, self).create_target_dataset()
+        def srs_replace(proj4_txt, parm_lst):
+            parm_dict = dict(((p.split('=')[0], p) for p in parm_lst))
+            proj_lst = proj4_txt.split()
+            proj_new = filter(None,
+                (i if i.split('=')[0] not in parm_dict else None for i in proj_lst)
+                )
+            proj_new.extend(parm_lst)
+            return ' '.join(proj_new)
+        # srs_replace
+
+        tl, br = GdalTransformer(
+            self.src_ds,
+            DST_SRS=self.geog_srs
+            ).transform([
+            (0, 0),
+            (self.src_ds.RasterXSize, self.src_ds.RasterYSize)])
+        ld('shift_srs tl', tl, 'br', br)
+
+        l_lon = tl[0]
+        r_lon = br[0]
+        if r_lon <= 180 and l_lon >= -180 and l_lon < r_lon:
+            return
+
+        while l_lon > r_lon:
+            r_lon += 360
+        lon_0 = int(round(l_lon + (r_lon - l_lon) / 2))
+        new_parms = ['+lon_0=%d' % (lon_0,)]
+
+        new_srs = srs_replace(self.proj_srs, new_parms)
+        ld('l_lon', l_lon, 'r_lon', r_lon, 'lon_0', lon_0)
+
+        shift_x = GdalTransformer(
+            SRC_SRS=new_srs,
+            DST_SRS=self.proj_srs
+            ).transform_point((0, 0))[0]
+        #~ ld('new_srs', shifted_srs, 'shift_x', shift_x, 'max_raster_origin', self.max_raster_origin)
+        if shift_x != 0:
+            self.proj_srs = new_srs
+            self.proj2geog = GdalTransformer(
+                SRC_SRS=self.proj_srs,
+                DST_SRS=self.geog_srs
+                )
+            self.max_raster_origin = (
+                self.max_raster_origin[0]-shift_x,
+                self.max_raster_origin[1]
+                )
+            ld('new_srs', new_srs, 'shift_x', shift_x, 'max_raster_origin', self.max_raster_origin)
 
 #----------------------------
 #
