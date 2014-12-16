@@ -251,6 +251,8 @@ class Pyramid(object):
     def open_source_dataset(self):
         'open src dataset, convert to RGB(A) if required'
     #----------------------------
+        self.src_dir, src_f = os.path.split(self.src)
+        self.base = os.path.splitext(src_f)[0]
 
         if self.options.delete_src:
             self.temp_files.append(self.src)
@@ -401,10 +403,7 @@ class Pyramid(object):
     def init_output(self):
         'initialize geo-parameters and generate base zoom level'
     #----------------------------
-
         self.tiles_prefix = self.options.tiles_prefix
-        self.src_dir, src_f = os.path.split(self.src)
-        self.base = os.path.splitext(src_f)[0]
 
         #~ if self.options.verbose > 0:
             #~ print('\n%s -> %s '%(self.src, self.dest), end='')
