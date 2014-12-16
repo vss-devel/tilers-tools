@@ -83,7 +83,7 @@ class RefPoints(object):
         self.zone=zone
         self.hemisphere=hemisphere
 
-        ld('RefPoints',self.__dict__)
+        #~ ld('RefPoints',self.__dict__)
 
         nrefs=len(filter(None,(self.pixels,self.latlong,self.cartesian))[0])
         if not self.ids:
@@ -114,13 +114,13 @@ class RefPoints(object):
         if self.pixels:
             return self.pixels
         p_dst=self.proj_coords()
-        ld(p_dst)
+        #~ ld(p_dst)
         pix_tr = GdalTransformer(
             dataset,
             METHOD='GCP_POLYNOMIAL' if not self.owner.map.options.tps else 'GCP_TPS'
         )
         p_pix=pix_tr.transform(p_dst,inv=True)
-        ld(p_pix)
+        #~ ld(p_pix)
         return [(p[0],p[1]) for p in p_pix]
 
     def grid2coord(self): # to re-implemented by children if applicable

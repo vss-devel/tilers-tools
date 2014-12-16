@@ -63,7 +63,7 @@ def process_src(src_def):
     dest = dest_path(src, opt.dest_dir, ext)
 
     prm = profile(src, dest, opt)
-    prm.walk_pyramid()
+    prm.generate_tiles()
 
 #----------------------------
 

@@ -29,7 +29,7 @@ from tiler_backend import *
 
 #############################
 
-class PlateCarree(Pyramid):
+class PlateCarree(MercatorPyramid):
     '''Plate Carrée, top-to-bottom tile numbering  (a la Google Earth)'''
 #############################
     zoom0_tiles = [2, 1] # tiles at zoom 0

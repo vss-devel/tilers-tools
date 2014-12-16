@@ -28,7 +28,7 @@ from tiler_backend import *
 
 #############################
 
-class GMercator(Pyramid):
+class GMercator(MercatorPyramid):
     'base class for Global Mercator'
 #############################
 

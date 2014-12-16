@@ -29,7 +29,7 @@ from tiler_backend import *
 
 #############################
 
-class GenericMap(Pyramid, ZYXtiling):
+class GenericMap(MercatorPyramid, ZYXtiling):
     'full profile options are to be specified'
 #############################
     profile = 'generic'
@@ -56,7 +56,7 @@ profile_map.append(GenericMap)
 
 #############################
 
-class Wgs84(Pyramid, ZYXtiling):
+class Wgs84(MercatorPyramid, ZYXtiling):
     'WGS 84 / World Mercator, EPSG:3395 (compatible with Yandex maps)'
 ##############################
     profile = 'wgs84'

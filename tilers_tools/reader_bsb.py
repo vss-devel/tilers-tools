@@ -52,7 +52,7 @@ class BsbKapMap(SrcMap):
                     header[-1] += ','+l.strip()
                 else:
                     header.append(l.strip())
-        ld(header)
+        ld('header', header)
         if not (header and any(((s.startswith('BSB/') or s.startswith('KNP/')) for s in header))):
             raise Exception(" Invalid file: %s" % self.file)
         return header
