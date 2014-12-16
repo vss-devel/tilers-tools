@@ -233,16 +233,14 @@ class Pyramid(object):
         # init tile grid parameters
     #----------------------------
 
+        self.tile_origin = self.get_corner_coords(self.tile_origin_corner)
         self.max_raster_origin = self.get_corner_coords('tl')
 
-        # default map corners to max_extent
+        # default raster corners to max_extent
         self.corners = (
             self.get_corner_coords('tl'),
             self.get_corner_coords('br')
             )
-
-        self.tile_origin = self.get_corner_coords(self.tile_origin_corner)
-        self.tile_origin_unshifted = self.tile_origin
 
         ld('zoom0_tiles', self.zoom0_tiles, 'tile_size', self.tile_size, 'max_raster_origin', self.max_raster_origin, 'tile_origin', self.tile_origin,)
 
@@ -446,16 +444,17 @@ class Pyramid(object):
             (0, 0),
             (target_ds.RasterXSize, target_ds.RasterYSize)])
 
-        ld('self.corners', self.corners)
+        ld('max raster', self.corners, self.proj2geog.transform(self.corners))
         # self.corners were set to the max raster, now clip them to the max tileset area
-        self.corners = ((target_corners[0][0],
-                      min(self.corners[0][1], target_corners[0][1])),
-                     (target_corners[1][0],
-                      max(self.corners[1][1], target_corners[1][1])))
+        self.corners = (
+            (max(self.corners[0][0], target_corners[0][0]),
+                min(self.corners[0][1], target_corners[0][1])),
+            (min(self.corners[1][0], target_corners[1][0]),
+                max(self.corners[1][1], target_corners[1][1]))
+            )
 
-        ld('target raster')
-        ld('Top Left', self.corners[0], target_corners[0], self.proj2geog.transform([self.corners[0], target_corners[0]]))
-        ld('Bottom Right', self.corners[1], target_corners[1], self.proj2geog.transform([self.corners[1], target_corners[1]]))
+        ld('target_corners', target_corners, self.proj2geog.transform(target_corners))
+        ld('target raster', self.corners, self.proj2geog.transform(self.corners))
 
         # adjust raster extents to tile boundaries
         tile_tl, tile_br = self.corner_tiles(self.max_zoom)
@@ -466,14 +465,20 @@ class Pyramid(object):
         tl_pix = self.tile_pixcorners(tile_tl)[0]
         br_pix = self.tile_pixcorners(tile_br)[1]
 
-        # base zoom level raster size
-        dst_xsize = br_pix[0] - tl_pix[0]
-        dst_ysize = br_pix[1] - tl_pix[1]
+        # warp base raster
+        base_ds = self.create_dest_vrt((tl_c, br_c), self.zoom2res(self.max_zoom))
 
-        ld('target Top Left', self.corners[0], tl_c, self.proj2geog.transform([self.corners[0], tl_c]))
-        ld('target Bottom Right', self.corners[1], br_c, self.proj2geog.transform([self.corners[1], br_c]))
+        # close datasets in a proper order
+        del self.src_ds
 
-        # create VRT for base image warp
+        # create base_image raster
+        self.base_img = BaseImg(base_ds, tl_pix, self.transparency)
+
+    #----------------------------
+
+    def create_dest_vrt(self, corners, res):
+
+    #----------------------------
 
         # generate warp transform
         src_geotr = self.src_ds.GetGeoTransform()
@@ -493,17 +498,23 @@ class Pyramid(object):
             gcp_proj = txt2proj4(self.src_ds.GetGCPProjection())
             if src_proj and gcp_proj != src_proj:
                 coords = GdalTransformer(SRC_SRS=gcp_proj, DST_SRS=src_proj).transform([g[3:6] for g in gcp_lst])
-                gcp_lst = [tuple(p[:3]+c) for p, c in zip(gcp_lst, coords)]
+                gcp_lst = [tuple(p[:3] + c) for p, c in zip(gcp_lst, coords)]
 
             gcp_txt = '\n'.join((gcp_templ % g for g in gcp_lst))
             #src_transform = warp_src_gcp_transformer % (0, gcp_txt)
             src_transform = warp_src_tps_transformer % gcp_txt
 
-        res = self.zoom2res(self.max_zoom)
+        # base zoom level raster size
+        tl_c, br_c = corners
+        left, top  = tl_c
+        right, bottom = br_c
+        ld(right, left, top, bottom)
+        size = (abs((right - left) / res[0]), abs((top - bottom) / res[0]))
+
         #tl_ll, br_ll = self.coords2longlat([tl_c, br_c])
-        ld('create_target_dataset', 'max_zoom', self.max_zoom, 'size', dst_xsize, dst_ysize, '-tr', res[0], res[1], '-te', tl_c[0], br_c[1], br_c[0], tl_c[1], '-t_srs', self.proj_srs)
-        dst_geotr = ( tl_c[0], res[0], 0.0,
-                      tl_c[1], 0.0, -res[1] )
+        ld('create_target_dataset', 'max_zoom', self.max_zoom, 'size', size[0], size[1], '-tr', res[0], res[1], '-te', tl_c[0], br_c[1], br_c[0], tl_c[1], '-t_srs', self.proj_srs)
+        dst_geotr = ( left, res[0], 0.0,
+                      top, 0.0, -res[1] )
         ok, dst_igeotr = gdal.InvGeoTransform(dst_geotr)
         assert ok
         dst_transform = '%s\n%s' % (warp_dst_geotr % dst_geotr, warp_dst_igeotr % dst_igeotr)
@@ -544,21 +555,21 @@ class Pyramid(object):
         vrt_bands = []
         wo_BandList = []
         for i in range(src_bands):
-            vrt_bands.append(warp_band % (i+1, '/'))
+            vrt_bands.append(warp_band % (i + 1, '/'))
             if src_nodata or dst_nodata:
                 band_mapping_info = warp_band_mapping_nodata % (
                         warp_band_src_nodata % (src_nodata[i], 0) if src_nodata else '',
                         warp_band_dst_nodata % (dst_nodata[i], 0) if dst_nodata else '')
             else:
                 band_mapping_info = '/'
-            wo_BandList.append(warp_band_mapping % (i+1, i+1, band_mapping_info))
+            wo_BandList.append(warp_band_mapping % (i + 1, i + 1, band_mapping_info))
 
         if src_bands < 4 and self.palette is None:
-            vrt_bands.append(warp_band % (src_bands+1, warp_band_color % 'Alpha'))
+            vrt_bands.append(warp_band % (src_bands + 1, warp_band_color % 'Alpha'))
 
         vrt_text = warp_vrt % {
-            'xsize':            dst_xsize,
-            'ysize':            dst_ysize,
+            'xsize':            size[0],
+            'ysize':            size[1],
             'srs':              self.proj_srs,
             'geotr':            geotr_templ % dst_geotr,
             'band_list':        '\n'.join(vrt_bands),
@@ -572,23 +583,16 @@ class Pyramid(object):
             'wo_src_transform': src_transform,
             'wo_dst_transform': dst_transform,
             'wo_BandList':      '\n'.join(wo_BandList),
-            'wo_DstAlphaBand':  warp_dst_alpha_band % (src_bands+1) if src_bands < 4  and self.palette is None else '',
+            'wo_DstAlphaBand':  warp_dst_alpha_band % (src_bands + 1) if src_bands < 4  and self.palette is None else '',
             'wo_Cutline':       (warp_cutline % cut_wkt) if cut_wkt else '',
             }
 
-        temp_vrt = os.path.join(self.dest, self.base+'.tmp.vrt') # auxilary VRT file
+        temp_vrt = os.path.join(self.dest, self.base + '.tmp.vrt') # auxilary VRT file
         self.temp_files.append(temp_vrt)
         with open(temp_vrt, 'w') as f:
             f.write(vrt_text.encode('utf-8'))
 
-        # warp base raster
-        base_ds = gdal.Open(vrt_text, GA_ReadOnly)
-
-        # close datasets in a proper order
-        del self.src_ds
-
-        # create base_image raster
-        self.base_img = BaseImg(base_ds, tl_pix, self.transparency)
+        return gdal.Open(vrt_text, GA_ReadOnly)
 
     #----------------------------
 
@@ -825,7 +829,7 @@ class Pyramid(object):
                 'inversion':    self.axis_inv,
                 'ext':          self.tile_ext[1:],
                 'mime':         tile_mime,
-                'origin':       self.tile_origin_unshifted,
+                'origin':       self.tile_origin,
                 'max_extent':   self.max_extent
                 },
             'bbox': (
@@ -1123,17 +1127,20 @@ class MercatorPyramid(Pyramid):
 
         while l_lon > r_lon:
             r_lon += 360
-        lon_0 = int(round(l_lon + (r_lon - l_lon) / 2))
-        new_parms = ['+lon_0=%d' % (lon_0,)]
+        lon_0 = l_lon + (r_lon - l_lon) / 2
+        while lon_0 > 180:
+            lon_0 -= 360
+        new_parms = ['+lon_0=%r' % lon_0]
 
         new_srs = srs_replace(self.proj_srs, new_parms)
-        ld('l_lon', l_lon, 'r_lon', r_lon, 'lon_0', lon_0)
+        ld( 'lon_0', lon_0, 'l_lon', l_lon, 'r_lon', r_lon)
 
-        shift_x = GdalTransformer(
-            SRC_SRS=new_srs,
-            DST_SRS=self.proj_srs
-            ).transform_point((0, 0))[0]
-        #~ ld('new_srs', shifted_srs, 'shift_x', shift_x, 'max_raster_origin', self.max_raster_origin)
+        old2new = GdalTransformer(
+            SRC_SRS=self.proj_srs,
+            DST_SRS=new_srs
+            )
+        shift_x = old2new.transform_point((0, 0))[0]
+
         if shift_x != 0:
             self.proj_srs = new_srs
             self.proj2geog = GdalTransformer(
@@ -1141,7 +1148,7 @@ class MercatorPyramid(Pyramid):
                 DST_SRS=self.geog_srs
                 )
             self.max_raster_origin = (
-                self.max_raster_origin[0]-shift_x,
+                self.max_raster_origin[0] + shift_x,
                 self.max_raster_origin[1]
                 )
             ld('new_srs', new_srs, 'shift_x', shift_x, 'max_raster_origin', self.max_raster_origin)
