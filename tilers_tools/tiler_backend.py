@@ -208,7 +208,8 @@ class Pyramid(object):
         self.tile_ext = self.options.tile_ext
         self.description = ''
 
-        self.proj_srs = txt2proj4(self.srs) # self.proj_srs may be changed later to avoid crossing longitude 180
+        # self.proj_srs may be changed later, for example, to avoid crossing longitude 180
+        self.proj_srs = txt2proj4(self.srs)
         self.geog_srs = proj_cs2geog_cs(self.proj_srs)
         ld('proj, longlat', self.proj_srs, self.geog_srs)
 
@@ -447,16 +448,11 @@ class Pyramid(object):
 
         self.set_zoom_range(self.options.zoom, (min_zoom, max_zoom))
 
-
     #----------------------------
 
     def auto_warp_corners(self):
 
     #----------------------------
-        #~ if res is None:
-            #~ r = max(src_geotr[1], -src_geotr[5])
-            #~ res = (r, r)
-    # get corners of the source
 
         width = self.src_ds.RasterXSize
         height = self.src_ds.RasterYSize
@@ -858,14 +854,6 @@ class Pyramid(object):
 
     #----------------------------
 
-    def map_tiles2longlat_corners(self, tiles):
-        'translate "logical" tiles to latlong boxes'
-    #----------------------------
-        # via 'logical' to 'physical' tile mapping
-        return self.corners_lst2longlat([self.tile_corners(self.tile_map[t]) for t in tiles])
-
-    #----------------------------
-
     def write_metadata(self, tile=None, children=[]):
 
     #----------------------------
@@ -1020,10 +1008,6 @@ class Pyramid(object):
         t_br = self.pix2tile(zoom, (p_br[0], p_br[1]))
 
         box_tl, box_br = [self.tile_corners(t) for t in (t_tl, t_br)]
-        #~ ld('corner_tiles zoom', zoom,
-            #~ 'p_tl', p_tl, 'p_br', p_br, 't_tl', t_tl, 't_br', t_br,
-            #~ 'longlat', self.coords2longlat([box_tl[0], box_br[1]])
-            #~ )
         return t_tl, t_br
 
     def set_zoom_range(self, zoom_parm, default_range=None):
