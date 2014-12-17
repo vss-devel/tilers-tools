@@ -247,7 +247,7 @@ class Pyramid(object):
     #----------------------------
 
     def open_source_dataset(self):
-        'open src dataset, convert to RGB(A) if required'
+        ''
     #----------------------------
         self.src_dir, src_f = os.path.split(self.src)
         self.base = os.path.splitext(src_f)[0]
@@ -271,31 +271,24 @@ class Pyramid(object):
             ld('self.src_path',self.src_path, self.src)
 
         # check for source raster type
-        src_ds = gdal.Open(self.src_path, GA_ReadOnly)
-        self.src_ds = src_ds
+        self.src_ds = gdal.Open(self.src_path, GA_ReadOnly)
         self.description = self.src_ds.GetMetadataItem('DESCRIPTION')
 
         # source is successfully opened, then create destination dir
         os.makedirs(self.dest)
 
-        src_geotr = src_ds.GetGeoTransform()
-        src_proj = txt2proj4(src_ds.GetProjection())
-        gcps = src_ds.GetGCPs()
-        if gcps:
-            ld('src GCPsToGeoTransform', gdal.GCPsToGeoTransform(gcps))
+        self.modify_src_raster()
 
-        if not src_proj and gcps :
-            src_proj = txt2proj4(src_ds.GetGCPProjection())
+    #----------------------------
+
+    def modify_src_raster(self):
+        'convert to RGB(A) if required'
+    #----------------------------
 
         override_srs = self.options.srs
-        if override_srs is not None:
-            src_proj = txt2proj4(override_srs)
 
-        ld('src_proj', src_proj, 'src geotr', src_geotr)
-        assert src_proj, 'The source does not have a spatial reference system assigned'
-
-        src_bands = src_ds.RasterCount
-        band1 = src_ds.GetRasterBand(1)
+        src_bands = self.src_ds.RasterCount
+        band1 = self.src_ds.GetRasterBand(1)
         if src_bands == 1 and band1.GetColorInterpretation() == GCI_PaletteIndex : # source is a paletted raster
             transparency = None
             if self.base_resampling == 'NearestNeighbour' and self.resampling == Image.NEAREST :
@@ -318,8 +311,24 @@ class Pyramid(object):
                 self.transparency = transparency
                 self.palette = pil_palette
                 ld('self.palette', self.palette)
-
             else: # convert src to rgb VRT
+
+                src_geotr = self.src_ds.GetGeoTransform()
+                src_proj = txt2proj4(self.src_ds.GetProjection())
+                gcps = self.src_ds.GetGCPs()
+                if gcps:
+                    ld('src GCPsToGeoTransform', gdal.GCPsToGeoTransform(gcps))
+
+                if not src_proj and gcps :
+                    src_proj = txt2proj4(self.src_ds.GetGCPProjection())
+
+                if override_srs is not None:
+                    src_proj = txt2proj4(override_srs)
+                    override_srs = None
+
+                ld('src_proj', src_proj, 'src geotr', src_geotr)
+                assert src_proj, 'The source does not have a spatial reference system assigned'
+
                 if not src_geotr or src_geotr == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
                     geotr_txt = ''
                 else:
@@ -329,10 +338,10 @@ class Pyramid(object):
                 if gcps:
                     gcp_lst = '\n'.join((gcp_templ % (g.Id, g.GCPPixel, g.GCPLine, g.GCPX, g.GCPY, g.GCPZ)
                                         for g in gcps))
-                    gcp_proj = txt2proj4(src_ds.GetGCPProjection()) if override_srs is None else src_proj
+                    gcp_proj = txt2proj4(self.src_ds.GetGCPProjection()) if override_srs is None else src_proj
                     gcplst_txt = gcplst_templ % (gcp_proj, gcp_lst)
 
-                metadata = src_ds.GetMetadata()
+                metadata = self.src_ds.GetMetadata()
                 ld('metadata', metadata)
                 if metadata:
                     mtd_lst = [xml_txt('MDI', metadata[mdkey], 4, key=mdkey) for mdkey in metadata]
@@ -340,7 +349,7 @@ class Pyramid(object):
                 else:
                     meta_txt = ''
 
-                xsize, ysize = (src_ds.RasterXSize, src_ds.RasterYSize)
+                xsize, ysize = (self.src_ds.RasterXSize, self.src_ds.RasterYSize)
                 blxsize, blysize = band1.GetBlockSize()
 
                 band_lst = ''.join((band_templ % {
@@ -365,14 +374,14 @@ class Pyramid(object):
                     }
 
                 src_vrt = os.path.abspath(os.path.join(self.dest, self.base+'.src.vrt')) # auxilary VRT file
+
                 self.temp_files.append(src_vrt)
                 self.src_path = src_vrt
                 with open(src_vrt, 'w') as f:
                     f.write(vrt_txt.encode('utf-8'))
 
                 self.src_ds = gdal.Open(src_vrt, GA_ReadOnly)
-                return # rgb VRT created
-            # finished with a paletted raster
+                # finished with a paletted raster
 
         if override_srs is not None: # src SRS needs to be relpaced
             src_vrt = os.path.join(self.dest, self.base+'.src.vrt') # auxilary VRT file
@@ -388,14 +397,6 @@ class Pyramid(object):
             if gcps :
                 self.src_ds.SetGCPs(gcps, txt2wkt(override_srs))
 
-        # debug print
-#        src_origin, src_extent = GdalTransformer(src_ds).transform([(0, 0), (src_ds.RasterXSize, src_ds.RasterYSize)])
-#        src_proj = txt2proj4(src_ds.GetProjection())
-#        src_proj2geog = GdalTransformer(SRC_SRS=src_proj, DST_SRS=proj_cs2geog_cs(src_proj))
-#        ld('source_raster')
-#        ld('Top Left', src_origin, src_proj2geog.transform([src_origin]))
-#        ld('Bottom Right', src_extent, src_proj2geog.transform([src_extent]))
-
     #----------------------------
 
     def init_output(self):
@@ -407,12 +408,8 @@ class Pyramid(object):
             #~ print('\n%s -> %s '%(self.src, self.dest), end='')
         logging.info(' %s -> %s '%(self.src, self.dest))
 
-        t_ds = gdal.AutoCreateWarpedVRT(self.src_ds, None, txt2wkt(self.proj_srs))
-
         # get corners at the target SRS
-        target_corners = GdalTransformer(t_ds).transform([
-            (0, 0),
-            (t_ds.RasterXSize, t_ds.RasterYSize)])
+        target_corners = self.auto_warp_corners()
 
         ld('max raster', self.raster_corners, self.proj2geog.transform(self.raster_corners))
         # self.raster_corners were set to the max raster, now clip them to the max tileset area
@@ -426,29 +423,90 @@ class Pyramid(object):
         ld('target_corners', target_corners, self.proj2geog.transform(target_corners))
         ld('target raster', self.raster_corners, self.proj2geog.transform(self.raster_corners))
 
-        self.calc_zoom(t_ds)
+        self.calc_zoom(target_corners)
 
     #----------------------------
 
-    def calc_zoom(self, t_ds):
+    def calc_zoom(self, corners):
         'determine and set a list of zoom levels to generate'
     #----------------------------
 
         # check raster parameters to find default zoom range
         ld('automatic zoom levels')
 
-        geotr = t_ds.GetGeoTransform()
-        res = (geotr[1], -geotr[5])
-        max_zoom = max(self.res2zoom_xy(res))
+        auto_warp_res = self.auto_warp_res(corners)
+        ld('auto_warp_corners', corners, 'auto_warp_res', auto_warp_res)
 
-        # calculate min_zoom
-        tl = (geotr[0], geotr[3])
-        br = gdal.ApplyGeoTransform(geotr, t_ds.RasterXSize, t_ds.RasterYSize)
+        max_zoom = max(self.res2zoom_xy(auto_warp_res))
+
+        tl = corners[0]
+        br = corners[1]
         wh = (br[0] - tl[0], tl[1] - br[1])
         ld('calc_zoom tl, br, wh', tl, br, wh)
         min_zoom = min(self.res2zoom_xy([wh[i] / self.tile_size[i] for i in (0, 1)]))
 
         self.set_zoom_range(self.options.zoom, (min_zoom, max_zoom))
+
+
+    #----------------------------
+
+    def auto_warp_corners(self):
+
+    #----------------------------
+        #~ if res is None:
+            #~ r = max(src_geotr[1], -src_geotr[5])
+            #~ res = (r, r)
+    # get corners of the source
+
+        width = self.src_ds.RasterXSize
+        height = self.src_ds.RasterYSize
+
+        n_samples = 100
+
+        def chunks(length):
+            return (int(round(i * length / n_samples)) for i in range(n_samples + 1))
+
+        top_line = ((j, 0) for j in chunks(width))
+        bottom_line = ((j, height) for j in chunks(width))
+
+        left_line = ((0, j) for j in chunks(height))
+        right_line = ((width, j) for j in chunks(height))
+
+        def iter_transformer(*args):
+            transformer = GdalTransformer(
+                self.src_ds,
+                DST_SRS=self.proj_srs,
+                )
+            for p in itertools.chain(*args):
+                try:
+                    yield transformer.transform_point(p)
+                except RuntimeError:
+                    yield None
+
+        out_pts = filter(None, iter_transformer(top_line, bottom_line, left_line, right_line))
+        #~ ld('out_pts', out_pts)
+
+        xx, yy = zip(*out_pts)
+        left = min(xx)
+        right = max(xx)
+        bottom = min(yy)
+        top = max(yy)
+
+        return ((left, top), (right, bottom))
+
+    #----------------------------
+
+    def auto_warp_res(self, corners):
+
+    #----------------------------
+        left, top = corners[0]
+        right, bottom = corners[1]
+        diag = math.sqrt((right - left) ** 2 + (top - bottom) ** 2)
+
+        pix_diag = math.sqrt(self.src_ds.RasterXSize ** 2 + self.src_ds.RasterYSize ** 2)
+
+        r = diag / pix_diag
+        return (r, r)
 
     #----------------------------
 
@@ -464,7 +522,7 @@ class Pyramid(object):
         br_c = self.tile_corners(tile_br)[1]
 
         # warp base raster
-        base_ds = self.create_dest_vrt((tl_c, br_c), self.zoom2res(self.max_zoom))
+        base_ds = self.create_warped_vrt((tl_c, br_c), self.zoom2res(self.max_zoom))
 
         # close source dataset
         del self.src_ds
@@ -475,7 +533,7 @@ class Pyramid(object):
 
     #----------------------------
 
-    def create_dest_vrt(self, corners, res):
+    def create_warped_vrt(self, corners=None, res=None):
 
     #----------------------------
 
@@ -496,7 +554,11 @@ class Pyramid(object):
             ld('src_proj', self.src_ds.GetProjection(), 'gcp_proj', self.src_ds.GetGCPProjection())
             gcp_proj = txt2proj4(self.src_ds.GetGCPProjection())
             if src_proj and gcp_proj != src_proj:
-                coords = GdalTransformer(SRC_SRS=gcp_proj, DST_SRS=src_proj).transform([g[3:6] for g in gcp_lst])
+                coords = GdalTransformer(
+                    SRC_SRS=gcp_proj,
+                    DST_SRS=src_proj
+                    ).transform([g[3:6] for g in gcp_lst])
+
                 gcp_lst = [tuple(p[:3] + c) for p, c in zip(gcp_lst, coords)]
 
             gcp_txt = '\n'.join((gcp_templ % g for g in gcp_lst))
@@ -507,11 +569,12 @@ class Pyramid(object):
         tl_c, br_c = corners
         left, top  = tl_c
         right, bottom = br_c
-        ld(right, left, top, bottom)
+        ld('right, left, top, bottom', right, left, top, bottom)
         size = (abs((right - left) / res[0]), abs((top - bottom) / res[0]))
 
         #tl_ll, br_ll = self.coords2longlat([tl_c, br_c])
         ld('create_target_dataset', 'max_zoom', self.max_zoom, 'size', size[0], size[1], '-tr', res[0], res[1], '-te', tl_c[0], br_c[1], br_c[0], tl_c[1], '-t_srs', self.proj_srs)
+
         dst_geotr = ( left, res[0], 0.0,
                       top, 0.0, -res[1] )
         ok, dst_igeotr = gdal.InvGeoTransform(dst_geotr)
@@ -649,15 +712,14 @@ class Pyramid(object):
 
         self.progress(finished=True)
 
+        children, images, opacities = zip(*top_results)
         # write top-level metadata (html/kml)
-        self.write_metadata(None, [ch for ch, img, opacities in top_results])
+        self.write_metadata(None, children)
 
         # cache back tiles transparency
         transparency = dict((
             (self.tile_path(tile), opc)
-            for tile, opc in flatten((
-                opacities for ch, img, opacities in top_results
-                ))
+                for tile, opc in itertools.chain(*opacities)
             ))
         write_transparency(self.dest, transparency)
 
@@ -670,10 +732,7 @@ class Pyramid(object):
         tile_tl, tile_br = self.corner_tiles(min_zoom)
         xx = (tile_tl[1], tile_br[1])
         yy = (tile_tl[2], tile_br[2])
-
-        for y in range(min(yy), max(yy)+1):
-            for x in range(min(xx), max(xx)+1):
-                yield (min_zoom, x, y)
+        return ((min_zoom, x, y) for y in range(min(yy), max(yy)+1) for x in range(min(xx), max(xx)+1))
 
     #----------------------------
 
@@ -684,25 +743,24 @@ class Pyramid(object):
         if not self.in_range(tile, check_zoom=False):
             return
 
-        opacity_lst = []
-        ch_results = []
         zoom, x, y = tile
         if zoom == self.max_zoom: # get from the base image
             tile_img, opacity = self.base_img.get_tile(self.tile_pixcorners(tile))
+            opacity_lst = [(tile, opacity)]
         else: # merge children
-            tile_img, opacity = self.assemble_tile(tile)
+            tile_img, opacity_lst = self.assemble_tile(tile)
 
         #~ ld('make_tile_raster', tile, tile_img, opacity)
-        if tile_img is not None and opacity != 0 and self.zoom_in_range(zoom):
+        if tile_img is not None and self.zoom_in_range(zoom):
             if self.palette:
                 tile_img.putpalette(self.palette)
 
             self.write_tile(tile, tile_img)
 
             # write tile-level metadata (html/kml)
-            self.write_metadata(tile, [ch for img, ch, opacities in ch_results])
+            children = [ch for ch, opacity in opacity_lst[1:]]
+            self.write_metadata(tile, children)
 
-            opacity_lst.insert(0, (tile, opacity))
             return tile, tile_img, opacity_lst
 
     #----------------------------
@@ -712,25 +770,24 @@ class Pyramid(object):
     #----------------------------
 
         zoom, x, y = tile
-
-        ch_zoom = self.zoom_range[self.zoom_range.index(zoom) - 1] # child's zoom
-        xy_children = int(2 ** (ch_zoom - zoom))
+        ch_zoom = self.zoom_range[self.zoom_range.index(zoom) - 1] # children's zoom
 
         # map children locations inside the parent raster
-        children_map = dict(flatten(  # child tile: offsets to inside a parent tile
-            [[((ch_zoom, x * xy_children + dx, y * xy_children + dy),
-                (dx * self.tile_size[0] // xy_children, dy * self.tile_size[1] // xy_children))
-                for dx in range(xy_children)]
-            for dy in range(xy_children)]))
+        len_xy = int(2 ** (ch_zoom - zoom))
+        children_map = dict(
+            (((ch_zoom, x * len_xy + i, y * len_xy + j), # child tile
+                (self.tile_size[0] * i, self.tile_size[1] * j)) # offset inside the parent tile
+            for i in range(len_xy) for j in range(len_xy))
+            )
         #ld(tile, ch_mozaic)
 
-        ch_results = filter(None, itertools.imap(self.make_tile_raster, children_map))
+        ch_results = filter(None, itertools.imap(self.make_tile_raster, children_map.keys()))
         #~ ld('tile', tile, 'children', children, 'ch_results', ch_results)
 
         opacity = 0
         # combine into the parent tile
-        if (len(ch_results) == xy_children * xy_children and
-            all([opacities[0][1] == 1 for ch, img, opacities in ch_results])
+        if (len(ch_results) == len_xy * len_xy and
+                all([opacity_data[0][1] == 1 for ch, img, opacity_data in ch_results])
             ):
             opacity = 1
             mode_opacity = ''
@@ -739,10 +796,10 @@ class Pyramid(object):
             mode_opacity = 'A'
 
         tile_img = None
-        for ch, img, opacity_lst in ch_results:
-            opacity_lst.extend(opacity_lst)
+        opacity_lst = []
+        for ch, ch_img, opacity_data in ch_results:
+            opacity_lst.extend(opacity_data)
 
-            ch_img = img.resize([i // xy_children for i in img.size], self.resampling)
             ch_mask = ch_img.split()[-1] if 'A' in ch_img.mode else None
 
             if tile_img is None:
@@ -753,14 +810,17 @@ class Pyramid(object):
                 else:
                     tile_mode = 'RGB' + mode_opacity
 
+                img_size = [i * len_xy for i in self.tile_size]
                 if self.transparency is not None:
-                    tile_img = Image.new(tile_mode, img.size, self.transparency)
+                    tile_img = Image.new(tile_mode, img_size, self.transparency)
                 else:
-                    tile_img = Image.new(tile_mode, img.size)
+                    tile_img = Image.new(tile_mode, img_size)
 
             tile_img.paste(ch_img, children_map[ch], ch_mask)
 
-        return tile_img, opacity
+        opacity_lst.insert(0, (tile, opacity))
+
+        return None if not tile_img else tile_img.resize(self.tile_size, self.resampling), opacity_lst
 
     #----------------------------
 

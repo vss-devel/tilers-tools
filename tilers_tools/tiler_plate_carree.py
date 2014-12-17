@@ -91,7 +91,7 @@ class PlateCarree(MercatorPyramid):
         name = os.path.splitext(rel_path)[0]
         kml_links = self.kml_child_links(children, tile, '../../')
         tile_box = self.map_tiles2longlat_bounds([tile])[0]
-        w, n, e, s = ['%.11G'%v for v in flatten(tile_box)]
+        w, n, e, s = ['%r' % v for v in flatten(tile_box)]
         kml_overlay = kml_overlay_templ % {
             'name':    name,
             'href':    os.path.basename(rel_path),
