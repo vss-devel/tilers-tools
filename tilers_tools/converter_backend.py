@@ -38,7 +38,7 @@ from PIL import Image
 #~ from PIL import WebPImagePlugin
 
 from tiler_functions import *
-from gdal_tiler import Pyramid
+from tiler import Pyramid
 
 #############################
 
