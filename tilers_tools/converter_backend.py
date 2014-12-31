@@ -437,8 +437,8 @@ class TileSet(object):
         prev_sq = 0
         for z in reversed(sorted(self.zoom_levels)):
             ul_zxy, lr_zxy = self.zoom_levels[z]
-            ul_c = self.pyramid.tile_bounds(ul_zxy)[0]
-            lr_c = self.pyramid.tile_bounds(lr_zxy)[1]
+            ul_c = self.pyramid.tile_corners(ul_zxy)[0]
+            lr_c = self.pyramid.tile_corners(lr_zxy)[1]
             sq = (lr_c[0]-ul_c[0])*(ul_c[1]-lr_c[1])
             area_diff = round(prev_sq/sq, 5)
             log('ul_c, lr_c', z, ul_c, lr_c, sq, area_diff)
