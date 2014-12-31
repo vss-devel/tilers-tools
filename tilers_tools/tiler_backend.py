@@ -477,9 +477,9 @@ class Pyramid(object):
                 try:
                     yield transformer.transform_point(p)
                 except RuntimeError:
-                    yield None
+                    pass
 
-        out_pts = filter(None, iter_transformer(top_line, bottom_line, left_line, right_line))
+        out_pts = list(iter_transformer(top_line, bottom_line, left_line, right_line))
         #~ ld('out_pts', out_pts)
 
         xx, yy = zip(*out_pts)
