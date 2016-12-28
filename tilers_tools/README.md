@@ -1,6 +1,6 @@
 A few scripts for creating and handling a tile sets from digital raster maps. The scripts are based on GDAL tools.
 
-Download from http://code.google.com/p/tilers-tools/downloads/list
+Download from https://github.com/vadp/tilers-tools/
 ----
  * `gdal_tiler.py` -- creates a tile set tree directory from a GDAL dataset (including BSB/KAP, GEO/NOS, OZI map, KML image overlays);
 
