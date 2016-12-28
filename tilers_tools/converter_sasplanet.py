@@ -23,6 +23,10 @@
 #  DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
+import binascii
+import time
+import os.path
+
 from converter_backend import *
 
 #############################
@@ -146,3 +150,129 @@ class SASBerkeley(TileDir):
 tileset_profiles.append(SASBerkeley)
 
 # SASBerkeley
+
+#############################
+
+class SASSQLite(TileDir):
+    'SASPlanet SQLite DB'
+#############################
+    format, ext, input, output = 'slite', '.sqlitedb', True, True
+    dir_pattern = 'z[0-9]*/[0-9]*/[0-9]*/*.sqlitedb'
+
+    # from u_TileStorageSQLiteHolder.pas
+    create_sql = [
+        'PRAGMA synchronous = OFF;',
+        'PRAGMA page_size = 16384;',
+        'CREATE TABLE IF NOT EXISTS t ('+
+            'x INTEGER NOT NULL,'+
+            'y INTEGER NOT NULL,'+
+            'v INTEGER DEFAULT 0 NOT NULL,'+ # version
+            'c TEXT,'+                       # content_type
+            's INTEGER DEFAULT 0 NOT NULL,'+ # size
+            'h INTEGER DEFAULT 0 NOT NULL,'+ # crc32
+            'd INTEGER NOT NULL,'+           # date as unix seconds DEFAULT (strftime(''%s'',''now'')))
+            'b BLOB,'+                       # body
+            'constraint PK_TB primary key (x,y,v));',
+        'CREATE INDEX IF NOT EXISTS t_v_idx on t (v);'
+    ]
+
+    db_path = None
+    db = None
+
+    def __init__(self, *args, **kw_args):
+        super(SASSQLite, self).__init__(*args, **kw_args)
+
+        import sqlite3
+        self.sqlite3 = sqlite3
+
+    def __iter__(self):
+        log('__iter__', os.path.join(self.root, self.dir_pattern), glob.iglob(os.path.join(self.root, self.dir_pattern)))
+        for db_file in glob.iglob(os.path.join(self.root, self.dir_pattern)):
+            log('db_file', db_file)
+            for tile in self.iter_db_file(db_file):
+                yield tile
+
+    def iter_db_file(self, db_path):
+        zoom = self.get_zoom(db_path) # also checks data in range
+        if not zoom:
+            return
+
+        db = self.sqlite3.connect(db_path)
+        dbc = db.cursor()
+
+        dbc.execute('SELECT x, y, MAX(v), b FROM t GROUP BY x,y;')
+        for x, y, version, data in dbc:
+            if data:
+                coord = [zoom, x, y]
+                #~ log('db tile', coord, tile[:20], path)
+                #~ log('tile', coord, data)
+                yield PixBufTile(coord, data, key=(db_path, coord))
+
+        db.close()
+
+    def get_zoom(self, db_path): # u_TileFileNameSQLite.pas
+        z, x10, y10, xy8 = path2list(db_path)[-5:-1]
+        zoom = int(z[1:]) - 1
+        x_min, y_min = [int(d) << 8 for d in xy8.split('.')]
+        x_max, y_max = [d | 0xFF for d in x_min, y_min]
+
+        if not self.in_range((zoom, x_min, y_min), (zoom, x_max, y_max)):
+            return None
+            pass
+        log('get_zoom', zoom, x_min, x_max, y_min, y_max,db_path)
+        return zoom
+
+    def store_tile(self, tile):
+        z, x, y = tile.coord()
+        data = buffer(tile.data())
+        log('%s -> %s:%d, %d, %d' % (tile.path, self.name, z, x, y))
+
+        try:
+            data_type = tile.get_mime()
+        except KeyError:
+            return
+
+        self.set_db(tile)
+
+        timestamp = int(time.time())
+        self.dbc.execute(
+            'INSERT OR REPLACE INTO t '
+                '(x, y, s, h, d, b) '
+                'VALUES (?, ?, ?, ?, ?, ?);',
+            (x, y, len(data), binascii.crc32(data) % (1 << 32), timestamp, data)
+        )
+
+    def set_db(self, tile):
+        z, x, y = tile.coord()
+        db_dir = os.path.join(self.root, 'z' + str(z + 1), str(x >> 10), str(y >> 10))
+        db_name = '%d.%d%s' % (x >> 8, y >> 8, self.ext)
+
+        db_path = os.path.join(db_dir, db_name)
+        log(db_path)
+        if self.db_path == db_path:
+            return
+
+        if self.db:
+            self.db.commit()
+            self.db.close()
+
+        if not os.path.exists(db_dir):
+            os.makedirs(db_dir)
+
+        self.db_path = db_path
+        self.db = self.sqlite3.connect(db_path)
+        self.dbc = self.db.cursor()
+
+        for stmt in self.create_sql:
+            self.dbc.execute(stmt)
+        self.db.commit()
+
+    def finalize_tileset(self):
+        if self.db:
+            self.db.commit()
+            self.db.close()
+            self.db = None
+
+tileset_profiles.append(SASSQLite)
+
+# SASSQLite
