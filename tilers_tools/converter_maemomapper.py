@@ -61,9 +61,8 @@ class MapperSQLite(TileSet):
         self.dbc.execute('SELECT * FROM maps')
         for z, x, y, pixbuf in self.dbc:
             coord = self.max_zoom+1-z, x, y
-            if not self.in_range(coord):
-                continue
-            yield PixBufTile(coord, str(pixbuf), (z, x, y))
+            if self.in_range(coord):
+                yield PixBufTile(coord, str(pixbuf), (z, x, y))
 
     def store_tile(self, tile):
         z, x, y = tile.coord()

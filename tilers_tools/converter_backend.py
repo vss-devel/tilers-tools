@@ -337,8 +337,8 @@ class TileSet(object):
         else:
             basename = os.path.splitext(os.path.basename(self.root or src.root))[0]
             df_name = os.path.splitext(basename)[0]
-            if self.options.region:
-                df_name += '-' + os.path.splitext(self.options.region)[0]
+            #~ if self.options.region:
+                #~ df_name += '-' + os.path.splitext(self.options.region)[0]
             self.name = self.options.name or df_name
 
             if not self.root:
@@ -383,6 +383,10 @@ class TileSet(object):
             return False
         if not self.pyramid:
             return True
+        zoom = ul_coords[0]
+        region_zoom = self.options.region_zoom
+        if region_zoom is not None and zoom < region_zoom:
+            return True
         return self.pyramid.in_range(ul_coords, lr_coords)
 
     def __del__(self):
@@ -417,7 +421,7 @@ class TileSet(object):
         pf('')
 
     def process_tile(self, tile):
-        log('process_tile', tile)
+        #~ log('process_tile', tile)
         self.store_tile(tile)
         self.counter()
 
@@ -485,9 +489,8 @@ class TileDir(TileSet):
     def __iter__(self):
         for f in glob.iglob(os.path.join(self.root, self.dir_pattern)):
             coord = self.path2coord(f)
-            if not self.in_range(coord):
-                continue
-            yield self.tile_class(coord, f)
+            if self.in_range(coord):
+                yield self.tile_class(coord, f)
 
     def path2coord(self, tile_path):
         raise Exception('Unimplemented!')

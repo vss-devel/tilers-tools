@@ -145,6 +145,8 @@ class BaseImg(object):
         tl = [corners[0][c] - self.tl_offsets[c] for c in (0, 1)]
         sz = [corners[1][c] - corners[0][c] for c in (0, 1)]
 
+        #~ ld('get_tile', tl, sz)
+
         tile_bands = [bnd.ReadRaster(tl[0], tl[1], sz[0], sz[1], sz[0], sz[1], GDT_Byte)
                     for bnd in self.bands]
         n_bands = len(self.bands)
@@ -512,13 +514,14 @@ class Pyramid(object):
 
         # adjust raster extents to tile boundaries
         tile_tl, tile_br = self.corner_tiles(self.max_zoom)
-        ld('base_raster')
-        ld('tile_tl', tile_tl, 'tile_br', tile_br)
-        tl_c = self.tile_corners(tile_tl)[0]
-        br_c = self.tile_corners(tile_br)[1]
+        size = ((tile_br[1] - tile_tl[1] + 1) * self.tile_size[0], (tile_br[2] - tile_tl[2] + 1) * self.tile_size[1])
+        top_left_coord = self.tile_corners(tile_tl)[0]
+        res = self.zoom2res(self.max_zoom)
+
+        ld('base_raster', 'tile_tl', tile_tl, 'tile_br', tile_br, 'top_left_coord', top_left_coord, 'res', res, 'size', size)
 
         # warp base raster
-        base_ds = self.create_warped_vrt((tl_c, br_c), self.zoom2res(self.max_zoom))
+        base_ds = self.create_warped_vrt(top_left_coord, res, size)
 
         # close source dataset
         del self.src_ds
@@ -529,7 +532,7 @@ class Pyramid(object):
 
     #----------------------------
 
-    def create_warped_vrt(self, corners=None, res=None):
+    def create_warped_vrt(self, top_left_coord, res, size):
 
     #----------------------------
 
@@ -561,16 +564,11 @@ class Pyramid(object):
             #src_transform = warp_src_gcp_transformer % (0, gcp_txt)
             src_transform = warp_src_tps_transformer % gcp_txt
 
-        # base zoom level raster size
-        tl_c, br_c = corners
-        left, top  = tl_c
-        right, bottom = br_c
-        ld('right, left, top, bottom', right, left, top, bottom)
-        size = (abs((right - left) / res[0]), abs((top - bottom) / res[0]))
 
         #tl_ll, br_ll = self.coords2longlat([tl_c, br_c])
-        ld('create_target_dataset', 'max_zoom', self.max_zoom, 'size', size[0], size[1], '-tr', res[0], res[1], '-te', tl_c[0], br_c[1], br_c[0], tl_c[1], '-t_srs', self.proj_srs)
+        #~ ld('create_target_dataset', 'max_zoom', self.max_zoom, 'size', size[0], size[1], '-tr', res[0], res[1], '-te', tl_c[0], br_c[1], br_c[0], tl_c[1], '-t_srs', self.proj_srs)
 
+        left, top  = top_left_coord
         dst_geotr = ( left, res[0], 0.0,
                       top, 0.0, -res[1] )
         ok, dst_igeotr = gdal.InvGeoTransform(dst_geotr)

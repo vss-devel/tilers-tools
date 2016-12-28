@@ -497,13 +497,13 @@ type_map = (
     ('image/webp', '.webp', 'RIFF'),
     )
 
-def type_ext_from_buffer(buf):
+def type_ext_from_buffer(data):
     for mime_type, ext, magic in type_map:
-        if buf.startswith(magic):
-            if magic == 'RIFF' and buf[8:12] != 'WEBP':
+        if data[:len(magic)] == magic : # data could be a buffer
+            if magic == 'RIFF' and data[8:12] != 'WEBP':
                 contnue
             return mime_type, ext
-    error('Cannot determing image type in a buffer:', buf[:20])
+    error('Cannot determing image type in a buffer:', data[:20])
     raise KeyError('Cannot determing image type in a buffer')
 
 def ext_from_buffer(buf):

@@ -27,7 +27,7 @@ from converter_backend import *
 
 #############################
 
-class SASPlanet(TileDir): # http://sasgis.ru/forum/viewtopic.php?f=2&t=24
+class SASPlanet(TileDir): # http://www.sasgis.org/forum/viewtopic.php?f=2&t=24
     'SASPlanet cache'
 #############################
     format, ext, input, output = 'sasplanet', '.sasplanet', True, True
