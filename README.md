@@ -1,5 +1,7 @@
 A few scripts for creating and handling a tile sets from digital raster maps. The scripts are based on GDAL tools.
 
+Requirement: GDAL python bindings version 1.xx
+
 Download from https://github.com/vadp/tilers-tools/
 ----
 `tiler.py` \-- converts a [GDAL](http://www.gdal.org/)-compatible map file (dataset) into a set of zoom-levelled tile directories (a pyramid). A few output pyramid structure/projections (profiles) are supported: compatible with Google Maps (native and TMS-comatible), Google Earth and generic. The script is relatively fast, especially when processing a paletted source in the "draft mode" or rendering a few datasets simultaneously. It is also less picky with dataset formats and projections. In particular, it can cope with maps crossing the 180° meridian.
