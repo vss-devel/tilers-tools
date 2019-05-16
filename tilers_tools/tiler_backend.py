@@ -542,8 +542,7 @@ class Pyramid(object):
         gcp_proj = None
 
         if not self.options.tps and src_geotr and src_geotr != (0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
-            ok, src_igeotr = gdal.InvGeoTransform(src_geotr)
-            assert ok
+            src_igeotr = gdal.InvGeoTransform(src_geotr)
             src_transform = '%s\n%s' % (warp_src_geotr % src_geotr, warp_src_igeotr % src_igeotr)
         else:
             gcps = self.src_ds.GetGCPs()
@@ -571,8 +570,7 @@ class Pyramid(object):
         left, top  = top_left_coord
         dst_geotr = ( left, res[0], 0.0,
                       top, 0.0, -res[1] )
-        ok, dst_igeotr = gdal.InvGeoTransform(dst_geotr)
-        assert ok
+        dst_igeotr = gdal.InvGeoTransform(dst_geotr)
         dst_transform = '%s\n%s' % (warp_dst_geotr % dst_geotr, warp_dst_igeotr % dst_igeotr)
 
         # generate warp options

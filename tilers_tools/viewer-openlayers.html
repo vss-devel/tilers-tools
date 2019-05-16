@@ -81,6 +81,10 @@
                 font: 10px monospace;
                 cursor: pointer;
             }
+            
+            div[style*="background-color: rgba(0, 0, 0, 0.5);"],
+			div[style*="width: calc(100% - 10px);"]
+			{ display: none; }
         </style>
 
         <script  type="text/javascript">
@@ -495,7 +499,7 @@
             );
 
             map.addControl(new OpenLayers.Control.ZoomLine())
-
+/*
             // Bing layers
 
             // API key for http://openlayers.org. Please get your own at
@@ -519,7 +523,7 @@
             });
 
             map.addLayers([road, hybrid, aerial]);
-
+*/
             // Google layers
             var gphy = new OpenLayers.Layer.Google(
                 "Google Physical",

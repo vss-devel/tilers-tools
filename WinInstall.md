@@ -1,6 +1,6 @@
 # How to install tilers-tools on Windows
 
-NB: Running these scripts on Windows was not tested for quite a while. Probably you need some recent versions of prerequisites listed below.
+**NB**: Running these scripts on Windows was not tested for quite a while. Probably you need some more recent versions of prerequisites listed below.
 
 The prerequisites are: `Python` environment (v 2.6+), GDAL binaries with Python support, Python imaging library (PIL), optionally, `pngnq` utility.
 

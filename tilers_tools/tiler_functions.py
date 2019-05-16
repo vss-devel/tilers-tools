@@ -281,19 +281,19 @@ def proj_cs2geog_cs(proj):
     srs_geo.CopyGeogCSFrom(srs)
     return srs_geo.ExportToProj4()
 
-class GdalTransformer(gdal.Transformer):
+class GdalTransformer:
     def __init__(self, src_ds=None, dst_ds=None, **options):
         for key in ('SRC_SRS', 'DST_SRS'):
             try:
                 options[key] = txt2wkt(options[key]) # convert to wkt
             except: pass
         opt_lst = ['%s=%s' % (key, options[key]) for key in options]
-        super(GdalTransformer, self).__init__(src_ds, dst_ds, opt_lst)
+        self.transformer = gdal.Transformer(src_ds, dst_ds, opt_lst)
 
     def transform(self, points, inv=False):
         if not points:
             return []
-        transformed, ok = self.TransformPoints(inv, points)
+        transformed, ok = self.transformer.TransformPoints(inv, points)
         assert ok
         return [i[:2] for i in transformed]
 
