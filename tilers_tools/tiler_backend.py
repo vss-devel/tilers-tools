@@ -118,7 +118,7 @@ class TMStiling(TilingScheme):
         'normalize according to the tile grid'
     #----------------------------
         z, x, y = super(TMStiling, self).normalize_tile(tile)
-        ntiles_x, ntiles_y = self.n_tiles_xy(zoom)
+        ntiles_x, ntiles_y = self.n_tiles_xy(z)
         return (z, x, ntiles_y - 1 - y)
 
 #############################
